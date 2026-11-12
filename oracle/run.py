@@ -117,7 +117,9 @@ def run_vim(text: str, keys: str, workdir: Path) -> Result:
             [
                 "set nomodeline",
                 f"call cursor({1}, {1})",
-                f'execute "normal! {to_vim_keys(keys)}"',
+                # feedkeys, not :normal! - a beeping key aborts :normal! and the
+                # rest of the sequence never runs (measured 2026-11-12)
+                f'call feedkeys("{to_vim_keys(keys)}", "ntx")',
                 f"call writefile([printf('%d:%d', line('.'), col('.'))], '{pos}')",
                 "wq!",
             ]

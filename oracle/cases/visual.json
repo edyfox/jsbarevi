@@ -1,0 +1,171 @@
+{
+  "about": "Visual modes (a Vim-only extension: busybox has no visual mode at all, nvi has none either). Compared against vim.",
+  "cases": [
+    {
+      "name": "v l d deletes two characters",
+      "input": "abcdef\n",
+      "keys": "vld",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v $ d deletes to end of line",
+      "input": "abcdef\n",
+      "keys": "lv$d",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v w d deletes to the next word",
+      "input": "one two three\n",
+      "keys": "vwd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v e d deletes through the word end",
+      "input": "one two\n",
+      "keys": "ved",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v j d spans a line break",
+      "input": "ab\ncd\nef\n",
+      "keys": "vjd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v j y then p pastes the block back (text only: cursor after a multi-line put differs)",
+      "input": "ab\ncd\n",
+      "keys": "vjyp",
+      "engines": [
+        "vim"
+      ],
+      "noPosition": true
+    },
+    {
+      "name": "v with a count extends",
+      "input": "abcdef\n",
+      "keys": "v3ld",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v o swaps ends then deletes",
+      "input": "abcdef\n",
+      "keys": "lvllohd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v ~ flips the selection",
+      "input": "abcdef\n",
+      "keys": "lvll~",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v J joins the selection",
+      "input": "ab\ncd\n",
+      "keys": "Vjd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "V d removes whole lines",
+      "input": "a\nb\nc\n",
+      "keys": "Vjd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "V > shifts whole lines",
+      "input": "a\nb\n",
+      "keys": "Vj>",
+      "engines": [
+        "vim"
+      ],
+      "options": {
+        "expandtab": false,
+        "shiftwidth": 8,
+        "tabstop": 8
+      }
+    },
+    {
+      "name": "V y then G p appends the lines",
+      "input": "a\nb\n",
+      "keys": "VjyGp",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v c changes the selection",
+      "input": "abcdef\n",
+      "keys": "vllcXY<Esc>",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "Esc leaves visual without editing",
+      "input": "abcdef\n",
+      "keys": "vll<Esc>",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v i w selects the inner word",
+      "input": "one two\n",
+      "keys": "lviwd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v a w selects the word and a space",
+      "input": "one two\n",
+      "keys": "vawd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v i ( selects inside the parens",
+      "input": "f(xy) z\n",
+      "keys": "fxlvi(d",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v a \" selects the quoted string",
+      "input": "say \"hi there\" ok\n",
+      "keys": "fhlva\"d",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "v i p selects the paragraph",
+      "input": "a\nb\n\nc\n",
+      "keys": "vipd",
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

@@ -49,6 +49,14 @@ So position assertions run only on vim. A case that asserts only a position is
 2. **`vim -u NONE` is *compatible* mode.** The harness always passes `-N`; the
    eventual editor launch must too.
 
+### Third harness trap: `:normal!` silently truncates
+
+A failing key (a beep) inside `execute "normal! ..."` **aborts the rest of the
+sequence**, so `G$llx` ran as `G$ll` and `x` never happened - the case looked like
+a product bug. Vim's `feedkeys(keys, "ntx")` keeps going after a beep, which is
+what a human does. Both harnesses use `feedkeys` now; anything measured before
+2026-11-12 through `:normal!` where a key could beep is suspect.
+
 Known limits: vim's `col()` is a **byte** column while the engine will index by
 code point, so non-ASCII fixtures need an explicit conversion before any column is
 compared. Insert-mode typing is included in cases via `<Esc>`, but IME behaviour

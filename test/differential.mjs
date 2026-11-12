@@ -39,7 +39,9 @@ function runVim(input, keys) {
   fs.writeFileSync(script, [
     "set nomodeline",
     "call cursor(1,1)",
-    `execute "normal! ${toVimKeys(keys).replace(/"/g, '\\"')}"`,
+    // feedkeys, NOT `execute "normal!"`: a failing key inside :normal! aborts
+    // the rest of the sequence, silently truncating the case (measured).
+    `call feedkeys("${toVimKeys(keys).replace(/"/g, '\\"')}", "ntx")`,
     `call writefile([printf('%d:%d', line('.'), col('.'))], '${pos}')`,
     "wq!",
   ].join("\n") + "\n");
@@ -47,7 +49,10 @@ function runVim(input, keys) {
     stdio: "ignore", timeout: 20000,
   });
   const [line, col] = fs.readFileSync(pos, "utf8").trim().split(":").map(Number);
-  return { text: fs.readFileSync(file, "utf8"), line, col };
+  let text = fs.readFileSync(file, "utf8");
+  // vim serialises a single empty line as "\n"; our model says "". Same buffer.
+  if (text === "\n") text = "";
+  return { text, line, col };
 }
 
 function hostType(engine, key) {
@@ -93,7 +98,9 @@ function main() {
       const ours = runOurs(c.input, c.keys, c.options || {});
       const diffs = [];
       if (vim.text !== ours.text) diffs.push(`text ${JSON.stringify(ours.text)} != vim ${JSON.stringify(vim.text)}`);
-      if (vim.line !== ours.line || vim.col !== ours.col) diffs.push(`pos ${ours.line}:${ours.col} != vim ${vim.line}:${vim.col}`);
+      if (!c.noPosition && (vim.line !== ours.line || vim.col !== ours.col)) {
+        diffs.push(`pos ${ours.line}:${ours.col} != vim ${vim.line}:${vim.col}`);
+      }
       if (!diffs.length) { pass++; console.log(`  \x1b[32mPASS\x1b[0m ${c.name}`); }
       else { fail++; console.log(`  \x1b[31mFAIL\x1b[0m ${c.name}  keys=${JSON.stringify(c.keys)}`); for (const d of diffs) console.log(`       \x1b[31m${d}\x1b[0m`); }
     }

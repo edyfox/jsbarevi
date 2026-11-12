@@ -99,7 +99,10 @@ export class Engine {
    * and insert mode owns the cursor until Esc.
    */
   _stayOffNewline() {
-    if (this.mode === Mode.INSERT) return;
+    // Normal mode only: a visual selection legitimately ends on a newline, and
+    // insert mode owns the cursor until Esc. (busybox's guard is `cmd_mode == 0`,
+    // and it has no visual mode to worry about.)
+    if (this.mode !== Mode.NORMAL) return;
     const t = this.text;
     const c = this.state.cursor;
     if (c < 0 || c >= t.length) return;
@@ -195,11 +198,18 @@ export class Engine {
       return { handled: true };
     }
 
-    // operators (and their doubled form)
-    if (key === "d" || key === "c" || key === "y") {
+    // operators (and their doubled form). `>`/`<` are operators too: `>>` shifts
+    // the line, `>j` shifts two, `>ap` shifts the paragraph.
+    if (key === "d" || key === "c" || key === "y" || key === ">" || key === "<") {
       if (p.op === key) {
         const count = parseInt(p.count || p.opCount || "1", 10);
         p.op = null;
+        if (key === ">" || key === "<") {
+          const line = B.lineNumber(this.text, this.state.cursor);
+          const from = B.lineOffset(this.text, line);
+          const to = B.lineEnd(this.text, B.lineOffset(this.text, Math.min(B.lineCount(this.text) - 1, line + count - 1)));
+          return { ...this._shiftLines(from, to, key === ">"), handled: true };
+        }
         this._applyLinewiseOperator(key, count);
         return { handled: true, edit: key !== "y" };
       }
@@ -236,6 +246,10 @@ export class Engine {
       const op = p.op;
       const reg = p.reg;
       this.pending = this._emptyPending();
+      if (op === ">" || op === "<") {
+        const res = this._shiftByMotion(motion, count, op === ">");
+        return { ...res, handled: true, edit: true };
+      }
       this._operatorWithMotion(op, motion, count, reg);
       return { handled: true, edit: op !== "y" };
     }
@@ -598,6 +612,18 @@ export class Engine {
     return this._applyOperatorRange(op, from, to, true, true, keepCursor);
   }
 
+  /** Shift the lines a motion spans (`>j`, `>G`, `>ap` treated linewise). */
+  _shiftByMotion(motionName, count, right) {
+    const m = this._motion(motionName, count, { forOperator: true });
+    if (!m) { this.onStatus("motion failed", "error"); return { handled: true }; }
+    const text = this.text;
+    const a = Math.min(this.state.cursor, m.to);
+    const b = Math.max(this.state.cursor, m.to);
+    const from = B.lineOffset(text, B.lineNumber(text, a));
+    const to = B.lineEnd(text, B.lineOffset(text, B.lineNumber(text, b)));
+    return this._shiftLines(from, to, right);
+  }
+
   _applyOperatorToEol(op, count) {
     const text = this.text;
     const line = B.lineNumber(text, this.state.cursor);
@@ -882,20 +908,29 @@ export class Engine {
   }
 
   _shift(count, right) {
+    const startLine = B.lineNumber(this.text, this.state.cursor);
+    return this._shiftLines(
+      B.lineOffset(this.text, startLine),
+      B.lineEnd(this.text, B.lineOffset(this.text, Math.min(B.lineCount(this.text) - 1, startLine + count - 1))),
+      right,
+      count,
+    );
+  }
+
+  _shiftLines(from, to, right) {
     const text = this.text;
-    const cur = this.state.cursor;
-    const startLine = B.lineNumber(text, cur);
-    const endLine = Math.min(B.lineCount(text) - 1, startLine + count - 1);
+    const startLine = B.lineNumber(text, from);
+    const endLine = B.lineNumber(text, Math.min(to, Math.max(0, text.length - 1)));
     const unit = this.options.expandtab ? " ".repeat(this.options.shiftwidth) : "\t";
     const lines = text.split("\n");
-    this._pushUndo({ text, cursor: cur });
+    this._pushUndo({ text, cursor: this.state.cursor });
     for (let n = startLine; n <= endLine; n++) {
       if (right) lines[n] = unit + lines[n];
       else lines[n] = lines[n].replace(new RegExp(`^(\\t| {1,${this.options.shiftwidth}})`), "");
     }
     this.state.text = lines.join("\n");
     this.state.cursor = B.firstNonBlank(this.state.text, B.lineOffset(this.state.text, startLine));
-    this._noteChange({ kind: "shift", count, right });
+    this._noteChange({ kind: "shift", count: 1, right });
     return { handled: true, edit: true };
   }
 
@@ -1047,6 +1082,28 @@ export class Engine {
     if (key === "o") { const a = this.visual.anchor; this.visual.anchor = this.state.cursor; this.state.cursor = a; return { handled: true }; }
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) { p.count += key; return { handled: true }; }
 
+    // text objects extend the selection to exactly that object (vim-only: busybox
+    // has no visual mode at all)
+    if (p.textObj) {
+      const prefix = p.textObj;
+      this.pending = this._emptyPending();
+      const range = this._textObject(prefix, key);
+      if (!range) return { handled: true };
+      this.visual.anchor = range.from;
+      const last = B.prevChar(this.text, range.to);
+      this.state.cursor = Math.max(range.from, last);
+      return { handled: true };
+    }
+    if (key === "i" || key === "a") { p.textObj = key; return { handled: true }; }
+
+    if (key === ">" || key === "<") {
+      const range = this._visualRange();
+      const res = this._shiftLines(range.from, range.to, key === ">");
+      this.mode = Mode.NORMAL;
+      this.visual = null;
+      return { ...res, handled: true };
+    }
+
     const opMap = { d: "d", x: "d", y: "y", c: "c", s: "c" };
     if (opMap[key]) {
       const range = this._visualRange();
@@ -1054,7 +1111,9 @@ export class Engine {
       this.mode = Mode.NORMAL;
       this.visual = null;
       this.pending = this._emptyPending();
-      return this._applyOperatorRange(op, range.from, range.to, range.linewise, true);
+      const res = this._applyOperatorRange(op, range.from, range.to, range.linewise, true);
+      if (op === "y") this.state.cursor = range.from;   // vim parks at the start
+      return res;
     }
     if (key === "~") {
       const range = this._visualRange();

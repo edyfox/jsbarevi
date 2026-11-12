@@ -1,0 +1,226 @@
+{
+  "about": "Boundary conditions: first and last column, empty lines, the empty buffer, a one-character buffer, last line of the buffer. This is the class of bug that a buffer-comparing suite cannot see, so positions are asserted. Vim-only (pty engines cannot report a cursor). The >> case runs with vim's indent defaults because ours are a documented deviation (4 spaces in a field instead of a tab).",
+  "cases": [
+    {
+      "name": "h at column 1 stays",
+      "input": "ab\ncd\n",
+      "keys": "h",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "h at column 1 of line 2 stays on line 2",
+      "input": "ab\ncd\n",
+      "keys": "jh",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "l at the last character stays",
+      "input": "ab\ncd\n",
+      "keys": "ll",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "x on the last character of a line",
+      "input": "ab\ncd\n",
+      "keys": "lx",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "x on the last character of the buffer",
+      "input": "ab\ncd\n",
+      "keys": "G$llx",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then x deletes the last character",
+      "input": "abc\ndef\n",
+      "keys": "$x",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "j on the last line stays",
+      "input": "a\nb\n",
+      "keys": "jj",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "k on the first line stays",
+      "input": "a\nb\n",
+      "keys": "jk",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "j into an empty line",
+      "input": "ab\n\ncd\n",
+      "keys": "j",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "x on an empty line does nothing",
+      "input": "ab\n\ncd\n",
+      "keys": "jx",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "D on an empty line does nothing",
+      "input": "ab\n\ncd\n",
+      "keys": "jD",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dd on an empty line removes it",
+      "input": "ab\n\ncd\n",
+      "keys": "jdd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "w on the last word of the buffer",
+      "input": "ab\n",
+      "keys": "w",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "b at the first word stays",
+      "input": "ab cd\n",
+      "keys": "b",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dw on the last word leaves the space",
+      "input": "ab cd\n",
+      "keys": "wdw",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J on the last line does nothing",
+      "input": "a\nb\n",
+      "keys": "GJ",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "~ on the last character",
+      "input": "ab\n",
+      "keys": "l~",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "r on the last character",
+      "input": "ab\n",
+      "keys": "lrx",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "cw on the last character",
+      "input": "ab\n",
+      "keys": "lcwX<Esc>",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d$ from the last character",
+      "input": "abc\n",
+      "keys": "lld$",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "count past end of line stops at the last character",
+      "input": "ab\ncd\n",
+      "keys": "9x",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "x in an empty buffer does nothing",
+      "input": "",
+      "keys": "x",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "x on a one-character buffer empties it",
+      "input": "a",
+      "keys": "x",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dd on a one-line buffer",
+      "input": "a\n",
+      "keys": "dd",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "G on a one-line buffer",
+      "input": "a\n",
+      "keys": "G",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "~ at the last column then l",
+      "input": "ab\ncd\n",
+      "keys": "l~l",
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": ">> on the last line",
+      "input": "a\nb\n",
+      "keys": "G>>",
+      "engines": [
+        "vim"
+      ],
+      "options": {
+        "expandtab": false,
+        "shiftwidth": 8,
+        "tabstop": 8
+      }
+    }
+  ]
+}
