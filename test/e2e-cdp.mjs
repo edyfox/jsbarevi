@@ -106,10 +106,33 @@ const KEYS = {
 };
 
 async function sendKey(session, ch) {
-  const insert = (await session.send("Runtime.evaluate", {
-    expression: "window.jsbarevi.textarea.engine.mode === 'INSERT'",
+  const state = (await session.send("Runtime.evaluate", {
+    expression: `(() => {
+      const el = document.activeElement;
+      return {
+        insert: window.jsbarevi.textarea.engine.mode === 'INSERT',
+        prompt: !!el && el.classList && el.classList.contains('jsbarevi-prompt'),
+      };
+    })()`,
     returnByValue: true,
   })).result.value;
+  const insert = state.insert;
+  if (state.prompt) {
+    // typing into the command-line input goes through the browser
+    const base = KEYS[ch] || { key: ch, code: `Key${ch.toUpperCase()}`, keyCode: ch.toUpperCase().charCodeAt(0), text: ch };
+    if (ch === "Backspace") {
+      // "keyDown" (not raw) lets Chrome apply the input's default edit
+      await session.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    } else {
+      await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: base.key, code: base.code });
+      if (base.text && ch !== "Escape" && ch !== "Enter") {
+        await session.send("Input.dispatchKeyEvent", { type: "char", text: base.text, unmodifiedText: base.text, key: base.key });
+      }
+    }
+    await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: base.key, code: base.code });
+    await sleep(20);
+    return;
+  }
   const base = KEYS[ch] || { key: ch, code: `Key${ch.toUpperCase()}`, keyCode: ch.toUpperCase().charCodeAt(0), text: ch };
   // rawKeyDown never inserts text by itself: the page decides whether the key
   // is consumed. A real browser only produces text when nothing prevented the
@@ -282,6 +305,61 @@ async function main() {
     check("the caret follows focus to the other field", await visibleCarets(), 1);
     check("...and the textarea's caret is gone", await evaluate(session, "document.getElementById('single').closest('body') && getComputedStyle(document.querySelectorAll('.jsbarevi-caret')[0]).display"), "none");
     await evaluate(session, "document.getElementById('field').focus()");
+
+    // --- the command line behaves like vi's -------------------------------
+    const promptState = () => evaluate(session, `(() => {
+      const p = document.querySelector('.jsbarevi-prompt');
+      return {
+        visible: p && getComputedStyle(p).display !== 'none',
+        value: p ? p.value : null,
+        focused: document.activeElement === p,
+        enginePrompt: window.jsbarevi.textarea.engine.prompt,
+        focusOnField: document.activeElement === document.getElementById('field'),
+      };
+    })()`);
+    await evaluate(session, "document.getElementById('field').focus()");
+    await typeKeys(session, ":");
+    const opened = await promptState();
+    check("':' opens the command line and focuses it", opened.visible && opened.focused, true);
+    await sendKey(session, "Backspace");
+    const emptied = await promptState();
+    check("deleting the ':' leaves the command line", emptied.visible, false);
+    check("...focus returns to the field", emptied.focusOnField, true);
+    check("...and the engine has no prompt pending", emptied.enginePrompt, null);
+    check("...in normal mode", await mode(), "NORMAL");
+
+    await typeKeys(session, ":");        // reopen: the previous Backspace closed it
+    await typeKeys(session, "s/x/y/");   // the ':' is already the prompt's sigil
+    const typed = await promptState();
+    check("typed text lands in the command line", typed.value, ":s/x/y/");
+    for (let i = 0; i < 7; i++) await sendKey(session, "Backspace");
+    const cleared = await promptState();
+    check("backspacing everything leaves the command line", cleared.visible, false);
+    check("...and never leaves the user stuck in the input", cleared.focusOnField, true);
+
+    await typeKeys(session, ":");
+    await sendKey(session, "Escape");
+    check("Esc still cancels", (await promptState()).visible, false);
+
+    await typeKeys(session, ":");
+    {
+      const ctrlC = (await session.send("Runtime.evaluate", { expression: "1", returnByValue: true })).result.value;
+      void ctrlC;
+      await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
+      await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", modifiers: 2 });
+      await sleep(60);
+    }
+    check("Ctrl-C cancels too, as in vi", (await promptState()).visible, false);
+
+    // same rule for the search prompt: deleting everything exits it
+    await typeKeys(session, "/");
+    check("'/' opens the search prompt", (await promptState()).visible, true);
+    await typeKeys(session, "ab");
+    await sendKey(session, "Backspace");
+    await sendKey(session, "Backspace");
+    const searchCleared = await promptState();
+    check("deleting the search pattern exits the prompt", searchCleared.visible, false);
+    check("...and focus returns to the field", searchCleared.focusOnField, true);
 
     // --- :e through a TextEditAid-compatible server -----------------------
     const beforeEditor = await field();

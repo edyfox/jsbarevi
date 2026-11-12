@@ -88,8 +88,11 @@ export function attach(el, opts = {}) {
     },
   });
 
+  const promptOpen = () => ui.promptEl.style.display !== "none";
+  const cancelPrompt = () => { ui.hidePrompt(); adapter.cancelPrompt(); };
+
   const onPromptKey = (e) => {
-    if (ui.promptEl.style.display === "none") return;
+    if (!promptOpen()) return;
     const kind = ui.promptEl.dataset.kind;
     if (e.key === "Enter") {
       e.preventDefault();
@@ -98,12 +101,24 @@ export function attach(el, opts = {}) {
       adapter.finishPrompt(kind, value);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      ui.hidePrompt();
-      adapter.cancelPrompt();
+      cancelPrompt();
+    } else if (e.ctrlKey && e.key.toLowerCase() === "c") {
+      e.preventDefault();
+      cancelPrompt();
     }
     e.stopPropagation();
   };
+
+  // vi leaves the command line when you delete everything you typed, i.e. when
+  // the sigil would be gone. Deleting the ":" of ":" must not leave you stuck in
+  // an empty input.
+  const onPromptInput = () => {
+    if (!promptOpen()) return;
+    const typed = ui.promptEl.value.replace(/^[:/?]/, "");
+    if (typed === "") cancelPrompt();
+  };
   ui.promptEl.addEventListener("keydown", onPromptKey, true);
+  ui.promptEl.addEventListener("input", onPromptInput);
 
   const onResize = () => ui.place();
   window.addEventListener("resize", onResize);
@@ -115,6 +130,7 @@ export function attach(el, opts = {}) {
     destroy() {
       adapter.destroy();
       ui.promptEl.removeEventListener("keydown", onPromptKey, true);
+      ui.promptEl.removeEventListener("input", onPromptInput);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onResize, true);
       ui.promptEl.remove();

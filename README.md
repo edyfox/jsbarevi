@@ -115,6 +115,10 @@ and a block caret is drawn over the character at the engine cursor, measured wit
 a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
 the block disappears and the native caret returns.
 
+The command line behaves like vi's: deleting everything you typed — including the
+`:` itself — leaves it and returns to normal mode, with focus back in the field.
+`Esc` and `Ctrl-C` cancel; the same rule applies to the `/` search prompt.
+
 VISUAL and VISUAL LINE paint their own **overlay**: one box per selected line
 segment, measured with the same mirror technique as the caret, stretched to the
 field's right edge in linewise mode. The native selection is collapsed while the
