@@ -8,6 +8,7 @@
 //     screen commands report why instead of guessing
 
 import * as B from "./buffer.js";
+import * as C from "./cursor.js";
 import { runEx } from "./ex.js";
 
 export const Mode = { NORMAL: "NORMAL", INSERT: "INSERT", VISUAL: "VISUAL", VISUAL_LINE: "VISUAL_LINE" };
@@ -393,21 +394,24 @@ export class Engine {
     const text = this.text;
     const cur = this.state.cursor;
     switch (name) {
-      case "h": return { to: Math.max(B.lineStart(text, cur), B.prevChar(text, cur)), charwise: true };
-      case "l": {
-        const last = B.lastCharOffset(text, cur);
+      case "h": {
         let to = cur;
-        for (let i = 0; i < count && to < last; i++) to = B.nextChar(text, to);
+        for (let i = 0; i < count; i++) to = C.left(text, to);
+        return { to, charwise: true };
+      }
+      case "l": {
+        let to = cur;
+        for (let i = 0; i < count; i++) to = C.right(text, to);
         return { to, charwise: true };
       }
       case "j": return { ...this._vertical(count, 1), linewise: true };
       case "k": return { ...this._vertical(count, -1), linewise: true };
-      case "0": return { to: B.lineStart(text, cur), charwise: true };
-      case "^": return { to: B.firstNonBlank(text, cur), charwise: true };
+      case "0": return { to: C.beginLine(text, cur), charwise: true };
+      case "^": return { to: C.skipBlank(text, cur), charwise: true };
       case "$": {
         let line = B.lineNumber(text, cur);
         line = Math.min(B.lineCount(text) - 1, line + count - 1);
-        return { to: B.lastCharOffset(text, B.lineOffset(text, line)), charwise: true, inclusive: true };
+        return { to: C.endLine(text, B.lineOffset(text, line)), charwise: true, inclusive: true };
       }
       case "|": {
         const s = B.lineStart(text, cur);
@@ -1003,13 +1007,9 @@ export class Engine {
     this.pending = this._emptyPending();
 
     switch (kind) {
-      case "a": {
-        // `a` appends after the cursor character - but on an empty line there is
-        // no character, and stepping past the newline would type on the NEXT line.
-        const e = B.lineEnd(text, cur);
-        this.state.cursor = cur < e ? B.nextChar(text, cur) : cur;
-        break;
-      }
+      // appends after the cursor character; dot_right refuses to step past a
+      // newline, which is what an empty line needs
+      case "a": this.state.cursor = C.right(text, cur); break;
       case "I": this.state.cursor = B.firstNonBlank(text, cur); break;
       case "A": this.state.cursor = B.lineEnd(text, cur); break;
       case "o": {
@@ -1050,10 +1050,8 @@ export class Engine {
       // Leaving insert steps one character left, but never across the line
       // boundary: at column 1 the cursor stays (vim, nvi and busybox agree).
       // A count repeat already parked the cursor on the last copied character.
-      if (!repeated) {
-        const ls = B.lineStart(this.text, this.state.cursor);
-        if (this.state.cursor > ls) this.state.cursor = B.prevChar(this.text, this.state.cursor);
-      }
+      // leaving insert is exactly busybox's dot_left: one left, never across a newline
+      if (!repeated) this.state.cursor = C.left(this.text, this.state.cursor);
       return { handled: true };
     }
     // insert mode belongs to the host
