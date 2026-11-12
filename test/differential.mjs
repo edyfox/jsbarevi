@@ -49,9 +49,7 @@ function runVim(input, keys) {
     stdio: "ignore", timeout: 20000,
   });
   const [line, col] = fs.readFileSync(pos, "utf8").trim().split(":").map(Number);
-  let text = fs.readFileSync(file, "utf8");
-  // vim serialises a single empty line as "\n"; our model says "". Same buffer.
-  if (text === "\n") text = "";
+  let text = normalise(fs.readFileSync(file, "utf8"));
   return { text, line, col };
 }
 
@@ -64,6 +62,10 @@ function hostType(engine, key) {
   if (key.length === 1) engine.setText(t.slice(0, c) + key + t.slice(c), c + key.length);
 }
 
+// A buffer of exactly one empty line is "\n" on disk and "" in our model; treat
+// both sides the same way so the comparison is about editing, not serialisation.
+const normalise = (t) => (t === "\n" ? "" : t);
+
 function runOurs(input, keys, options = {}) {
   const engine = new Engine({ options });
   engine.setText(input, 0);
@@ -74,7 +76,7 @@ function runOurs(input, keys, options = {}) {
   }
   const before = engine.text.slice(0, engine.cursor);
   return {
-    text: engine.text,
+    text: normalise(engine.text),
     line: before.split("\n").length,
     col: engine.cursor - (before.lastIndexOf("\n") + 1) + 1,
   };

@@ -1003,7 +1003,13 @@ export class Engine {
     this.pending = this._emptyPending();
 
     switch (kind) {
-      case "a": this.state.cursor = Math.min(text.length, B.nextChar(text, cur)); break;
+      case "a": {
+        // `a` appends after the cursor character - but on an empty line there is
+        // no character, and stepping past the newline would type on the NEXT line.
+        const e = B.lineEnd(text, cur);
+        this.state.cursor = cur < e ? B.nextChar(text, cur) : cur;
+        break;
+      }
       case "I": this.state.cursor = B.firstNonBlank(text, cur); break;
       case "A": this.state.cursor = B.lineEnd(text, cur); break;
       case "o": {
@@ -1037,7 +1043,8 @@ export class Engine {
         // the count repeat must happen while the cursor is still at the end of
         // the typed run, before the leave-insert step to the left
         const inserted = this._contiguousInsert(entry);
-        if (entry.count > 1 && inserted) repeated = this._repeatInsert(entry, inserted);
+        const repeatsEvenWhenEmpty = entry.kind === "o" || entry.kind === "O";
+        if (entry.count > 1 && (inserted || repeatsEvenWhenEmpty)) repeated = this._repeatInsert(entry, inserted);
         this._noteChange({ kind: "insert", entry: entry.kind, inserted });
       }
       // Leaving insert steps one character left, but never across the line

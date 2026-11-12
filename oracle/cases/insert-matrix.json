@@ -1,0 +1,517 @@
+{
+ "about": "Generated matrix: insert entry x count x line shape. Closes the line-boundary class that produced three separate bugs (Esc leaving insert, `a` on an empty line, counts on empty inserts).",
+ "cases": [
+  {
+   "name": "iX<Esc> on empty line",
+   "input": "\n",
+   "keys": "iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3iX<Esc> on empty line",
+   "input": "\n",
+   "keys": "3iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "aX<Esc> on empty line",
+   "input": "\n",
+   "keys": "aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3aX<Esc> on empty line",
+   "input": "\n",
+   "keys": "3aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "IX<Esc> on empty line",
+   "input": "\n",
+   "keys": "IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3IX<Esc> on empty line",
+   "input": "\n",
+   "keys": "3IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "AX<Esc> on empty line",
+   "input": "\n",
+   "keys": "AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3AX<Esc> on empty line",
+   "input": "\n",
+   "keys": "3AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "oX<Esc> on empty line",
+   "input": "\n",
+   "keys": "oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2oX<Esc> on empty line",
+   "input": "\n",
+   "keys": "2oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "OX<Esc> on empty line",
+   "input": "\n",
+   "keys": "OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2OX<Esc> on empty line",
+   "input": "\n",
+   "keys": "2OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "iX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3iX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "3iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "aX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3aX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "3aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "IX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3IX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "3IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "AX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3AX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "3AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "oX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2oX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "2oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "OX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2OX<Esc> on one line",
+   "input": "ab\n",
+   "keys": "2OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "iX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3iX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "3iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "aX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3aX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "3aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "IX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3IX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "3IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "AX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3AX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "3AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "oX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2oX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "2oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "OX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2OX<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "2OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "iX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3iX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "3iX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "aX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3aX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "3aX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "IX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3IX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "3IX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "AX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "3AX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "3AX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "oX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2oX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "2oX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "OX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "2OX<Esc> on last char",
+   "input": "abc\n",
+   "keys": "2OX<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "i<Esc> on empty line",
+   "input": "\n",
+   "keys": "i<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "a<Esc> on empty line",
+   "input": "\n",
+   "keys": "a<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "I<Esc> on empty line",
+   "input": "\n",
+   "keys": "I<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "A<Esc> on empty line",
+   "input": "\n",
+   "keys": "A<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "i<Esc> on one line",
+   "input": "ab\n",
+   "keys": "i<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "a<Esc> on one line",
+   "input": "ab\n",
+   "keys": "a<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "I<Esc> on one line",
+   "input": "ab\n",
+   "keys": "I<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "A<Esc> on one line",
+   "input": "ab\n",
+   "keys": "A<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "i<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "i<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "a<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "a<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "I<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "I<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "A<Esc> on indented",
+   "input": "  ab\n",
+   "keys": "A<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "i<Esc> on last char",
+   "input": "abc\n",
+   "keys": "i<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "a<Esc> on last char",
+   "input": "abc\n",
+   "keys": "a<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "I<Esc> on last char",
+   "input": "abc\n",
+   "keys": "I<Esc>",
+   "engines": [
+    "vim"
+   ]
+  },
+  {
+   "name": "A<Esc> on last char",
+   "input": "abc\n",
+   "keys": "A<Esc>",
+   "engines": [
+    "vim"
+   ]
+  }
+ ]
+}

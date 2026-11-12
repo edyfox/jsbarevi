@@ -1,19 +1,268 @@
 {
-  "about": "Counts, with emphasis on a count before an insert entry (10atest<ESC> repeats the typed text 10 times). busybox drops this case deliberately; vim supports it.",
+  "about": "Counts, with emphasis on a count before an insert entry (10atest<ESC> repeats the typed text 10 times). busybox drops this case deliberately; vim supports it. Insert counts are asserted against BOTH vim and nvi (they agree); busybox ignores a count on an insert entry, so it is excluded from those cases rather than silently expected to match.",
   "cases": [
-    { "name": "10a repeats the typed text ten times", "input": "ab\n", "keys": "10atest <Esc>", "engines": ["vim"] },
-    { "name": "3i inserts the text three times", "input": "ab\n", "keys": "3iX<Esc>", "engines": ["vim"] },
-    { "name": "3a appends three copies", "input": "ab\n", "keys": "3aX<Esc>", "engines": ["vim"] },
-    { "name": "3I inserts three copies at the first non-blank", "input": "  ab\n", "keys": "3IX<Esc>", "engines": ["vim"] },
-    { "name": "3A appends three copies at end of line", "input": "ab\n", "keys": "3AX<Esc>", "engines": ["vim"] },
-    { "name": "3o opens three lines", "input": "ab\n", "keys": "3oX<Esc>", "engines": ["vim"] },
-    { "name": "3O opens three lines above", "input": "ab\n", "keys": "3OX<Esc>", "engines": ["vim"] },
-    { "name": "count on dd", "input": "a\nb\nc\nd\n", "keys": "2dd", "engines": ["vim"] },
-    { "name": "count on x", "input": "abcdef\n", "keys": "3x", "engines": ["vim"] },
-    { "name": "count on J", "input": "a\nb\nc\n", "keys": "2J", "engines": ["vim"] },
-    { "name": "count on p after a yank", "input": "ab\n", "keys": "yl2p", "engines": ["vim"] },
-    { "name": "count on ~", "input": "abcdef\n", "keys": "3~", "engines": ["vim"] },
-    { "name": "count on an operator motion", "input": "a b c d\n", "keys": "d2w", "engines": ["vim"] },
-    { "name": "count before an insert then dot repeat", "input": "ab\n", "keys": "2iX<Esc>A.<Esc>", "engines": ["vim"] }
+    {
+      "name": "10a repeats the typed text ten times",
+      "input": "ab\n",
+      "keys": "10atest <Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "atest test test test test test test test test test b\n"
+      }
+    },
+    {
+      "name": "3i inserts the text three times",
+      "input": "ab\n",
+      "keys": "3iX<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "XXXab\n"
+      }
+    },
+    {
+      "name": "3a appends three copies",
+      "input": "ab\n",
+      "keys": "3aX<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "aXXXb\n"
+      }
+    },
+    {
+      "name": "3I inserts three copies at the first non-blank",
+      "input": "  ab\n",
+      "keys": "3IX<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "  XXXab\n"
+      }
+    },
+    {
+      "name": "3A appends three copies at end of line",
+      "input": "ab\n",
+      "keys": "3AX<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "abXXX\n"
+      }
+    },
+    {
+      "name": "3o opens three lines",
+      "input": "ab\n",
+      "keys": "3oX<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "ab\nX\nX\nX\n"
+      }
+    },
+    {
+      "name": "3O opens three lines above",
+      "input": "ab\n",
+      "keys": "3OX<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "X\nX\nX\nab\n"
+      }
+    },
+    {
+      "name": "count on dd",
+      "input": "a\nb\nc\nd\n",
+      "keys": "2dd",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "c\nd\n"
+      }
+    },
+    {
+      "name": "count on x",
+      "input": "abcdef\n",
+      "keys": "3x",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "def\n"
+      }
+    },
+    {
+      "name": "count on J",
+      "input": "a\nb\nc\n",
+      "keys": "2J",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "a b\nc\n"
+      }
+    },
+    {
+      "name": "count on p after a yank",
+      "input": "ab\n",
+      "keys": "yl2p",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "aaab\n"
+      }
+    },
+    {
+      "name": "count on ~",
+      "input": "abcdef\n",
+      "keys": "3~",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "ABCdef\n"
+      }
+    },
+    {
+      "name": "count on an operator motion",
+      "input": "a b c d\n",
+      "keys": "d2w",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "c d\n"
+      }
+    },
+    {
+      "name": "count before an insert then dot repeat",
+      "input": "ab\n",
+      "keys": "2iX<Esc>A.<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XXab.\n"
+      }
+    },
+    {
+      "name": "count with an empty insert: 2o<Esc> adds two blank lines",
+      "input": "ab\n",
+      "keys": "2o<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "ab\n\n\n"
+      }
+    },
+    {
+      "name": "3o<Esc> adds three blank lines",
+      "input": "ab\n",
+      "keys": "3o<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "ab\n\n\n\n"
+      }
+    },
+    {
+      "name": "2O<Esc> adds two blank lines above",
+      "input": "ab\n",
+      "keys": "2O<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "\n\nab\n"
+      }
+    },
+    {
+      "name": "3O<Esc> adds three blank lines above",
+      "input": "ab\n",
+      "keys": "3O<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "\n\n\nab\n"
+      }
+    },
+    {
+      "name": "2i<Esc> with nothing typed changes nothing",
+      "input": "ab\n",
+      "keys": "2i<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "ab\n"
+      }
+    },
+    {
+      "name": "2a<Esc> with nothing typed changes nothing",
+      "input": "ab\n",
+      "keys": "2a<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "ab\n"
+      }
+    },
+    {
+      "name": "10atest<Esc> without a trailing space",
+      "input": "ab\n",
+      "keys": "10atest<Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "atesttesttesttesttesttesttesttesttesttestb\n"
+      }
+    },
+    {
+      "name": "10a on an empty line repeats ten copies from column 1",
+      "input": "\n",
+      "keys": "10atest <Esc>",
+      "engines": [
+        "vim",
+        "nvi"
+      ],
+      "expect": {
+        "text": "test test test test test test test test test test \n"
+      }
+    }
   ]
 }

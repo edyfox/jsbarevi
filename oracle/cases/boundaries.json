@@ -221,6 +221,50 @@
         "shiftwidth": 8,
         "tabstop": 8
       }
+    },
+    {
+      "name": "a on an empty line stays on that line",
+      "input": "\n",
+      "keys": "aX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "X\n"
+      }
+    },
+    {
+      "name": "a on an empty middle line",
+      "input": "a\n\nb\n",
+      "keys": "jaX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "a\nX\nb\n"
+      }
+    },
+    {
+      "name": "i on an empty line",
+      "input": "\n",
+      "keys": "iX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "X\n"
+      }
+    },
+    {
+      "name": "A on an empty line",
+      "input": "\n",
+      "keys": "AX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "X\n"
+      }
     }
   ]
 }
