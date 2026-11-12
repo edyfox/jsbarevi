@@ -1,0 +1,12 @@
+{
+  "name": "jsbarevi",
+  "version": "0.1.0",
+  "description": "A deliberately barebones vi for browser text fields",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node test/run-engine-tests.mjs",
+    "oracle": "python3 oracle/run.py"
+  },
+  "files": ["src", "LICENSE", "NOTICE", "CREDITS.md"]
+}

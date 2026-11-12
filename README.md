@@ -1,6 +1,6 @@
-# barevi
+# jsbarevi
 
-A deliberately barebones **vi for browser text fields** — textarea, `input`,
+A deliberately barebones **vi for browser text fields**, written in JavaScript, — textarea, `input`,
 contenteditable, and the rich composers inside VS Code, Cursor, Devin, Lark and
 OpenCode. No plugin marketplace, no framework. One small engine, one adapter
 contract, and a real editor behind `:e` when the field is not enough.
