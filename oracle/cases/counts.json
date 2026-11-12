@@ -1,0 +1,19 @@
+{
+  "about": "Counts, with emphasis on a count before an insert entry (10atest<ESC> repeats the typed text 10 times). busybox drops this case deliberately; vim supports it.",
+  "cases": [
+    { "name": "10a repeats the typed text ten times", "input": "ab\n", "keys": "10atest <Esc>", "engines": ["vim"] },
+    { "name": "3i inserts the text three times", "input": "ab\n", "keys": "3iX<Esc>", "engines": ["vim"] },
+    { "name": "3a appends three copies", "input": "ab\n", "keys": "3aX<Esc>", "engines": ["vim"] },
+    { "name": "3I inserts three copies at the first non-blank", "input": "  ab\n", "keys": "3IX<Esc>", "engines": ["vim"] },
+    { "name": "3A appends three copies at end of line", "input": "ab\n", "keys": "3AX<Esc>", "engines": ["vim"] },
+    { "name": "3o opens three lines", "input": "ab\n", "keys": "3oX<Esc>", "engines": ["vim"] },
+    { "name": "3O opens three lines above", "input": "ab\n", "keys": "3OX<Esc>", "engines": ["vim"] },
+    { "name": "count on dd", "input": "a\nb\nc\nd\n", "keys": "2dd", "engines": ["vim"] },
+    { "name": "count on x", "input": "abcdef\n", "keys": "3x", "engines": ["vim"] },
+    { "name": "count on J", "input": "a\nb\nc\n", "keys": "2J", "engines": ["vim"] },
+    { "name": "count on p after a yank", "input": "ab\n", "keys": "yl2p", "engines": ["vim"] },
+    { "name": "count on ~", "input": "abcdef\n", "keys": "3~", "engines": ["vim"] },
+    { "name": "count on an operator motion", "input": "a b c d\n", "keys": "d2w", "engines": ["vim"] },
+    { "name": "count before an insert then dot repeat", "input": "ab\n", "keys": "2iX<Esc>A.<Esc>", "engines": ["vim"] }
+  ]
+}

@@ -224,7 +224,7 @@ export class Engine {
         p.textObj = key; // `diw` etc: operator + text object prefix
         return { handled: true };
       }
-      return this._enterInsert(key);
+      return this._enterInsert(key, this._takeCount(1));
     }
 
     // a pending operator followed by a motion or text object
@@ -889,7 +889,9 @@ export class Engine {
     let out = text;
     let changed = 0;
     let joinAt = -1;
-    for (let i = 0; i < count && B.lineNumber(out, B.lineOffset(out, line) + Math.max(0, joinAt)) < B.lineCount(out) - 1; i++) {
+    // vim: [count]J joins [count] lines, i.e. count-1 joins
+    const joins = Math.max(1, count - 1);
+    for (let i = 0; i < joins && B.lineNumber(out, B.lineOffset(out, line) + Math.max(0, joinAt)) < B.lineCount(out) - 1; i++) {
       const target = joinAt < 0 ? B.lineOffset(out, line) : joinAt + 1;
       const e = B.lineEnd(out, target);
       const nextStart = e + 1;
@@ -992,13 +994,12 @@ export class Engine {
   }
 
   // --- insert mode ---------------------------------------------------------
-  _enterInsert(kind) {
+  _enterInsert(kind, count = 1) {
     const text = this.text;
     const cur = this.state.cursor;
     this._pushUndo({ text, cursor: cur });
     this.lineSnapshot = B.lineText(text, cur);
     this.mode = Mode.INSERT;
-    this.insertEntry = { kind, start: cur, textBefore: text, cursorBefore: cur };
     this.pending = this._emptyPending();
 
     switch (kind) {
@@ -1020,6 +1021,9 @@ export class Engine {
       case "R": /* replace mode is approximated by insert; documented deviation */ break;
       default: break;
     }
+    // capture the baseline AFTER the entry's own edit, otherwise the newline that
+    // `o`/`O` create looks like typed text
+    this.insertEntry = { kind, start: cur, textBefore: this.state.text, cursorBefore: cur, count };
     return { handled: true, edit: true, enterInsert: true, mode: Mode.INSERT };
   }
 
@@ -1028,18 +1032,59 @@ export class Engine {
       const entry = this.insertEntry;
       this.insertEntry = null;
       this.mode = Mode.NORMAL;
+      let repeated = false;
+      if (entry) {
+        // the count repeat must happen while the cursor is still at the end of
+        // the typed run, before the leave-insert step to the left
+        const inserted = this._contiguousInsert(entry);
+        if (entry.count > 1 && inserted) repeated = this._repeatInsert(entry, inserted);
+        this._noteChange({ kind: "insert", entry: entry.kind, inserted });
+      }
       // Leaving insert steps one character left, but never across the line
       // boundary: at column 1 the cursor stays (vim, nvi and busybox agree).
-      const ls = B.lineStart(this.text, this.state.cursor);
-      if (this.state.cursor > ls) this.state.cursor = B.prevChar(this.text, this.state.cursor);
-      if (entry) {
-        const inserted = this._contiguousInsert(entry);
-        this._noteChange({ kind: "insert", entry: entry.kind, inserted });
+      // A count repeat already parked the cursor on the last copied character.
+      if (!repeated) {
+        const ls = B.lineStart(this.text, this.state.cursor);
+        if (this.state.cursor > ls) this.state.cursor = B.prevChar(this.text, this.state.cursor);
       }
       return { handled: true };
     }
     // insert mode belongs to the host
     return { handled: false };
+  }
+
+  /**
+   * A count before an insert entry repeats the typed text: `3iX<Esc>` gives XXX,
+   * `3oX<Esc>` gives three lines. busybox drops this case; it is cheap here only
+   * because the host owns insert mode, so at Esc we already hold the typed text
+   * as one contiguous run (the same capture `.` uses).
+   */
+  _repeatInsert(entry, inserted) {
+    const count = entry.count;
+    if (entry.kind === "o" || entry.kind === "O") {
+      // each extra copy becomes its own line, below for `o`, above for `O`
+      for (let i = 1; i < count; i++) {
+        const t = this.text;
+        if (entry.kind === "o") {
+          const at = Math.min(B.lineEnd(t, this.state.cursor) + 1, t.length);
+          this.state.text = t.slice(0, at) + inserted + "\n" + t.slice(at);
+          this.state.cursor = at;
+        } else {
+          const at = B.lineStart(t, this.state.cursor);
+          this.state.text = t.slice(0, at) + inserted + "\n" + t.slice(at);
+          this.state.cursor = at + inserted.length + 1;
+        }
+      }
+      return true;
+    }
+    // i a I A: the copies are contiguous, appended right after the typed run.
+    // In insert mode the cursor already sits past the last typed character.
+    const t = this.text;
+    const end = Math.min(this.state.cursor, t.length);
+    const payload = inserted.repeat(count - 1);
+    this.state.text = t.slice(0, end) + payload + t.slice(end);
+    this.state.cursor = Math.max(0, end + payload.length - 1);
+    return true;
   }
 
   /** The text typed during the last insert, if it is a single contiguous change. */
