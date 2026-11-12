@@ -54,16 +54,24 @@ Regents of the University of California; Keith Bostic; Sven Verdoolaege; Zhihao
 Yuan). No nvi source code is present in this repository. It is used to settle
 behavioural questions where busybox and Vim disagree.
 
-## TextEditAid (lineage) and pyTextFilter (protocol reference)
+## pyTextFilter — Apache License 2.0 (protocol reference)
 
-TextEditAid's source "can be freely used however you wish"; it is the original
-idea this family descends from. **pyTextFilter** — the maintained descendant —
-defines the wire protocol the `:e` escape hatch implements (raw body in, edited
-body out, `x-url`/`x-id` metadata, `X-File-Changed`), so an existing
-pyTextFilter server works unchanged.
+**pyTextFilter** (Lifu Tang, `~/workspace/pytextfilter`) is licensed under the
+**Apache License, Version 2.0** (`LICENSE.txt`; upstream has no `NOTICE` file).
+It defines the wire protocol the `:e` escape hatch implements: raw body in,
+edited body out, `x-url`/`x-id` metadata, `X-File-Changed`.
 
-**No code is copied from either project.** The transport is a fresh
-implementation of the observable protocol.
+**No pyTextFilter code is present in this repository.** The transport is a fresh
+implementation of the observable protocol, so the Apache-2.0 obligations that
+would follow from reuse (licence text, notice of modification, `NOTICE`
+propagation) do not apply; the credit is given as a matter of respect, not
+obligation. Apache-2.0 is compatible with this project's MIT licence, so even a
+future snippet could be adopted without relicensing the rest.
+
+## TextEditAid — lineage
+
+TextEditAid's source "can be freely used however you wish" and it is the original
+idea this family descends from. No code is copied.
 
 ## Trademarks
 
