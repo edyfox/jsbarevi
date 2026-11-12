@@ -80,7 +80,8 @@ function makeUi(el) {
 }
 
 /** Attach to one field. Returns a handle with destroy(). */
-export const BUILD = "0.1.0+" + (typeof __JSBAREVI_BUILD__ === "string" ? __JSBAREVI_BUILD__ : "dev");
+import { BUILD as STAMP } from "./build-info.js";
+export const BUILD = "0.1.0+" + STAMP;
 
 export function attach(el, opts = {}) {
   const ui = makeUi(el);

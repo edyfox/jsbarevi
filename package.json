@@ -5,11 +5,12 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs",
-    "test:e2e": "node test/e2e-cdp.mjs",
+    "test": "node tools/stamp-build.mjs && node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs",
+    "test:e2e": "node tools/stamp-build.mjs && node test/e2e-cdp.mjs",
     "test:oracle": "python3 oracle/run.py",
-    "dev": "node tools/dev-server.mjs",
-    "patch:pytextfilter": "python3 tools/pytextfilter-add-cors.py"
+    "dev": "node tools/stamp-build.mjs && node tools/dev-server.mjs",
+    "patch:pytextfilter": "python3 tools/pytextfilter-add-cors.py",
+    "stamp": "node tools/stamp-build.mjs"
   },
   "files": [
     "src",
