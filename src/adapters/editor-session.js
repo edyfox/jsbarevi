@@ -25,6 +25,29 @@ export class HttpEditorSession {
     this.onStatus = opts.onStatus || (() => {});
     this.onApplied = opts.onApplied || (() => {});
     this.busy = false;
+    this.ready = null;      // resolved probe result
+    this._probeStarted = false;
+  }
+
+  /** Ask the endpoint whether it is really the proxy, without launching anything. */
+  probe() {
+    if (this._probeStarted) return this.ready;
+    this._probeStarted = true;
+    const url = new URL(this.url, this.pageUrl);
+    this.ready = fetch(url.toString(), { method: "GET", cache: "no-store" })
+      .then(async (res) => {
+        const body = await res.text().catch(() => "");
+        if (res.ok && !/Unsupported method/.test(body)) return { ok: true };
+        if (res.status === 501 && /POST/.test(body)) {
+          return { ok: false, why: "this page is served by a static server (it has no POST handler) — run `npm run dev`, not `python3 -m http.server`" };
+        }
+        if (res.status === 404) {
+          return { ok: false, why: `${url.pathname} is not served here — run \`npm run dev\` so /edit reaches pyTextFilter` };
+        }
+        return { ok: false, why: `${res.status} from ${url.pathname}` };
+      })
+      .catch((err) => ({ ok: false, why: this._explain(err) }));
+    return this.ready;
   }
 
   describe() {
@@ -34,6 +57,11 @@ export class HttpEditorSession {
   /** Returns immediately: `:e` is asynchronous by nature (a human is editing). */
   open() {
     if (this.busy) return { ok: false, message: "editor session already open" };
+    // Refuse with a diagnosis rather than a status code: a 501 from a static
+    // server is indistinguishable from a broken editor in the status line.
+    this.probe().then((r) => {
+      if (!r.ok) this.onStatus(`:e unavailable — ${r.why}`, "error");
+    });
     this.busy = true;
     const sent = this.engine.text;
     const cursorBefore = this.engine.cursor;
@@ -73,7 +101,11 @@ export class HttpEditorSession {
           // include the body: Python's http.server answers OPTIONS with a page
           // that names the unsupported method, which is the whole diagnosis
           const body = (await res.text().catch(() => "")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
-          const hint = res.status === 501 ? " — 501 here means the server got a CORS preflight (OPTIONS), i.e. the request bypassed the /edit proxy" : "";
+          const hint = res.status === 501 && /POST/i.test(body)
+            ? " — this is a static server with no POST handler: run `npm run dev` so /edit reaches pyTextFilter"
+            : res.status === 501
+              ? " — 501 here means a CORS preflight (OPTIONS), i.e. the request bypassed the /edit proxy"
+              : "";
           throw new Error(`${res.status} ${res.statusText || ""}${hint}${body ? ": " + body : ""}`);
         }
         const text = await res.text();

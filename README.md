@@ -34,8 +34,18 @@ node tools/dev-server.mjs --editor 127.0.0.1:31416     # pyTextFilter's default 
 
 Then open <http://127.0.0.1:8080/test/e2e.html>, press `:e`, edit in the real
 editor, and write+quit (`:wq`). The proxy also supplies
-`Origin: chrome-extension://…`, which TextEditAid-family servers require and a
+`Origin: chrome-extension://…`, which pyTextFilter-family servers expect and a
 page cannot forge.
+
+### If `:e` returns 501, the number tells you which 501 it is
+
+| Message | What it means | Fix |
+|---|---|---|
+| `501 Unsupported method ('POST')` | The page is served by a **static** server (`python3 -m http.server`), so `/edit` lands on a handler with no POST | `npm run dev` — the page must be served by the proxy, not statically |
+| `501 Unsupported method ('OPTIONS')` | A **CORS preflight** reached the editor directly, i.e. the page posted at `127.0.0.1:31416` instead of `/edit` | use the default `/edit` endpoint (or the extension origin where no preflight happens) |
+
+`:e` now probes the endpoint before sending and names the cause, so neither of
+these should ever surface as a bare status code again.
 
 Implemented: modes (normal/insert/visual/visual-line), counts, operators with
 motions and text objects, insert entries, `r R x X s S C D Y ~ J < > p P u U .`,

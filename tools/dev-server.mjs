@@ -38,6 +38,13 @@ const MIME = {
 const server = createServer((req, res) => {
   const url = decodeURIComponent((req.url || "/").split("?")[0]);
 
+  if (url === "/edit" && req.method !== "POST") {
+    // Health probe. Never proxies as POST: that would launch the editor.
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(JSON.stringify({ ok: true, editor: EDITOR }));
+    return;
+  }
+
   if (url === "/edit") {
     const chunks = [];
     req.on("data", (c) => chunks.push(c));

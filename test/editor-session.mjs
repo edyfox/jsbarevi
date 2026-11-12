@@ -82,6 +82,23 @@ console.log("\n\x1b[1m:e transport\x1b[0m");
   check("a successful edit reports the delta", /replaced 1 chars with/.test(msgs.join(" ")), true);
 }
 
+{
+  // A static server (python -m http.server) answers POST/GET on /edit with
+  // exactly this; the probe must name the cause instead of echoing a code.
+  const staticSrv = createServer((req, res) => {
+    res.writeHead(501, { "content-type": "text/html" });
+    res.end("<html><body><p>Message: Unsupported method ('POST').</p></body></html>");
+  });
+  await new Promise((r) => staticSrv.listen(0, "127.0.0.1", r));
+  const e = mk("x");
+  const msgs = [];
+  const s = session(e, { url: `http://127.0.0.1:${staticSrv.address().port}/edit`, onStatus: (m) => msgs.push(m) });
+  s.open();
+  await sleep(200);
+  check("a static server is reported as such, not as '501'", /static server/i.test(msgs.join(" ")), true);
+  staticSrv.close();
+}
+
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
