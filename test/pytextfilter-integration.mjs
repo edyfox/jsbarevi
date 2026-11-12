@@ -104,9 +104,21 @@ console.log("\n\x1b[1munpatched pyTextFilter: why :e needs a proxy\x1b[0m");
     check("the proxy reaches pyTextFilter and returns its edit", viaProxy.text, "HELLO world");
     check("status is 200", viaProxy.status, 200);
 
-    const options = await http({ host: "127.0.0.1", port: p1, path: "/", method: "OPTIONS" });
-    check("an unpatched server answers OPTIONS with 501 — hence the proxy", options.status, 501);
-    check("...and sends no CORS header", options.headers["access-control-allow-origin"], undefined);
+    // The host's own file may already carry the patch, in which case the
+    // meaningful baseline is the HALF-DONE state that bit us: do_OPTIONS answers
+    // 204, but with cors off there is still no Access-Control-Allow-Origin, so a
+    // browser blocks the real request and JS reports "cannot reach".
+    const sourcePatched = fs.readFileSync(path.join(PTF, "pytextfilter.py"), "utf8").includes("def do_OPTIONS");
+    const options = await http({ host: "127.0.0.1", port: p1, path: "/", method: "OPTIONS",
+      headers: { Origin: "http://127.0.0.1:8080", "Access-Control-Request-Method": "POST" } });
+    if (sourcePatched) {
+      check("patched source with cors off still answers OPTIONS (204)", options.status, 204);
+      check("...but sends NO CORS header — the half-done state", options.headers["access-control-allow-origin"], undefined);
+      console.log("       (source already patched; the 501 baseline is covered by test/editor-session.mjs)");
+    } else {
+      check("an unpatched server answers OPTIONS with 501 — hence the proxy", options.status, 501);
+      check("...and sends no CORS header", options.headers["access-control-allow-origin"], undefined);
+    }
   } finally {
     proxy.kill("SIGKILL");
     srv.child.kill("SIGKILL");
