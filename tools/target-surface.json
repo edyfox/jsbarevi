@@ -1,0 +1,530 @@
+[
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "h",
+  "raw": "h",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "l",
+  "raw": "l",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "j",
+  "raw": "j",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "k",
+  "raw": "k",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "^H",
+  "raw": "\b",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "^J",
+  "raw": "\n",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "^N",
+  "raw": "\u000e",
+  "target": "baseline (nvi-only, trivial cost)"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "^P",
+  "raw": "\u0010",
+  "target": "baseline (nvi-only, trivial cost)"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "<space>",
+  "raw": " ",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "+",
+  "raw": "+",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "-",
+  "raw": "-",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "_",
+  "raw": "_",
+  "target": "baseline (nvi-only, trivial cost)"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "^M",
+  "raw": "\r",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "0",
+  "raw": "0",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "$",
+  "raw": "$",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "^",
+  "raw": "^",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 characters and lines",
+  "key": "|",
+  "raw": "|",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 words",
+  "key": "w",
+  "raw": "w",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 words",
+  "key": "b",
+  "raw": "b",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 words",
+  "key": "e",
+  "raw": "e",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 words",
+  "key": "W",
+  "raw": "W",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 words",
+  "key": "B",
+  "raw": "B",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 words",
+  "key": "E",
+  "raw": "E",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 paragraphs, sentences, sections",
+  "key": "{",
+  "raw": "{",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 paragraphs, sentences, sections",
+  "key": "}",
+  "raw": "}",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 paragraphs, sentences, sections",
+  "key": "(",
+  "raw": "(",
+  "target": "baseline (nvi-only, trivial cost)"
+ },
+ {
+  "family": "Cursor \u2014 paragraphs, sentences, sections",
+  "key": ")",
+  "raw": ")",
+  "target": "baseline (nvi-only, trivial cost)"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "f",
+  "raw": "f",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "F",
+  "raw": "F",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "t",
+  "raw": "t",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "T",
+  "raw": "T",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": ";",
+  "raw": ";",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": ",",
+  "raw": ",",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "%",
+  "raw": "%",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "/",
+  "raw": "/",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "?",
+  "raw": "?",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "n",
+  "raw": "n",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "N",
+  "raw": "N",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "*",
+  "raw": "*",
+  "target": "beyond baseline \u2014 keep (Vim)"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "#",
+  "raw": "#",
+  "target": "beyond baseline \u2014 keep (Vim)"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "G",
+  "raw": "G",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Cursor \u2014 targets, jumps and search",
+  "key": "g",
+  "raw": "g",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Marks",
+  "key": "m",
+  "raw": "m",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Marks",
+  "key": "'",
+  "raw": "'",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Marks",
+  "key": "`",
+  "raw": "`",
+  "target": "baseline (nvi-only, trivial cost)"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "H",
+  "raw": "H",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "M",
+  "raw": "M",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "L",
+  "raw": "L",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "z",
+  "raw": "z",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "^B",
+  "raw": "\u0002",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "^D",
+  "raw": "\u0004",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "^E",
+  "raw": "\u0005",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "^F",
+  "raw": "\u0006",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "^U",
+  "raw": "\u0015",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Screen and scrolling",
+  "key": "^Y",
+  "raw": "\u0019",
+  "target": "**baseline \u2014 needs viewport capability**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "i",
+  "raw": "i",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "a",
+  "raw": "a",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "I",
+  "raw": "I",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "A",
+  "raw": "A",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "o",
+  "raw": "o",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "O",
+  "raw": "O",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Insert and replace entry",
+  "key": "R",
+  "raw": "R",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "d",
+  "raw": "d",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "c",
+  "raw": "c",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "y",
+  "raw": "y",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "x",
+  "raw": "x",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "X",
+  "raw": "X",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "s",
+  "raw": "s",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "S",
+  "raw": "S",
+  "target": "keep (already have, no baseline)"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "D",
+  "raw": "D",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "C",
+  "raw": "C",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "Y",
+  "raw": "Y",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Delete / change / yank / replace char",
+  "key": "r",
+  "raw": "r",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Put",
+  "key": "p",
+  "raw": "p",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Put",
+  "key": "P",
+  "raw": "P",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Repeat and undo",
+  "key": ".",
+  "raw": ".",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Repeat and undo",
+  "key": "u",
+  "raw": "u",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Repeat and undo",
+  "key": "U",
+  "raw": "U",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Join, case, indent, filter",
+  "key": "J",
+  "raw": "J",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Join, case, indent, filter",
+  "key": "~",
+  "raw": "~",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Join, case, indent, filter",
+  "key": "<",
+  "raw": "<",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Join, case, indent, filter",
+  "key": ">",
+  "raw": ">",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Visual mode",
+  "key": "v",
+  "raw": "v",
+  "target": "beyond baseline \u2014 keep (Vim)"
+ },
+ {
+  "family": "Visual mode",
+  "key": "V",
+  "raw": "V",
+  "target": "beyond baseline \u2014 keep (Vim)"
+ },
+ {
+  "family": "Registers and macros",
+  "key": "\"",
+  "raw": "\"",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Ex mode, files, tags, host",
+  "key": ":",
+  "raw": ":",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Ex mode, files, tags, host",
+  "key": "^G",
+  "raw": "\u0007",
+  "target": "**baseline**"
+ },
+ {
+  "family": "Numeric prefixes",
+  "key": "<count>",
+  "raw": "\u0000count",
+  "target": "**baseline**"
+ }
+]

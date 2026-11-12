@@ -166,11 +166,18 @@ export function wordEnd(text, i, big = false) {
 // --- paragraphs and sentences ----------------------------------------------
 export function paragraphForward(text, i, count = 1) {
   let k = i;
+  const last = lineCount(text) - 1;
   for (let n = 0; n < count; n++) {
     // to the next empty line
     k = lineEnd(text, k);
     if (k < text.length) k += 1; // step over \n
-    while (k < text.length && !isLineEmpty(text, k)) k = lineOffset(text, lineNumber(text, k) + 1);
+    while (k < text.length && !isLineEmpty(text, k)) {
+      const ln = lineNumber(text, k);
+      // NOTE: without this bound, a buffer whose last line is non-empty loops
+      // forever - lineOffset() clamps to the last line, so k stops advancing.
+      if (ln >= last) { k = text.length; break; }
+      k = lineOffset(text, ln + 1);
+    }
   }
   return Math.min(k, Math.max(0, text.length === 0 ? 0 : prevChar(text, text.length)));
 }
