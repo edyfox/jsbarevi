@@ -307,6 +307,8 @@ async function main() {
     await evaluate(session, "document.getElementById('field').focus()");
 
     // --- the command line behaves like vi's -------------------------------
+    // Measured against vim, nvi and busybox vi: deleting the typed text but
+    // leaving the ":" keeps you in the command line; deleting the ":" exits.
     const promptState = () => evaluate(session, `(() => {
       const p = document.querySelector('.jsbarevi-prompt');
       return {
@@ -318,48 +320,46 @@ async function main() {
       };
     })()`);
     await evaluate(session, "document.getElementById('field').focus()");
-    await typeKeys(session, ":");
-    const opened = await promptState();
-    check("':' opens the command line and focuses it", opened.visible && opened.focused, true);
+    await typeKeys(session, ":s/x/y/");
+    check("typed text lands in the command line with its sigil", (await promptState()).value, ":s/x/y/");
+    for (let i = 0; i < 6; i++) await sendKey(session, "Backspace");
+    const onlySigil = await promptState();
+    check("deleting the typed text but leaving ':' KEEPS the command line", onlySigil.visible, true);
+    check("...and the input now holds only the sigil", onlySigil.value, ":");
+    check("...and the engine still owns a prompt", onlySigil.enginePrompt, "ex");
     await sendKey(session, "Backspace");
-    const emptied = await promptState();
-    check("deleting the ':' leaves the command line", emptied.visible, false);
-    check("...focus returns to the field", emptied.focusOnField, true);
-    check("...and the engine has no prompt pending", emptied.enginePrompt, null);
+    const sigilGone = await promptState();
+    check("deleting the ':' itself leaves the command line", sigilGone.visible, false);
+    check("...focus returns to the field", sigilGone.focusOnField, true);
+    check("...the engine has no prompt pending", sigilGone.enginePrompt, null);
     check("...in normal mode", await mode(), "NORMAL");
 
-    await typeKeys(session, ":");        // reopen: the previous Backspace closed it
-    await typeKeys(session, "s/x/y/");   // the ':' is already the prompt's sigil
-    const typed = await promptState();
-    check("typed text lands in the command line", typed.value, ":s/x/y/");
-    for (let i = 0; i < 7; i++) await sendKey(session, "Backspace");
-    const cleared = await promptState();
-    check("backspacing everything leaves the command line", cleared.visible, false);
-    check("...and never leaves the user stuck in the input", cleared.focusOnField, true);
+    // same rule for the search prompt
+    await typeKeys(session, "/ab");
+    check("'/' opens the search prompt with its sigil", (await promptState()).value, "/ab");
+    await sendKey(session, "Backspace");
+    await sendKey(session, "Backspace");
+    const searchSigilOnly = await promptState();
+    check("leaving '/' in the search prompt keeps it open", searchSigilOnly.visible, true);
+    check("...holding only the sigil", searchSigilOnly.value, "/");
+    await sendKey(session, "Backspace");
+    check("deleting '/' leaves the search prompt", (await promptState()).visible, false);
+
+    // '?' keeps its own sigil, so the same rule applies to backward search
+    await typeKeys(session, "?");
+    check("'?' opens the search prompt with its own sigil", (await promptState()).value, "?");
+    await sendKey(session, "Backspace");
+    check("deleting '?' leaves it", (await promptState()).visible, false);
 
     await typeKeys(session, ":");
     await sendKey(session, "Escape");
     check("Esc still cancels", (await promptState()).visible, false);
 
     await typeKeys(session, ":");
-    {
-      const ctrlC = (await session.send("Runtime.evaluate", { expression: "1", returnByValue: true })).result.value;
-      void ctrlC;
-      await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
-      await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", modifiers: 2 });
-      await sleep(60);
-    }
+    await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "c", code: "KeyC", modifiers: 2, windowsVirtualKeyCode: 67 });
+    await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC", modifiers: 2 });
+    await sleep(60);
     check("Ctrl-C cancels too, as in vi", (await promptState()).visible, false);
-
-    // same rule for the search prompt: deleting everything exits it
-    await typeKeys(session, "/");
-    check("'/' opens the search prompt", (await promptState()).visible, true);
-    await typeKeys(session, "ab");
-    await sendKey(session, "Backspace");
-    await sendKey(session, "Backspace");
-    const searchCleared = await promptState();
-    check("deleting the search pattern exits the prompt", searchCleared.visible, false);
-    check("...and focus returns to the field", searchCleared.focusOnField, true);
 
     // --- :e through a TextEditAid-compatible server -----------------------
     const beforeEditor = await field();

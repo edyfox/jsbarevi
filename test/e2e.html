@@ -13,7 +13,7 @@
 </style>
 </head>
 <body>
-<h1>jsbarevi</h1>
+<h1>jsbarevi <small id="build" style="font:400 12px ui-monospace,monospace;color:#666"></small></h1>
 <p>Real browser, real key events. Press <code>i</code> to type, <code>Esc</code> to leave insert,
 <code>:e</code> for the external editor, <code>u</code> to undo.</p>
 
@@ -45,7 +45,10 @@ zeta eta theta</textarea>
   const h1 = attach(ta, { version: "0.1.0", editorUrl });
   const h2 = attach(input, { version: "0.1.0", editorUrl });
 
-  window.jsbarevi = { textarea: h1, single: h2, ready: true };
+  const entry = await import("../src/entry.js");
+  // A stale cached page is otherwise indistinguishable from a broken one.
+  document.getElementById("build").textContent = entry.BUILD;
+  window.jsbarevi = { textarea: h1, single: h2, ready: true, build: entry.BUILD };
 </script>
 </body>
 </html>

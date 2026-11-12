@@ -115,9 +115,19 @@ and a block caret is drawn over the character at the engine cursor, measured wit
 a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
 the block disappears and the native caret returns.
 
-The command line behaves like vi's: deleting everything you typed — including the
-`:` itself — leaves it and returns to normal mode, with focus back in the field.
-`Esc` and `Ctrl-C` cancel; the same rule applies to the `/` search prompt.
+The command line behaves like vi's, measured against vim, nvi **and** busybox vi
+(all three agree): the sigil lives in the input, and deleting the typed text while
+leaving the `:` (or `/`, `?`) **keeps** you in the command line — only deleting the
+sigil itself leaves it, with focus back in the field. `Esc` and `Ctrl-C` cancel.
+
+| After `:s/x/y/` | vim | nvi | busybox | jsbarevi |
+|---|---|---|---|---|
+| backspace ×6 → `:` remains | stays | stays | stays | stays |
+| backspace ×7 → `:` deleted | exits | exits | exits | exits |
+
+Because a stale cached page is indistinguishable from a broken one, every page
+prints its build: `[jsbarevi] 0.1.0+dev attached to textarea` in the console, and
+the fixture shows the build next to its title.
 
 VISUAL and VISUAL LINE paint their own **overlay**: one box per selected line
 segment, measured with the same mirror technique as the caret, stretched to the

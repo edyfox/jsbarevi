@@ -35,7 +35,16 @@ export class TextareaAdapter {
       input: () => this.syncFromHost(),
       // Only the focused field may show a caret or a highlight: two fields on one
       // page must not both look active.
-      blur: () => { this.engine.reset(); this.caret?.hide(); this.highlight.clear(); this.onModeChange?.(this.engine.mode, ""); },
+      // Focusing the prompt moves focus off the field, which is NOT losing the
+      // field: resetting here would make the engine forget it owns a prompt.
+      blur: () => {
+        const inPrompt = document.activeElement?.classList?.contains("jsbarevi-prompt");
+        if (this.engine.prompt || inPrompt) return;
+        this.engine.reset();
+        this.caret?.hide();
+        this.highlight.clear();
+        this.onModeChange?.(this.engine.mode, "");
+      },
       focus: () => { this.el.style.caretColor = ""; this._emitMode(); },
     };
     this._bound.scroll = () => this._updateCaret();
@@ -127,7 +136,7 @@ export class TextareaAdapter {
     if (r.prompt) {
       e.preventDefault();
       e.stopPropagation();
-      this.onPrompt?.(r.prompt.kind, "");
+      this.onPrompt?.(r.prompt.kind, r.prompt.initial ?? "");
       return;
     }
     if (!r.handled) return; // insert mode: let the browser type

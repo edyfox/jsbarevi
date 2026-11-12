@@ -66,8 +66,12 @@ function makeUi(el) {
     prompt(kind, initial) {
       place();
       prompt.style.display = "block";
-      prompt.value = initial + (kind === "ex" ? "" : "");
+      // The sigil lives in the input, as it does in vi: ":" for ex, "/" or "?"
+      // for search. That is what makes "delete the sigil to leave" expressible.
+      prompt.value = initial || (kind === "ex" ? ":" : "/");
+      prompt.dataset.sigil = prompt.value[0];
       prompt.focus();
+      prompt.setSelectionRange(prompt.value.length, prompt.value.length);
       return prompt;
     },
     hidePrompt() { prompt.style.display = "none"; el.focus(); },
@@ -76,14 +80,18 @@ function makeUi(el) {
 }
 
 /** Attach to one field. Returns a handle with destroy(). */
+export const BUILD = "0.1.0+" + (typeof __JSBAREVI_BUILD__ === "string" ? __JSBAREVI_BUILD__ : "dev");
+
 export function attach(el, opts = {}) {
   const ui = makeUi(el);
+  // A stale page is invisible otherwise: say which build is running.
+  if (typeof console !== "undefined") console.info(`[jsbarevi] ${BUILD} attached to`, el.tagName.toLowerCase());
   const adapter = new TextareaAdapter(el, {
     ...opts,
     onStatus: (msg, kind) => ui.status(msg, kind),
     onModeChange: (mode, count) => ui.setMode(mode, count),
-    onPrompt: (kind) => {
-      const input = ui.prompt(kind, kind === "ex" ? ":" : kind === "search" ? "" : "");
+    onPrompt: (kind, initial) => {
+      const input = ui.prompt(kind, initial);
       input.dataset.kind = kind;
     },
   });
@@ -109,13 +117,14 @@ export function attach(el, opts = {}) {
     e.stopPropagation();
   };
 
-  // vi leaves the command line when you delete everything you typed, i.e. when
-  // the sigil would be gone. Deleting the ":" of ":" must not leave you stuck in
-  // an empty input.
+  // Measured against vim, nvi and busybox vi: deleting the typed text but leaving
+  // the sigil keeps you in the command line — only deleting the ":" itself (or the
+  // "/") leaves it. So the test is "is the sigil still there", not "is anything
+  // left after it".
   const onPromptInput = () => {
     if (!promptOpen()) return;
-    const typed = ui.promptEl.value.replace(/^[:/?]/, "");
-    if (typed === "") cancelPrompt();
+    const sigil = ui.promptEl.dataset.sigil || ":";
+    if (ui.promptEl.value[0] !== sigil) cancelPrompt();
   };
   ui.promptEl.addEventListener("keydown", onPromptKey, true);
   ui.promptEl.addEventListener("input", onPromptInput);
