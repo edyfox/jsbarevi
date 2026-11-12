@@ -54,6 +54,11 @@ and a block caret is drawn over the character at the engine cursor, measured wit
 a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
 the block disappears and the native caret returns.
 
+VISUAL and VISUAL LINE paint their range with the field's **native selection**, so
+the highlight matches the host's theme instead of fighting it; the e2e suite
+proves it is really painted by sampling a screenshot pixel inside the selection
+and requiring it to change.
+
 ## Why another one
 
 Three options existed and none fit:

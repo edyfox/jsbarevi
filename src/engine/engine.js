@@ -1041,6 +1041,14 @@ export class Engine {
     return { handled: true };
   }
 
+  /** Public: the current visual selection, or null when not in visual mode. */
+  visualSelection() {
+    if (this.mode !== Mode.VISUAL && this.mode !== Mode.VISUAL_LINE) return null;
+    if (!this.visual) return null;
+    const r = this._visualRange();
+    return { from: r.from, to: r.to, linewise: !!r.linewise };
+  }
+
   // --- viewport ------------------------------------------------------------
   _page(dir) {
     const vp = this._viewport();

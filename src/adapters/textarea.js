@@ -128,8 +128,22 @@ export class TextareaAdapter {
 
   _commit() {
     if (this.el.value !== this.engine.text) this.el.value = this.engine.text;
-    const c = Math.min(this.engine.cursor, this.el.value.length);
-    this.el.setSelectionRange(c, c);
+    const sel = this.engine.visualSelection();
+    if (sel) {
+      // VISUAL / VISUAL LINE: paint the range with the native selection so the
+      // highlight is the host's own (and therefore matches the field's theme).
+      const from = Math.min(sel.from, this.el.value.length);
+      const to = Math.min(sel.to, this.el.value.length);
+      if (from === to) {
+        const c = Math.min(this.engine.cursor, this.el.value.length);
+        this.el.setSelectionRange(c, c);
+      } else {
+        this.el.setSelectionRange(from, to, sel.linewise ? "backward" : "forward");
+      }
+    } else {
+      const c = Math.min(this.engine.cursor, this.el.value.length);
+      this.el.setSelectionRange(c, c);
+    }
     this._updateCaret();
   }
 

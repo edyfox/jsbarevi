@@ -136,6 +136,22 @@ async function typeKeys(session, seq) {
   for (const ch of seq) await sendKey(session, ch);
 }
 
+/** Real pixel from a screenshot, sampled inside the page itself. */
+async function pixelAt(session, x, y) {
+  const shot = await session.send("Page.captureScreenshot", { format: "png" });
+  return evaluate(session, `(async () => {
+    const img = new Image();
+    img.src = "data:image/png;base64,${shot.data}";
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(${x}, ${y}, 1, 1).data;
+    return [d[0], d[1], d[2]];
+  })()`);
+}
+
 const evaluate = async (session, expression) => {
   const r = await session.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.text + " " + (r.exceptionDetails.exception?.description || ""));
@@ -219,6 +235,35 @@ async function main() {
     const cInsert = await caret();
     check("caret hides in insert mode", !cInsert || cInsert.display === "none", true);
     check("native caret returns in insert mode", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgb(238, 238, 238)");
+    await sendKey(session, "Escape");
+
+    // --- visual mode must PAINT a highlight, not just hold a range --------
+    await typeKeys(session, "gg");
+    const selState = () => evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      return { start: el.selectionStart, end: el.selectionEnd, focus: document.activeElement.id };
+    })()`);
+    const box = await evaluate(session, `(() => {
+      const r = document.getElementById('field').getBoundingClientRect();
+      return { x: Math.round(r.left + 14), y: Math.round(r.top + 16) };
+    })()`);
+    const plain = await pixelAt(session, box.x, box.y);
+    await typeKeys(session, "v");
+    const one = await selState();
+    check("v selects one character", one.end - one.start, 1);
+    check("the field keeps focus so the selection paints", one.focus, "field");
+    const highlighted = await pixelAt(session, box.x, box.y);
+    check("the highlight is actually painted (pixel changed)", JSON.stringify(highlighted) !== JSON.stringify(plain), true);
+    await typeKeys(session, "l");
+    const two = await selState();
+    check("l extends the visual selection", two.end - two.start, 2);
+    await sendKey(session, "Escape");
+    const back = await selState();
+    check("Esc collapses the selection", back.end - back.start, 0);
+
+    await typeKeys(session, "V");
+    const lineSel = await selState();
+    check("V selects the whole line (including its newline)", lineSel.end - lineSel.start >= 16, true);
     await sendKey(session, "Escape");
 
     // --- :e through a TextEditAid-compatible server -----------------------
