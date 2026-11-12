@@ -150,14 +150,20 @@ export function wordBack(text, i, big = false) {
 }
 
 export function wordEnd(text, i, big = false) {
-  let k = nextChar(text, i);
-  const startKind = classify(charAt(text, i), big);
-  // if we are inside a word, walk to its end first
-  if (startKind !== "space") {
-    while (k < text.length && classify(charAt(text, k), big) === startKind) k = nextChar(text, k);
-    if (k > i && charAt(text, prevChar(text, k)) !== "\n") return prevChar(text, k);
+  const kind0 = classify(charAt(text, i), big);
+  // still inside a word: the end of this word is ahead, unless we are already on it
+  if (kind0 !== "space") {
+    let k = nextChar(text, i);
+    if (k < text.length && classify(charAt(text, k), big) === kind0) {
+      while (k < text.length && classify(charAt(text, k), big) === kind0) k = nextChar(text, k);
+      return prevChar(text, k);
+    }
   }
+  // at the end of a word already: the next word's end, crossing line breaks
+  let k = kind0 === "space" ? i : nextChar(text, i);
   while (k < text.length && classify(charAt(text, k), big) === "space") k = nextChar(text, k);
+  // past the end: the last character of the last line, never the trailing newline
+  if (k >= text.length) return text.length ? lastCharOffset(text, text.length - 1) : 0;
   const kind = classify(charAt(text, k), big);
   while (k < text.length && classify(charAt(text, k), big) === kind) k = nextChar(text, k);
   return prevChar(text, k);

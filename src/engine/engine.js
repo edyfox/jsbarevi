@@ -620,6 +620,10 @@ export class Engine {
   _shiftByMotion(motionName, count, right) {
     const m = this._motion(motionName, count, { forOperator: true });
     if (!m) { this.onStatus("motion failed", "error"); return { handled: true }; }
+    if ((motionName === "j" || motionName === "k") && m.to === this.state.cursor) {
+      this.onStatus("motion failed", "error");
+      return { handled: true };
+    }
     const text = this.text;
     const a = Math.min(this.state.cursor, m.to);
     const b = Math.max(this.state.cursor, m.to);
@@ -638,9 +642,36 @@ export class Engine {
   }
 
   _operatorWithMotion(op, name, count, reg) {
-    const motion = this._motion(name, count, { forOperator: true });
+    // `cw` is `ce` when the cursor is on a non-blank, `dw` when it is on a blank.
+    let effective = name;
+    if (op === "c" && (name === "w" || name === "W")) {
+      const text = this.text;
+      const cur = this.state.cursor;
+      const c = B.charAt(text, cur);
+      const big = name === "W";
+      const kind = (ch) => (ch === undefined || /\s/.test(ch) ? "space" : big || B.isWordChar(ch) ? "word" : "punct");
+      const here = kind(c);
+      const next = kind(B.charAt(text, B.nextChar(text, cur)));
+      if (here !== "space" && next === here) {
+        // still inside the word: change to its end
+        effective = big ? "E" : "e";
+      } else if (here !== "space") {
+        // already at the end of the word: change just this character
+        effective = "l";
+      }
+    }
+    let motion = this._motion(effective, count, { forOperator: true });
     if (!motion || motion.failed) { this.onStatus("motion failed", "error"); return { handled: true }; }
-    return this._operatorWithMotionResult(op, motion, count, reg, name);
+    // `dw` on the last word of a line does not take the line break (vim; busybox
+    // does the same by stepping back off the newline in find_range)
+    if ((name === "w" || name === "W") && (op === "d" || op === "y" || op === "c")) {
+      const text = this.text;
+      const from = B.lineNumber(text, this.state.cursor);
+      if (B.lineNumber(text, motion.to) > from) {
+        motion = { to: B.lastCharOffset(text, this.state.cursor), charwise: true, inclusive: true };
+      }
+    }
+    return this._operatorWithMotionResult(op, motion, count, reg, effective);
   }
 
   _operatorWithMotionResult(op, motion, count, reg, name = "") {
@@ -830,7 +861,8 @@ export class Engine {
     let from = cur;
     let to = cur;
     if (backwards) {
-      for (let i = 0; i < count; i++) from = B.prevChar(text, from);
+      const ls = B.lineStart(text, cur);
+      for (let i = 0; i < count && from > ls; i++) from = C.left(text, from);
     } else {
       const last = B.lastCharOffset(text, cur);
       for (let i = 0; i < count; i++) {
@@ -853,6 +885,8 @@ export class Engine {
   _replaceChars(count, ch) {
     const text = this.text;
     const cur = this.state.cursor;
+    // nothing to replace: empty buffer, or the cursor sits on an empty line
+    if (text.length === 0 || B.isLineEmpty(text, cur)) return { handled: true };
     const last = B.lastCharOffset(text, cur);
     let to = cur;
     for (let i = 0; i < count; i++) {
@@ -931,6 +965,7 @@ export class Engine {
     const lines = text.split("\n");
     this._pushUndo({ text, cursor: this.state.cursor });
     for (let n = startLine; n <= endLine; n++) {
+      if (lines[n].length === 0) continue;             // vim leaves blank lines alone
       if (right) lines[n] = unit + lines[n];
       else lines[n] = lines[n].replace(new RegExp(`^(\\t| {1,${this.options.shiftwidth}})`), "");
     }
