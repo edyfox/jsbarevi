@@ -35,7 +35,12 @@ zeta eta theta</textarea>
   // Default `/edit` is proxied by tools/dev-server.mjs to a real edit-server
   // (127.0.0.1:31416 here). Point it straight at a server only if that server
   // sends CORS headers: ?editor=http://127.0.0.1:31416/
-  const editorUrl = new URLSearchParams(location.search).get("editor") || "/edit";
+  // In an extension (chrome-extension:// origin, host_permissions) the direct
+  // endpoint works with no proxy. Served from a page, it needs either the /edit
+  // proxy or the opt-in CORS patch on the server.
+  const isExtension = location.protocol === "chrome-extension:";
+  const editorUrl = new URLSearchParams(location.search).get("editor")
+    || (isExtension ? "http://127.0.0.1:31416/" : "/edit");
 
   const h1 = attach(ta, { version: "0.1.0", editorUrl });
   const h2 = attach(input, { version: "0.1.0", editorUrl });

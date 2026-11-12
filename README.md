@@ -20,6 +20,32 @@ npm run test:oracle          # the reference editors themselves (36)
 npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied
 ```
 
+### Pointing `:e` straight at pyTextFilter (`:31416`)
+
+The default is `/edit` — the proxy — because a **page cannot** reach
+`127.0.0.1:31416` directly: the response is cross-origin and unreadable without
+`Access-Control-Allow-*`, and pyTextFilter answers the preflight `OPTIONS` with
+`501 Unsupported method ('OPTIONS')`. That is a browser rule, not a setting.
+
+Two ways to get the direct path:
+
+**A. Patch the server (opt-in, one command).** Adds `do_OPTIONS` and CORS headers,
+gated on `config["server"]["cors"]`, so default behaviour is unchanged:
+
+```bash
+python3 tools/pytextfilter-add-cors.py ~/workspace/pytextfilter/pytextfilter.py
+# then in that project's config.py:  "server": {..., "cors": True}
+# restart the server, and open:  /test/e2e.html?editor=http://127.0.0.1:31416/
+```
+
+Verified: unpatched answers `OPTIONS` with 501 and no CORS header; patched answers
+`204` with the origin echoed, and a page-origin POST is readable.
+
+**B. Run as an extension.** On a `chrome-extension://` origin with
+`host_permissions` for `http://127.0.0.1:31416/*`, there is no CORS at all — the
+fixture already switches its default to the direct endpoint when it detects that
+origin. No proxy, no server patch.
+
 ### Trying `:e` against a real edit-server
 
 A browser page cannot POST to a local edit-server directly: the response is
