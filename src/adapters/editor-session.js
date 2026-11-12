@@ -34,7 +34,27 @@ export class HttpEditorSession {
     if (this._probeStarted) return this.ready;
     this._probeStarted = true;
     const url = new URL(this.url, this.pageUrl);
-    this.ready = fetch(url.toString(), { method: "GET", cache: "no-store" })
+    const reachable = () => fetch(url.toString(), { method: "GET", mode: "no-cors", cache: "no-store" })
+      .then(() => true, () => false);
+
+    this.ready = reachable().then(async (up) => {
+      if (!up) return { ok: false, why: `nothing is listening on ${url.host} — start pyTextFilter` };
+      try {
+        return await this._probeReadable(url);
+      } catch (err) {
+        return {
+          ok: false,
+          why: `${url.host} is up but will not let this page read the reply (CORS): ` +
+            `enable config["server"]["cors"] in pyTextFilter and restart it, or use /edit through tools/dev-server.mjs`,
+          detail: this._explain(err),
+        };
+      }
+    });
+    return this.ready;
+  }
+
+  async _probeReadable(url) {
+    return fetch(url.toString(), { method: "GET", cache: "no-store" })
       .then(async (res) => {
         const body = await res.text().catch(() => "");
         if (res.ok && !/Unsupported method/.test(body)) return { ok: true };
@@ -45,9 +65,7 @@ export class HttpEditorSession {
           return { ok: false, why: `${url.pathname} is not served here — run \`npm run dev\` so /edit reaches pyTextFilter` };
         }
         return { ok: false, why: `${res.status} from ${url.pathname}` };
-      })
-      .catch((err) => ({ ok: false, why: this._explain(err) }));
-    return this.ready;
+      });
   }
 
   describe() {
@@ -57,11 +75,6 @@ export class HttpEditorSession {
   /** Returns immediately: `:e` is asynchronous by nature (a human is editing). */
   open() {
     if (this.busy) return { ok: false, message: "editor session already open" };
-    // Refuse with a diagnosis rather than a status code: a 501 from a static
-    // server is indistinguishable from a broken editor in the status line.
-    this.probe().then((r) => {
-      if (!r.ok) this.onStatus(`:e unavailable — ${r.why}`, "error");
-    });
     this.busy = true;
     const sent = this.engine.text;
     const cursorBefore = this.engine.cursor;
@@ -69,20 +82,11 @@ export class HttpEditorSession {
     const url = new URL(this.url, this.pageUrl);
     if (this.pageUrl) url.searchParams.set("url", this.pageUrl);
 
-    // A cross-origin endpoint means the browser sends a CORS preflight, and
-    // Python's http.server answers OPTIONS with "501 Unsupported method".
-    if (typeof location !== "undefined" && url.origin !== location.origin) {
-      this.onStatus(
-        `:e -> ${url.host}${url.pathname} is cross-origin: the browser will preflight it and the server answers 501. ` +
-          `Serve the page through tools/dev-server.mjs and use /edit.`,
-        "error",
-      );
-    }
+    const crossOrigin = typeof location !== "undefined" && url.origin !== location.origin;
     // Keep the page-side request "simple": a custom header triggers a CORS
     // preflight, and pyTextFilter (like emacs_chrome's server) answers OPTIONS
     // with 501. The proxy (or an extension with host permissions) adds
     // x-url/x-id instead.
-    this.onStatus(`opening editor… ${url.host}${url.pathname} (finish there to return)`);
     const headers = { "Content-Type": "text/plain;charset=utf-8", ...this.headers };
     if (this.token) headers["X-Edit-Token"] = this.token;
     if (this.basic) headers.Authorization = `Basic ${btoa(this.basic)}`;
@@ -90,6 +94,24 @@ export class HttpEditorSession {
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), this.timeout) : null;
 
+    // Refuse with a diagnosis rather than a status code: "nothing listening",
+    // "listening but CORS-blocked" and "static server with no POST" are three
+    // different problems that a bare failure hides.
+    this.probe().then((ready) => {
+      if (!ready.ok) {
+        this.busy = false;
+        if (timer) clearTimeout(timer);
+        this.onStatus(`:e unavailable — ${ready.why}`, "error");
+        return;
+      }
+      this.onStatus(`opening editor… ${url.host}${url.pathname}${crossOrigin ? " (cross-origin, direct)" : ""} (finish there to return)`);
+      this._send(url, sent, cursorBefore, headers, controller, timer);
+    });
+
+    return { ok: true, message: "" };
+  }
+
+  _send(url, sent, cursorBefore, headers, controller, timer) {
     fetch(url.toString(), {
       method: "POST",
       body: sent,
@@ -128,8 +150,6 @@ export class HttpEditorSession {
         this.busy = false;
         if (timer) clearTimeout(timer);
       });
-
-    return { ok: true, message: "" };
   }
 
   write() { return { ok: true, message: "the editor writes when it exits" }; }

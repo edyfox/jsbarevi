@@ -33,10 +33,28 @@ Two ways to get the direct path:
 gated on `config["server"]["cors"]`, so default behaviour is unchanged:
 
 ```bash
+# 1. add do_OPTIONS + CORS headers to the server (idempotent)
 python3 tools/pytextfilter-add-cors.py ~/workspace/pytextfilter/pytextfilter.py
-# then in that project's config.py:  "server": {..., "cors": True}
-# restart the server, and open:  /test/e2e.html?editor=http://127.0.0.1:31416/
+
+# 2. flip the flag in its config (prints the change first)
+python3 tools/enable-pytextfilter-cors.py ~/workspace/pytextfilter/config.py
+
+# 3. RESTART the server — config is imported once, a running process keeps the old value
+#    (if it lives in tmux: tmux kill-session -t edit-server, then start it as before)
+
+# 4. verify the header really appears
+curl -si -X OPTIONS -H 'Origin: http://127.0.0.1:8080' \
+  -H 'Access-Control-Request-Method: POST' http://127.0.0.1:31416/ | grep -i access-control
+
+# 5. open the fixture against the direct endpoint
+#    http://127.0.0.1:8080/test/e2e.html?editor=http://127.0.0.1:31416/
 ```
+
+**The classic half-done state** (hit for real): the patch is in the file, `OPTIONS`
+answers `204`, and it still fails — because `cors` is missing from the config, so
+no `Access-Control-Allow-Origin` is sent. The preflight "passes" and the real
+request is then blocked. `:e` now names that case instead of reporting "cannot
+reach".
 
 Verified: unpatched answers `OPTIONS` with 501 and no CORS header; patched answers
 `204` with the origin echoed, and a page-origin POST is readable.

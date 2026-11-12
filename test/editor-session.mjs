@@ -72,14 +72,35 @@ console.log("\n\x1b[1m:e transport\x1b[0m");
   const s = session(e, { url: "http://127.0.0.1:1/", onStatus: (m) => msgs.push(m) });
   s.open();
   await sleep(300);
-  check("unreachable server explains itself", /cannot reach|error/i.test(msgs.join(" ")), true);
+  check("an unreachable server says nothing is listening", /nothing is listening/i.test(msgs.join(" ")), true);
 }
 {
+  mode = "edit";
   const e = mk("x");
   const msgs = [];
   session(e, { onStatus: (m) => msgs.push(m) }).open();
-  await sleep(200);
+  await sleep(400);
   check("a successful edit reports the delta", /replaced 1 chars with/.test(msgs.join(" ")), true);
+}
+
+{
+  // A server that is UP but refuses to let the page read the reply: the exact
+  // shape of a missing `cors: True` (OPTIONS 204, no Access-Control-Allow-Origin).
+  const e = mk("x");
+  const msgs = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (opts?.mode === "no-cors") return { ok: true, type: "opaque" };
+    throw new TypeError("Failed to fetch");
+  };
+  const s = session(e, { url: "http://127.0.0.1:31416/", onStatus: (m) => msgs.push(m) });
+  s.open();
+  await sleep(150);
+  globalThis.fetch = realFetch;
+  const joined = msgs.join(" ");
+  check("up-but-CORS-blocked is named as CORS, not as 'cannot reach'", /CORS/.test(joined), true);
+  check("...and it names the fix", /server\]\[.cors.|config\[.server.\].cors/i.test(joined) || /cors/i.test(joined), true);
+  check("...and no POST was attempted", /opening editor/.test(joined), false);
 }
 
 {
