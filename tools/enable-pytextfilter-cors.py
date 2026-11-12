@@ -10,6 +10,8 @@ request - reported as "cannot reach".
 Prints the exact change and stops if it is already enabled.
 
     python3 tools/enable-pytextfilter-cors.py ~/workspace/pytextfilter/config.py
+    python3 tools/enable-pytextfilter-cors.py ~/workspace/pytextfilter/config.py \
+        --origin http://127.0.0.1:8080      # allow-list instead of any origin
 
 Then RESTART the server: config is imported once, so a running process keeps the
 old value.
@@ -32,17 +34,24 @@ WARN = """\
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    argv = [a for a in sys.argv[1:]]
+    origins = []
+    while "--origin" in argv:
+        i = argv.index("--origin")
+        origins.append(argv[i + 1])
+        del argv[i : i + 2]
+    if len(argv) != 1:
         print(__doc__)
         return 2
-    path = Path(sys.argv[1]).expanduser()
+    path = Path(argv[0]).expanduser()
     if not path.exists():
         print(f"{path}: not found", file=sys.stderr)
         return 1
     src = path.read_text()
 
-    if re.search(r'["\']cors["\']\s*:\s*True', src):
-        print(f"{path}: cors is already enabled; restart the server if you changed it just now")
+    value = "[" + ", ".join('"%s"' % o for o in origins) + "]" if origins else "True"
+    if re.search(r'["\']cors["\']\s*:\s*(True|\[|")', src):
+        print(f"{path}: cors is already enabled; remove the key first to change it")
         return 0
 
     # find the server dict and its span
@@ -65,7 +74,7 @@ def main() -> int:
     block = src[start : i - 1]
 
     # insert before the closing brace, matching the block's own formatting
-    ins = ',\n    "cors": True\n  ' if "\n" in block else ', "cors": True '
+    ins = ',\n    "cors": %s\n  ' % value if "\n" in block else ', "cors": %s ' % value
     new_block = block.rstrip().rstrip(",") + ins
     patched = src[:start] + new_block + src[i - 1 :]
 

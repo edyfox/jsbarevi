@@ -33,11 +33,12 @@ Two ways to get the direct path:
 gated on `config["server"]["cors"]`, so default behaviour is unchanged:
 
 ```bash
-# 1. add do_OPTIONS + CORS headers to the server (idempotent)
+# 1. add do_OPTIONS + CORS headers to the server (idempotent; re-running upgrades)
 python3 tools/pytextfilter-add-cors.py ~/workspace/pytextfilter/pytextfilter.py
 
-# 2. flip the flag in its config (prints the change first)
-python3 tools/enable-pytextfilter-cors.py ~/workspace/pytextfilter/config.py
+# 2. flip the flag in its config. Prefer an allow-list over "any origin":
+python3 tools/enable-pytextfilter-cors.py ~/workspace/pytextfilter/config.py \
+    --origin http://127.0.0.1:8080
 
 # 3. RESTART the server — config is imported once, a running process keeps the old value
 #    (if it lives in tmux: tmux kill-session -t edit-server, then start it as before)
@@ -49,6 +50,12 @@ curl -si -X OPTIONS -H 'Origin: http://127.0.0.1:8080' \
 # 5. open the fixture against the direct endpoint
 #    http://127.0.0.1:8080/test/e2e.html?editor=http://127.0.0.1:31416/
 ```
+
+Accepted values for `config["server"]["cors"]`: `False` (default, patch inert),
+`True`/`"*"` (echo any origin), or a list such as
+`["http://127.0.0.1:8080", "chrome-extension://<id>"]` — only those origins get
+`Access-Control-Allow-Origin`, everyone else gets nothing. Revert by deleting the
+key; the patch then does nothing.
 
 **The classic half-done state** (hit for real): the patch is in the file, `OPTIONS`
 answers `204`, and it still fails — because `cors` is missing from the config, so
