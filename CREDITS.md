@@ -10,7 +10,8 @@ from busybox and nvi, never source.
 | [**busybox**](https://git.busybox.net/busybox) — `editors/vi.c` | **GPLv2 only** | **Specification only.** No code copied, no code translated line-by-line. We read it to learn *what* the command does and *which* cases matter, then implement in JavaScript from the behaviour. |
 | [**nvi** / nvi2](https://github.com/lichray/nvi2) — Berkeley vi | BSD-3-clause | **Reference only.** Used to settle what traditional vi does where busybox and Vim disagree (`#`, `S`, `C`/`D`/`Y` aliasing, marks, `:s` scope). No code copied. |
 | [**Input Vim**](https://github.com/matheuskieling/vim-input) — Matheus Kieling | MIT | **Code inherited.** The extension harness and the text↔host adapters derive from this project. The MIT notice is preserved in `NOTICE`. |
-| [**TextEditAid**](https://github.com/WayneD/TextEditAid) — Wayne Davison | "freely used however you wish" | **Protocol only.** The `:e` escape hatch speaks a compatible wire shape so an existing `edit-server.py` works unchanged. No code copied. |
+| [**TextEditAid**](https://github.com/WayneD/TextEditAid) — Wayne Davison | "freely used however you wish" | **Lineage only.** The original browser→local-editor idea that this whole family descends from. No code copied. |
+| **pyTextFilter** ([`~/workspace/pytextfilter`]) — Lifu Tang | MIT (see its `LICENSE.txt`) | **Protocol reference.** The `:e` escape hatch speaks *its* wire shape (raw body in, edited body out, `x-url`/`x-id`, `X-File-Changed`), so an existing pyTextFilter server works unchanged. No code copied. |
 
 ## The boundary, concretely
 
@@ -67,5 +68,8 @@ problem (getting a vim engine into editors that never expected one), and the
 harness we inherit is a real piece of engineering.
 
 To **Wayne Davison** for TextEditAid, which proved twenty years early that the
-right way to edit a browser field is to hand it to a real editor and take it back
-— and whose server protocol we simply adopted.
+right way to edit a browser field is to hand it to a real editor and take it back.
+
+And to **pyTextFilter**, the descendant that is actually still alive: the `:e`
+transport is wire-compatible with it, which is why a server that has been editing
+remote files over SSH for years also serves a browser field with no changes.

@@ -54,11 +54,16 @@ Regents of the University of California; Keith Bostic; Sven Verdoolaege; Zhihao
 Yuan). No nvi source code is present in this repository. It is used to settle
 behavioural questions where busybox and Vim disagree.
 
-## TextEditAid — protocol only
+## TextEditAid (lineage) and pyTextFilter (protocol reference)
 
-TextEditAid's source "can be freely used however you wish". This project
-implements a **compatible wire protocol** for the `:e` escape hatch so that an
-existing `edit-server.py` can be used unchanged. No TextEditAid code is copied.
+TextEditAid's source "can be freely used however you wish"; it is the original
+idea this family descends from. **pyTextFilter** — the maintained descendant —
+defines the wire protocol the `:e` escape hatch implements (raw body in, edited
+body out, `x-url`/`x-id` metadata, `X-File-Changed`), so an existing
+pyTextFilter server works unchanged.
+
+**No code is copied from either project.** The transport is a fresh
+implementation of the observable protocol.
 
 ## Trademarks
 

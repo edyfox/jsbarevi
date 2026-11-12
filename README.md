@@ -23,12 +23,12 @@ npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied
 ### Trying `:e` against a real edit-server
 
 A browser page cannot POST to a local edit-server directly: the response is
-cross-origin (unreadable without CORS) and emacs_chrome / TextEditAid-style
-servers answer `OPTIONS` with **501**, so a custom header or JSON body would fail
-at the preflight. `tools/dev-server.mjs` serves the fixture and proxies `/edit`:
+cross-origin (unreadable without CORS) and pyTextFilter-style servers answer
+`OPTIONS` with **501**, so a custom header or JSON body would fail at the
+preflight. `tools/dev-server.mjs` serves the fixture and proxies `/edit`:
 
 ```bash
-node tools/dev-server.mjs --editor 127.0.0.1:31416     # your server's port
+node tools/dev-server.mjs --editor 127.0.0.1:31416     # pyTextFilter's default port
 # or with auth:  --auth user:pass
 ```
 

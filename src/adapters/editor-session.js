@@ -1,9 +1,10 @@
 // `:e` — hand the buffer to a real editor and take it back.
 //
-// Wire-compatible with TextEditAid's edit-server: POST the buffer as the raw
-// request body, keep the request open while the editor runs, and read the new
-// text from the response body. The page URL rides in the query string, as
-// TextEditAid does, so the server can name its temp file after the page.
+// Wire-compatible with pyTextFilter (and its TextEditAid ancestor): POST the
+// buffer as the raw request body, keep the request open while the editor runs,
+// and read the new text from the response body. The page URL rides in the query
+// string so the server can name its temp file after the page; servers that
+// prefer headers get x-url/x-id from the proxy.
 //
 // Two things this deliberately does NOT pretend:
 //   * a page-world caller cannot hold a secret, so a token here is a CSRF
@@ -50,8 +51,9 @@ export class HttpEditorSession {
       );
     }
     // Keep the page-side request "simple": a custom header triggers a CORS
-    // preflight, and emacs_chrome-style servers answer OPTIONS with 501. The
-    // proxy (or an extension with host permissions) adds x-url/x-id instead.
+    // preflight, and pyTextFilter (like emacs_chrome's server) answers OPTIONS
+    // with 501. The proxy (or an extension with host permissions) adds
+    // x-url/x-id instead.
     this.onStatus(`opening editor… ${url.host}${url.pathname} (finish there to return)`);
     const headers = { "Content-Type": "text/plain;charset=utf-8", ...this.headers };
     if (this.token) headers["X-Edit-Token"] = this.token;
