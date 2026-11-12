@@ -59,8 +59,10 @@ const server = createServer((req, res) => {
           const out = [];
           upstream.on("data", (c) => out.push(c));
           upstream.on("end", () => {
+            const edited = Buffer.concat(out);
             res.writeHead(upstream.statusCode || 502, { "content-type": "text/plain; charset=utf-8" });
-            res.end(Buffer.concat(out));
+            res.end(edited);
+            console.log(`  :e  <- ${edited.length} bytes (${upstream.statusCode})`);
           });
         },
       );
@@ -69,6 +71,7 @@ const server = createServer((req, res) => {
         res.end(`edit-server at ${EDITOR} is unreachable: ${err.message}\n`);
       });
       proxied.end(body);
+      console.log(`  :e  ${body.length} bytes -> ${EDITOR}`);
     });
     return;
   }
