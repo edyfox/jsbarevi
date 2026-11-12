@@ -1,0 +1,20 @@
+{
+  "about": "Bracket text objects. Vim's rule (src/textobject.c:current_block): if the cursor is on the opener, use it; otherwise search BACKWARDS for an unclosed opener, and if there is none, search FORWARDS for the next opener, then match its closer. The cursor does NOT have to be inside. nvi and busybox have no text objects at all, so these are vim-only comparisons.",
+  "cases": [
+    { "name": "di( with the cursor before the block", "input": "foo(x) bar\n", "keys": "di(", "engines": ["vim"] },
+    { "name": "di( with the cursor on the opener", "input": "foo(x) bar\n", "keys": "4ldi(", "engines": ["vim"] },
+    { "name": "di( with the cursor inside", "input": "foo(x) bar\n", "keys": "5ldi(", "engines": ["vim"] },
+    { "name": "di( with the cursor on the closer", "input": "foo(x) bar\n", "keys": "6ldi(", "engines": ["vim"] },
+    { "name": "di( with the cursor after the block", "input": "foo(x) bar\n", "keys": "7ldi(", "engines": ["vim"] },
+    { "name": "da( takes the closer too", "input": "foo(x) bar\n", "keys": "da(", "engines": ["vim"] },
+    { "name": "di( picks the outer block when nested", "input": "f(g(x)) y\n", "keys": "di(", "engines": ["vim"] },
+    { "name": "di( from inside a nested block", "input": "f(g(x)) y\n", "keys": "4ldi(", "engines": ["vim"] },
+    { "name": "di[ on a subscript", "input": "arr[1] = 2\n", "keys": "di[", "engines": ["vim"] },
+    { "name": "di{ on a brace block", "input": "if (x) { y }\n", "keys": "di{", "engines": ["vim"] },
+    { "name": "di< on a generic", "input": "vector<a> b\n", "keys": "di<", "engines": ["vim"] },
+    { "name": "di( across lines", "input": "foo(\n  body\n) tail\n", "keys": "di(", "engines": ["vim"] },
+    { "name": "di( with no brackets does nothing", "input": "plain text\n", "keys": "di(", "engines": ["vim"] },
+    { "name": "ci( before the block then type", "input": "foo(x) bar\n", "keys": "ci(NEW<Esc>", "engines": ["vim"] },
+    { "name": "di( on the second block of a line", "input": "a(x) b(y) c\n", "keys": "7ldi(", "engines": ["vim"] }
+  ]
+}

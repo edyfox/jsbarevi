@@ -99,7 +99,9 @@ page cannot forge.
 these should ever surface as a bare status code again.
 
 Implemented: modes (normal/insert/visual/visual-line), counts, operators with
-motions and text objects, insert entries, `r R x X s S C D Y ~ J < > p P u U .`,
+motions and text objects (bracket objects follow Vim's `current_block()`: the
+cursor does **not** need to be inside — a backwards search for an unmatched opener,
+then a forwards search for the next one), insert entries, `r R x X s S C D Y ~ J < > p P u U .`,
 marks, registers, `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
 `G gg H M L z`, `C-b C-d C-e C-f C-u C-y`, search via `/ ? n N * #`, the `:` line
 (`s d y = list set version features file e w q x`) with ranges and the

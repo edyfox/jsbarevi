@@ -702,28 +702,54 @@ export class Engine {
       while (to < lineE && /[ \t]/.test(text[to])) to = B.nextChar(text, to);
       return { from: a, to, inclusive: false };
     }
+    // Brackets: Vim's current_block() (src/textobject.c). The cursor does NOT
+    // have to sit inside the block:
+    //   1. on the opener            -> use it
+    //   2. else search BACKWARDS for an unmatched opener (one whose closer is
+    //      still ahead of the cursor)
+    //   3. else search FORWARDS for the next opener
+    //   4. then match its closer; if either search fails there is no object
     const pairs = { "(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{", "<": ">", ">": "<" };
     if (pairs[target]) {
       const open = "([{<".includes(target) ? target : pairs[target];
       const close = ")]}>"["([{<".indexOf(open)];
-      let depth = 0;
-      let a = -1;
-      let b = -1;
-      let backFrom = text[cur] === close ? B.prevChar(text, cur) : cur;
-      for (let p = backFrom; p >= lineS; p = B.prevChar(text, p)) {
-        if (text[p] === open) { if (depth-- === 0) { a = p; break; } }
-        else if (text[p] === close) depth++;
-        if (p === 0) break;
+
+      let start = -1;
+      if (text[cur] === open) {
+        start = cur;                                   // 1
       }
-      depth = 0;
-      const fwdFrom = text[cur] === open ? B.nextChar(text, cur) : cur;
-      for (let p = fwdFrom; p < text.length; p = B.nextChar(text, p)) {
-        if (text[p] === close) { if (depth-- === 0) { b = p; break; } }
-        else if (text[p] === open) depth++;
+      if (start < 0) {                                  // 2: unmatched opener behind us
+        let depth = 0;
+        for (let p = B.prevChar(text, cur); p >= 0; p = B.prevChar(text, p)) {
+          const c = text[p];
+          if (c === close) depth++;
+          else if (c === open) {
+            if (depth > 0) depth--;
+            else { start = p; break; }
+          }
+          if (p === 0) break;
+        }
       }
-      if (a < 0 || b < 0) return null;
-      return inner ? { from: a + 1, to: b, inclusive: false } : { from: a, to: B.nextChar(text, b), inclusive: false };
+      if (start < 0) {                                  // 3: nearest opener ahead
+        for (let p = cur; p < text.length; p = B.nextChar(text, p)) {
+          if (text[p] === open) { start = p; break; }
+        }
+      }
+      if (start < 0) return null;
+
+      const end = B.matchBracket(text, start);           // 4
+      if (end == null || end < cur) return null;
+
+      if (!inner) return { from: start, to: B.nextChar(text, end), inclusive: false };
+      let from = B.nextChar(text, start);
+      const to = end;
+      // Vim keeps the newline that follows the opener in a multi-line block
+      // (`di(` on "foo(\n  body\n)" leaves "foo(\n)").
+      if (text[from] === "\n") from = B.nextChar(text, from);
+      if (from > to) return null;
+      return { from, to, inclusive: false };
     }
+
     if (target === "p") {
       const startLine = B.lineNumber(text, cur);
       let a = startLine;

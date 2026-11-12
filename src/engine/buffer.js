@@ -240,8 +240,8 @@ export function sentenceBack(text, i, count = 1) {
 }
 
 // --- bracket matching ------------------------------------------------------
-const PAIRS = { "(": ")", "[": "]", "{": "}" };
-const RP = { ")": "(", "]": "[", "}": "{" };
+const PAIRS = { "(": ")", "[": "]", "{": "}", "<": ">" };
+const RP = { ")": "(", "]": "[", "}": "{", ">": "<" };
 
 export function matchBracket(text, i) {
   const c = charAt(text, i);
