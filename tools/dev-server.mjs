@@ -78,7 +78,10 @@ const server = createServer((req, res) => {
     res.writeHead(404, { "content-type": "text/plain" }).end("not found");
     return;
   }
-  res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
+  res.writeHead(200, {
+    "content-type": MIME[path.extname(file)] || "application/octet-stream",
+    "cache-control": "no-store",   // never test a stale fixture
+  });
   fs.createReadStream(file).pipe(res);
 });
 

@@ -36,13 +36,23 @@ export class HttpEditorSession {
     this.busy = true;
     const sent = this.engine.text;
     const cursorBefore = this.engine.cursor;
-    this.onStatus("opening editor… (finish there to return)");
 
     const url = new URL(this.url, this.pageUrl);
     if (this.pageUrl) url.searchParams.set("url", this.pageUrl);
+
+    // A cross-origin endpoint means the browser sends a CORS preflight, and
+    // Python's http.server answers OPTIONS with "501 Unsupported method".
+    if (typeof location !== "undefined" && url.origin !== location.origin) {
+      this.onStatus(
+        `:e -> ${url.host}${url.pathname} is cross-origin: the browser will preflight it and the server answers 501. ` +
+          `Serve the page through tools/dev-server.mjs and use /edit.`,
+        "error",
+      );
+    }
     // Keep the page-side request "simple": a custom header triggers a CORS
     // preflight, and emacs_chrome-style servers answer OPTIONS with 501. The
     // proxy (or an extension with host permissions) adds x-url/x-id instead.
+    this.onStatus(`opening editor… ${url.host}${url.pathname} (finish there to return)`);
     const headers = { "Content-Type": "text/plain;charset=utf-8", ...this.headers };
     if (this.token) headers["X-Edit-Token"] = this.token;
     if (this.basic) headers.Authorization = `Basic ${btoa(this.basic)}`;
@@ -57,7 +67,13 @@ export class HttpEditorSession {
       signal: controller?.signal,
     })
       .then(async (res) => {
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText || ""}`.trim());
+        if (!res.ok) {
+          // include the body: Python's http.server answers OPTIONS with a page
+          // that names the unsupported method, which is the whole diagnosis
+          const body = (await res.text().catch(() => "")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140);
+          const hint = res.status === 501 ? " — 501 here means the server got a CORS preflight (OPTIONS), i.e. the request bypassed the /edit proxy" : "";
+          throw new Error(`${res.status} ${res.statusText || ""}${hint}${body ? ": " + body : ""}`);
+        }
         const text = await res.text();
         if (res.headers.get("X-File-Changed") === "false") {
           this.onStatus("editor closed without changes");
