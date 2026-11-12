@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>jsbarevi — end-to-end fixture</title>
+<style>
+  body { background:#1e1e1e; color:#ddd; font:14px/1.5 ui-sans-serif,system-ui; margin:40px; }
+  textarea { width:640px; height:150px; background:#252526; color:#eee; border:1px solid #444;
+             padding:10px; font:13px/1.5 ui-monospace,Menlo,monospace; border-radius:4px; }
+  input { width:640px; background:#252526; color:#eee; border:1px solid #444; padding:8px;
+          font:13px/1.5 ui-monospace,Menlo,monospace; border-radius:4px; margin-top:12px; }
+  p { color:#8a8a8a; }
+</style>
+</head>
+<body>
+<h1>jsbarevi</h1>
+<p>Real browser, real key events. Press <code>i</code> to type, <code>Esc</code> to leave insert,
+<code>:e</code> for the external editor, <code>u</code> to undo.</p>
+
+<textarea id="field" aria-label="fixture composer">alpha beta gamma
+delta epsilon
+zeta eta theta</textarea>
+
+<input id="single" aria-label="fixture single-line" value="single line input">
+
+<script type="module">
+  import { attach } from "../src/entry.js";
+
+  const ta = document.getElementById("field");
+  const input = document.getElementById("single");
+
+  // The harness sets this to disable the badge/prompt UI if it gets in the way.
+  const h1 = attach(ta, { version: "0.1.0" });
+  const h2 = attach(input, { version: "0.1.0" });
+
+  window.jsbarevi = { textarea: h1, single: h2, ready: true };
+</script>
+</body>
+</html>

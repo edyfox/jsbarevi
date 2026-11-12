@@ -1,0 +1,281 @@
+{
+  "about": "Operators, text objects, insert entries, repeat and put. These are compared against real vim at run time by test/differential.mjs, so expectations here are only used by test/run-engine-tests.mjs.",
+  "cases": [
+    {
+      "name": "ciw changes the inner word",
+      "input": "foo bar\n",
+      "keys": "ciwXYZ<Esc>",
+      "expect": {
+        "text": "XYZ bar\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "diw deletes the inner word",
+      "input": "foo bar\n",
+      "keys": "diw",
+      "expect": {
+        "text": " bar\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "daw deletes the word and its space",
+      "input": "foo bar\n",
+      "keys": "daw",
+      "expect": {
+        "text": "bar\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "3dd removes three lines",
+      "input": "a\nb\nc\nd\n",
+      "keys": "3dd",
+      "expect": {
+        "text": "d\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "yyp duplicates the line",
+      "input": "a\nb\n",
+      "keys": "yyp",
+      "expect": {
+        "text": "a\na\nb\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dd then p puts the line back below",
+      "input": "a\nb\n",
+      "keys": "ddp",
+      "expect": {
+        "text": "b\na\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "df, deletes through the comma",
+      "input": "a,b,c\n",
+      "keys": "df,",
+      "expect": {
+        "text": "b,c\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "A appends at end of line",
+      "input": "abc\n",
+      "keys": "A!<Esc>",
+      "expect": {
+        "text": "abc!\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "o opens a line below",
+      "input": "a\n",
+      "keys": "ob<Esc>",
+      "expect": {
+        "text": "a\nb\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "O opens a line above",
+      "input": "a\n",
+      "keys": "Ob<Esc>",
+      "expect": {
+        "text": "b\na\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "I inserts at the first non-blank",
+      "input": "  abc\n",
+      "keys": "Ixy<Esc>",
+      "expect": {
+        "text": "  xyabc\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dw then . repeats the delete",
+      "input": "a b c\n",
+      "keys": "dw.",
+      "expect": {
+        "text": "c\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "3x deletes three characters",
+      "input": "abcdef\n",
+      "keys": "3x",
+      "expect": {
+        "text": "def\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "u undoes the last change",
+      "input": "abc\n",
+      "keys": "xu",
+      "expect": {
+        "text": "abc\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "r replaces one character",
+      "input": "abc\n",
+      "keys": "rl",
+      "expect": {
+        "text": "lbc\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "f then ; repeats the find",
+      "input": "a,b,c,d\n",
+      "keys": "f,;",
+      "expect": {
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "G then dd deletes the last line",
+      "input": "a\nb\nc\n",
+      "keys": "Gdd",
+      "expect": {
+        "text": "a\nb\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "visual then d deletes the selection",
+      "input": "abcdef\n",
+      "keys": "vld",
+      "expect": {
+        "text": "cdef\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "visual line then d",
+      "input": "a\nb\nc\n",
+      "keys": "Vjd",
+      "expect": {
+        "text": "c\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "mark and jump back",
+      "input": "a\nb\nc\n",
+      "keys": "jmaG'a",
+      "expect": {
+        "line": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "di( inside parens",
+      "input": "f(x) + y\n",
+      "keys": "f)di(",
+      "expect": {
+        "text": "f() + y\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "da\" around quotes",
+      "input": "say \"hi\" now\n",
+      "keys": "f\"da\"",
+      "expect": {
+        "text": "say now\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J with a count joins three lines",
+      "input": "a\nb\nc\n",
+      "keys": "3J",
+      "expect": {
+        "text": "a b c\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "x at end of line does not eat the newline",
+      "input": "ab\ncd\n",
+      "keys": "lx",
+      "expect": {
+        "text": "a\ncd\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "p pastes characterwise after the cursor",
+      "input": "abc\n",
+      "keys": "x$p",
+      "expect": {
+        "text": "bca\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

@@ -1,13 +1,41 @@
 # jsbarevi
 
-A deliberately barebones **vi for browser text fields**, written in JavaScript, — textarea, `input`,
+A deliberately barebones **vi for browser text fields**, written in JavaScript — textarea, `input`,
 contenteditable, and the rich composers inside VS Code, Cursor, Devin, Lark and
 OpenCode. No plugin marketplace, no framework. One small engine, one adapter
 contract, and a real editor behind `:e` when the field is not enough.
 
-> Status: **specification frozen, harness working, engine not started.**
-> See `docs/DECISIONS.md` for the frozen surface and `oracle/` for what is
-> measured so far.
+> Status: **engine implemented and verified end-to-end.** 36 cases match real
+> `vim` keystroke-for-keystroke, 21 unit tests, and 12 end-to-end checks in real
+> Chrome with real key events. Not yet wired into the six Electron hosts - that
+> needs the injection seam and one restart per host.
+
+## What works today
+
+```bash
+npm test            # unit (21) + engine-vs-oracle-cases (36)
+node test/differential.mjs   # our engine vs real vim, same keystrokes (36)
+node test/e2e-cdp.mjs        # real headless Chrome, real keydown events (12)
+python3 oracle/run.py        # the reference editors themselves (36)
+```
+
+Open `test/e2e.html` through any static server to use it by hand:
+
+```bash
+python3 -m http.server 8080      # then visit /test/e2e.html
+```
+
+Implemented: modes (normal/insert/visual/visual-line), counts, operators with
+motions and text objects, insert entries, `r R x X s S C D Y ~ J < > p P u U .`,
+marks, registers, `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
+`G gg H M L z`, `C-b C-d C-e C-f C-u C-y`, search via `/ ? n N * #`, the `:` line
+(`s d y = list set version features file e w q x`) with ranges and the
+translate/refuse regex contract, and the viewport capability.
+
+Deliberately approximated, documented in `docs/DECISIONS.md`: `R` behaves like
+insert, `.` replays an insert by diffing the snapshot (insert mode belongs to the
+host, so keystrokes cannot be recorded), and `H M L z C-b C-d C-e C-f C-u C-y`
+need an adapter that reports a viewport.
 
 ## Why another one
 
