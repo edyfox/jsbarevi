@@ -972,7 +972,10 @@ export class Engine {
       const entry = this.insertEntry;
       this.insertEntry = null;
       this.mode = Mode.NORMAL;
-      this.state.cursor = Math.max(0, Math.min(B.prevChar(this.text, this.state.cursor), Math.max(0, this.text.length - 1)));
+      // Leaving insert steps one character left, but never across the line
+      // boundary: at column 1 the cursor stays (vim, nvi and busybox agree).
+      const ls = B.lineStart(this.text, this.state.cursor);
+      if (this.state.cursor > ls) this.state.cursor = B.prevChar(this.text, this.state.cursor);
       if (entry) {
         const inserted = this._contiguousInsert(entry);
         this._noteChange({ kind: "insert", entry: entry.kind, inserted });

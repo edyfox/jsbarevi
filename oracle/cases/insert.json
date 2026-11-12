@@ -1,0 +1,13 @@
+{
+  "about": "Leaving insert mode moves the cursor one character left, but never across a line boundary: at column 1 of a line it stays put. Position rules, so vim-only (the pty engines cannot report a cursor).",
+  "cases": [
+    { "name": "i<Esc> at column 1 of a line stays on that line", "input": "abc\ndef\n", "keys": "ji<Esc>", "engines": ["vim"] },
+    { "name": "i<Esc> in the middle moves left one", "input": "abcdef\n", "keys": "llli<Esc>", "engines": ["vim"] },
+    { "name": "A<Esc> lands on the last character", "input": "abc\n", "keys": "A<Esc>", "engines": ["vim"] },
+    { "name": "o<Esc> lands on the new empty line, column 1", "input": "abc\n", "keys": "o<Esc>", "engines": ["vim"] },
+    { "name": "iX<Esc> at column 1 leaves the cursor on X", "input": "abc\n", "keys": "iX<Esc>", "engines": ["vim"] },
+    { "name": "I<Esc> on an indented line stays on that line", "input": "  abc\n", "keys": "I<Esc>", "engines": ["vim"] },
+    { "name": "a<Esc> at end of line lands on the last character", "input": "abc\n", "keys": "a<Esc>", "engines": ["vim"] },
+    { "name": "i<Esc> on an empty line stays at column 1", "input": "abc\n\ndef\n", "keys": "ji<Esc>", "engines": ["vim"] }
+  ]
+}
