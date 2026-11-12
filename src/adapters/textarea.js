@@ -8,6 +8,8 @@
 //   * commits engine text back with a minimal DOM write
 
 import { Engine, Mode } from "../engine/engine.js";
+import { BlockCaret } from "./caret.js";
+import { HttpEditorSession } from "./editor-session.js";
 
 export class TextareaAdapter {
   constructor(el, opts = {}) {
@@ -24,14 +26,31 @@ export class TextareaAdapter {
     this.onStatus = opts.onStatus;
     this.onModeChange = opts.onModeChange;
     this.onPrompt = opts.onPrompt;
+    // A hairline caret is invisible as a vi cursor: normal/visual get a block.
+    this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
     this._bound = {
       keydown: (e) => this._onKeydown(e),
       input: () => this.syncFromHost(),
       blur: () => this.engine.reset(),
     };
+    this._bound.scroll = () => this._updateCaret();
+    this._bound.resize = () => { this.caret?.invalidate(); this._updateCaret(); };
     el.addEventListener("keydown", this._bound.keydown, true);
     el.addEventListener("input", this._bound.input);
     el.addEventListener("blur", this._bound.blur);
+    el.addEventListener("scroll", this._bound.scroll);
+    window.addEventListener("resize", this._bound.resize);
+    // `:e` needs a transport; without one the engine reports why instead.
+    if (opts.editorUrl) {
+      this.engine.session = new HttpEditorSession({
+        engine: this.engine,
+        url: opts.editorUrl,
+        token: opts.editorToken,
+        basic: opts.editorBasic,
+        onStatus: (msg, kind) => this.onStatus?.(msg, kind),
+        onApplied: () => { this._commit(); this._emitMode(); },
+      });
+    }
     this.syncFromHost();
     this.engine.setText(this.el.value, this.el.selectionStart ?? 0);
     this._emitMode();
@@ -41,6 +60,10 @@ export class TextareaAdapter {
     this.el.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
     this.el.removeEventListener("blur", this._bound.blur);
+    this.el.removeEventListener("scroll", this._bound.scroll);
+    window.removeEventListener("resize", this._bound.resize);
+    this.el.style.caretColor = "";
+    this.caret?.destroy();
   }
 
   describe() {
@@ -51,10 +74,23 @@ export class TextareaAdapter {
 
   syncFromHost() {
     this.engine.setText(this.el.value, this.el.selectionStart ?? 0);
+    this._updateCaret();
   }
 
   _emitMode() {
     this.onModeChange?.(this.engine.mode, this.engine.pending?.count || "");
+    const insert = this.engine.mode === Mode.INSERT;
+    // hide the native hairline caret in normal/visual, show ours instead
+    this.el.style.caretColor = insert ? "" : "transparent";
+    if (insert) this.caret?.hide();
+    else this._updateCaret();
+  }
+
+  _updateCaret() {
+    if (!this.caret) return;
+    if (this.engine.mode === Mode.INSERT) { this.caret.hide(); return; }
+    const linewise = this.engine.mode === Mode.VISUAL_LINE;
+    this.caret.update(this.engine.cursor, { linewise });
   }
 
   _onKeydown(e) {
@@ -94,6 +130,7 @@ export class TextareaAdapter {
     if (this.el.value !== this.engine.text) this.el.value = this.engine.text;
     const c = Math.min(this.engine.cursor, this.el.value.length);
     this.el.setSelectionRange(c, c);
+    this._updateCaret();
   }
 
   /** Visible line window, in buffer lines. Approximate under soft wrap. */

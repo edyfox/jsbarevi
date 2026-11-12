@@ -1,0 +1,96 @@
+// `:e` — hand the buffer to a real editor and take it back.
+//
+// Wire-compatible with TextEditAid's edit-server: POST the buffer as the raw
+// request body, keep the request open while the editor runs, and read the new
+// text from the response body. The page URL rides in the query string, as
+// TextEditAid does, so the server can name its temp file after the page.
+//
+// Two things this deliberately does NOT pretend:
+//   * a page-world caller cannot hold a secret, so a token here is a CSRF
+//     barrier only; the real boundary is the transport (extension origin,
+//     native messaging, or a main-process channel)
+//   * a cross-origin response is unreadable without CORS, so a browser page
+//     talking to localhost gets a clear message instead of a silent no-op
+
+export class HttpEditorSession {
+  constructor(opts) {
+    this.engine = opts.engine;
+    this.url = opts.url;
+    this.pageUrl = opts.pageUrl ?? (typeof location !== "undefined" ? location.href : "");
+    this.token = opts.token ?? null;
+    this.basic = opts.basic ?? null;
+    this.headers = opts.headers || {};   // extension/native contexts only
+    this.timeout = opts.timeout ?? 15 * 60 * 1000;
+    this.onStatus = opts.onStatus || (() => {});
+    this.onApplied = opts.onApplied || (() => {});
+    this.busy = false;
+  }
+
+  describe() {
+    return `[editor] ${this.url}`;
+  }
+
+  /** Returns immediately: `:e` is asynchronous by nature (a human is editing). */
+  open() {
+    if (this.busy) return { ok: false, message: "editor session already open" };
+    this.busy = true;
+    const sent = this.engine.text;
+    const cursorBefore = this.engine.cursor;
+    this.onStatus("opening editor… (finish there to return)");
+
+    const url = new URL(this.url, this.pageUrl);
+    if (this.pageUrl) url.searchParams.set("url", this.pageUrl);
+    // Keep the page-side request "simple": a custom header triggers a CORS
+    // preflight, and emacs_chrome-style servers answer OPTIONS with 501. The
+    // proxy (or an extension with host permissions) adds x-url/x-id instead.
+    const headers = { "Content-Type": "text/plain;charset=utf-8", ...this.headers };
+    if (this.token) headers["X-Edit-Token"] = this.token;
+    if (this.basic) headers.Authorization = `Basic ${btoa(this.basic)}`;
+
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), this.timeout) : null;
+
+    fetch(url.toString(), {
+      method: "POST",
+      body: sent,
+      headers,
+      signal: controller?.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText || ""}`.trim());
+        const text = await res.text();
+        if (res.headers.get("X-File-Changed") === "false") {
+          this.onStatus("editor closed without changes");
+          return;
+        }
+        if (this.engine.text !== sent) {
+          this.onStatus("field changed while editing — result discarded, :e again", "error");
+          return;
+        }
+        this.engine.setText(text, Math.min(cursorBefore, Math.max(0, text.length - 1)));
+        this.onStatus(`replaced ${sent.length} chars with ${text.length}`);
+        this.onApplied();
+      })
+      .catch((err) => {
+        this.onStatus(this._explain(err), "error");
+      })
+      .finally(() => {
+        this.busy = false;
+        if (timer) clearTimeout(timer);
+      });
+
+    return { ok: true, message: "" };
+  }
+
+  write() { return { ok: true, message: "the editor writes when it exits" }; }
+  close() { /* the request owns the session's lifetime */ }
+
+  _explain(err) {
+    const msg = String(err?.message || err);
+    if (/abort/i.test(msg)) return "editor session timed out";
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      return `cannot reach ${this.url} — is the edit-server running, and does it allow this origin? (a page cannot read a cross-origin response without CORS; the real extension uses its own origin)`;
+    }
+    return `editor error: ${msg}`;
+  }
+}

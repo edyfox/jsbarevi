@@ -13,17 +13,29 @@ contract, and a real editor behind `:e` when the field is not enough.
 ## What works today
 
 ```bash
-npm test            # unit (21) + engine-vs-oracle-cases (36)
-node test/differential.mjs   # our engine vs real vim, same keystrokes (36)
-node test/e2e-cdp.mjs        # real headless Chrome, real keydown events (12)
-python3 oracle/run.py        # the reference editors themselves (36)
+npm test                     # unit 21 · :e transport 6 · oracle cases 36 · vs vim 36
+npm run test:e2e             # real headless Chrome, real key events (19)
+npm run test:oracle          # the reference editors themselves (36)
+
+npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied
 ```
 
-Open `test/e2e.html` through any static server to use it by hand:
+### Trying `:e` against a real edit-server
+
+A browser page cannot POST to a local edit-server directly: the response is
+cross-origin (unreadable without CORS) and emacs_chrome / TextEditAid-style
+servers answer `OPTIONS` with **501**, so a custom header or JSON body would fail
+at the preflight. `tools/dev-server.mjs` serves the fixture and proxies `/edit`:
 
 ```bash
-python3 -m http.server 8080      # then visit /test/e2e.html
+node tools/dev-server.mjs --editor 127.0.0.1:31416     # your server's port
+# or with auth:  --auth user:pass
 ```
+
+Then open <http://127.0.0.1:8080/test/e2e.html>, press `:e`, edit in the real
+editor, and write+quit (`:wq`). The proxy also supplies
+`Origin: chrome-extension://…`, which TextEditAid-family servers require and a
+page cannot forge.
 
 Implemented: modes (normal/insert/visual/visual-line), counts, operators with
 motions and text objects, insert entries, `r R x X s S C D Y ~ J < > p P u U .`,
@@ -36,6 +48,11 @@ Deliberately approximated, documented in `docs/DECISIONS.md`: `R` behaves like
 insert, `.` replays an insert by diffing the snapshot (insert mode belongs to the
 host, so keystrokes cannot be recorded), and `H M L z C-b C-d C-e C-f C-u C-y`
 need an adapter that reports a viewport.
+
+The cursor: in NORMAL and VISUAL the native hairline caret is made transparent
+and a block caret is drawn over the character at the engine cursor, measured with
+a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
+the block disappears and the native caret returns.
 
 ## Why another one
 

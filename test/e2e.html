@@ -30,8 +30,15 @@ zeta eta theta</textarea>
   const input = document.getElementById("single");
 
   // The harness sets this to disable the badge/prompt UI if it gets in the way.
-  const h1 = attach(ta, { version: "0.1.0" });
-  const h2 = attach(input, { version: "0.1.0" });
+  // `:e` posts here. TextEditAid's own server defaults to 8888; this host's
+  // edit-server listens on 31416. Override per field.
+  // Default `/edit` is proxied by tools/dev-server.mjs to a real edit-server
+  // (127.0.0.1:31416 here). Point it straight at a server only if that server
+  // sends CORS headers: ?editor=http://127.0.0.1:31416/
+  const editorUrl = new URLSearchParams(location.search).get("editor") || "/edit";
+
+  const h1 = attach(ta, { version: "0.1.0", editorUrl });
+  const h2 = attach(input, { version: "0.1.0", editorUrl });
 
   window.jsbarevi = { textarea: h1, single: h2, ready: true };
 </script>

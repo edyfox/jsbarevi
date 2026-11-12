@@ -30,6 +30,16 @@ const check = (name, got, want) => {
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
+    if (url === "/edit") {
+      const chunks = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        const body = Buffer.concat(chunks).toString("utf8");
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end(`[via editor]\n${body.toUpperCase()}`);
+      });
+      return;
+    }
     const file = path.join(ROOT, url === "/" ? "test/e2e.html" : url);
     if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       res.writeHead(404).end("nope");
@@ -139,7 +149,7 @@ async function main() {
   const { child } = await launchChrome(chromePort);
   let session;
   try {
-    const target = await (await fetch(`http://127.0.0.1:${chromePort}/json/new?${encodeURIComponent(`http://127.0.0.1:${port}/test/e2e.html`)}`, { method: "PUT" })).json();
+    const target = await (await fetch(`http://127.0.0.1:${chromePort}/json/new?${encodeURIComponent(`http://127.0.0.1:${port}/test/e2e.html?editor=/edit`)}`, { method: "PUT" })).json();
     session = cdp(target.webSocketDebuggerUrl);
     await session.ready;
     await session.send("Page.enable");
@@ -189,6 +199,36 @@ async function main() {
     // --- the `:` line, through the real prompt path ----------------------
     await evaluate(session, "window.jsbarevi.textarea.adapter.finishPrompt('ex', 's/alpha/ALPHA/')");
     check(":s through the adapter's prompt path", await field(), "ALPHA ta gamma!\ndelta epsilon!\nzeta eta theta");
+
+    // --- the block caret: the reason a hairline caret is unusable ---------
+    const caret = () => evaluate(session, `(() => {
+      const n = document.querySelector('.jsbarevi-caret');
+      if (!n) return null;
+      const r = n.getBoundingClientRect();
+      return { display: getComputedStyle(n).display, w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), left: Math.round(r.left) };
+    })()`);
+    await evaluate(session, "document.getElementById('field').focus()");
+    await typeKeys(session, "gg");
+    const c1 = await caret();
+    check("block caret is visible in normal mode", c1 && c1.display !== "none" && c1.w > 0 && c1.h > 8, true);
+    check("native caret is hidden in normal mode", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgba(0, 0, 0, 0)");
+    await typeKeys(session, "j");
+    const c2 = await caret();
+    check("caret follows j to the next line", c2.top - c1.top >= 10, true);
+    await typeKeys(session, "i");
+    const cInsert = await caret();
+    check("caret hides in insert mode", !cInsert || cInsert.display === "none", true);
+    check("native caret returns in insert mode", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgb(238, 238, 238)");
+    await sendKey(session, "Escape");
+
+    // --- :e through a TextEditAid-compatible server -----------------------
+    const beforeEditor = await field();
+    await evaluate(session, "window.jsbarevi.textarea.adapter.finishPrompt('ex', 'e')");
+    await sleep(400);
+    const afterEditor = await field();
+    check(":e round-tripped the buffer through the editor", afterEditor, `[via editor]\n${beforeEditor.toUpperCase()}`);
+    check(":e reported what it did",
+      (await evaluate(session, "document.querySelector('.jsbarevi-line')?.textContent || ''")).includes("replaced"), true);
 
     // --- single-line input is attached too -------------------------------
     await evaluate(session, "document.getElementById('single').focus()");
