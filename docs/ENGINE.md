@@ -210,3 +210,39 @@ Also: the reviewer's running of the three editors agrees with the doc that
    the engine through a snapshot with no layout. The rewrite still wins, but on
    *single implementation of each command + one text-edit contract*, not on a 2×
    multiplier for every feature.
+
+---
+
+# What we take from busybox: invariants, not just commands
+
+The `Esc`-crosses-the-line-boundary bug (2026-11-12) has a root cause worth
+recording, because it is not "we forgot a case".
+
+busybox ends **every** command with the same normalisation (`editors/vi.c`, tail
+of `do_cmd()`):
+
+```c
+cmdcnt = 0;
+cnt = dot - begin_line(dot);
+// Try to stay off of the Newline
+if (*dot == '\n' && cnt > 0 && cmd_mode == 0)
+    dot--;
+```
+
+That is an *invariant*: after any command the cursor never rests on a newline
+(except at column 1 of an empty line, and never in insert mode). Because it is
+central, no individual command can break it — including commands added later.
+
+Our engine had no such invariant. Every command placed the cursor itself, so
+"do not land on a newline" was an obligation repeated per command, and the one
+path we hand-wrote from scratch — leaving insert mode, which we had to write
+ourselves because the host owns insert while busybox owns it — dropped it.
+
+The lesson generalises: when the reference implementation centralises a rule,
+adopt the **rule**, not just the commands it produces. `_stayOffNewline()` now
+runs after every dispatch, mirroring busybox.
+
+A second, separate reason it survived: our differential tests compare buffers and
+whole-number positions, so a one-column drift at a boundary is invisible in them.
+That is why the boundary matrix (empty line, first/last column, empty buffer,
+single-character buffer) is worth generating rather than waiting for a report.

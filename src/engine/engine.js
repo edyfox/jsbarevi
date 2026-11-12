@@ -83,8 +83,29 @@ export class Engine {
   feed(key) {
     if (this.prompt) return { handled: false };
     if (this.mode === Mode.INSERT) return this._insertKey(key);
-    if (this.mode === Mode.VISUAL || this.mode === Mode.VISUAL_LINE) return this._visualKey(key);
-    return this._normalKey(key);
+    const res = this.mode === Mode.VISUAL || this.mode === Mode.VISUAL_LINE
+      ? this._visualKey(key)
+      : this._normalKey(key);
+    this._stayOffNewline();
+    return res;
+  }
+
+  /**
+   * busybox normalises this at the tail of every command (vi.c: "Try to stay off
+   * of the Newline": `if (*dot == '\n' && cnt > 0 && cmd_mode == 0) dot--`).
+   * Centralising it is why busybox cannot have the bug we hit: a command that
+   * forgets to place the cursor carefully is corrected anyway. Column 1 of an
+   * empty line is legitimate (a zero-length line has no character to stand on),
+   * and insert mode owns the cursor until Esc.
+   */
+  _stayOffNewline() {
+    if (this.mode === Mode.INSERT) return;
+    const t = this.text;
+    const c = this.state.cursor;
+    if (c < 0 || c >= t.length) return;
+    if (t[c] !== "\n") return;
+    if (c === B.lineStart(t, c)) return;   // col 1 of an empty line
+    this.state.cursor = B.prevChar(t, c);
   }
 
   /** Feed a key sequence using the oracle notation: <Esc> <CR> <Tab> <BS> <C-r>. */
