@@ -54,10 +54,15 @@ and a block caret is drawn over the character at the engine cursor, measured wit
 a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
 the block disappears and the native caret returns.
 
-VISUAL and VISUAL LINE paint their range with the field's **native selection**, so
-the highlight matches the host's theme instead of fighting it; the e2e suite
-proves it is really painted by sampling a screenshot pixel inside the selection
-and requiring it to change.
+VISUAL and VISUAL LINE paint their own **overlay**: one box per selected line
+segment, measured with the same mirror technique as the caret, stretched to the
+field's right edge in linewise mode. The native selection is collapsed while the
+overlay is up so the two never double-paint, and `Ctrl-C` copies the engine's
+visual range instead.
+
+Relying on the native selection was the first attempt and it was wrong in a way
+tests alone did not catch: the range *was* set and a pixel *did* change, but the
+OS highlight in a dark field is so weak that it was invisible in practice.
 
 ## Why another one
 

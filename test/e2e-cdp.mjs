@@ -227,6 +227,8 @@ async function main() {
     await typeKeys(session, "gg");
     const c1 = await caret();
     check("block caret is visible in normal mode", c1 && c1.display !== "none" && c1.w > 0 && c1.h > 8, true);
+    const visibleCarets = () => evaluate(session, `[...document.querySelectorAll('.jsbarevi-caret')].filter(n => getComputedStyle(n).display !== 'none').length`);
+    check("only the focused field shows a caret", await visibleCarets(), 1);
     check("native caret is hidden in normal mode", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgba(0, 0, 0, 0)");
     await typeKeys(session, "j");
     const c2 = await caret();
@@ -239,9 +241,14 @@ async function main() {
 
     // --- visual mode must PAINT a highlight, not just hold a range --------
     await typeKeys(session, "gg");
-    const selState = () => evaluate(session, `(() => {
-      const el = document.getElementById('field');
-      return { start: el.selectionStart, end: el.selectionEnd, focus: document.activeElement.id };
+    const boxes = () => evaluate(session, `(() => {
+      const out = [];
+      for (const n of document.querySelectorAll('.jsbarevi-sel')) {
+        if (getComputedStyle(n).display === 'none') continue;
+        const r = n.getBoundingClientRect();
+        out.push({ w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), left: Math.round(r.left) });
+      }
+      return out;
     })()`);
     const box = await evaluate(session, `(() => {
       const r = document.getElementById('field').getBoundingClientRect();
@@ -249,22 +256,32 @@ async function main() {
     })()`);
     const plain = await pixelAt(session, box.x, box.y);
     await typeKeys(session, "v");
-    const one = await selState();
-    check("v selects one character", one.end - one.start, 1);
-    check("the field keeps focus so the selection paints", one.focus, "field");
+    const one = await boxes();
+    check("v repaints a visible highlight box", one.length >= 1 && one[0].w > 0 && one[0].h > 8, true);
     const highlighted = await pixelAt(session, box.x, box.y);
-    check("the highlight is actually painted (pixel changed)", JSON.stringify(highlighted) !== JSON.stringify(plain), true);
-    await typeKeys(session, "l");
-    const two = await selState();
-    check("l extends the visual selection", two.end - two.start, 2);
+    check("the highlight pixel is not the background any more", JSON.stringify(highlighted) !== JSON.stringify(plain), true);
+    const widthOne = one[0].w;
+    await typeKeys(session, "lll");
+    const four = await boxes();
+    check("the highlight grows with the selection", four[0].w > widthOne, true);
+    await typeKeys(session, "j");
+    check("the highlight follows across lines", (await boxes()).length >= 2, true);
     await sendKey(session, "Escape");
-    const back = await selState();
-    check("Esc collapses the selection", back.end - back.start, 0);
+    check("Esc clears the highlight", (await boxes()).length, 0);
 
     await typeKeys(session, "V");
-    const lineSel = await selState();
-    check("V selects the whole line (including its newline)", lineSel.end - lineSel.start >= 16, true);
+    const lineBoxes = await boxes();
+    check("V highlights the whole line", lineBoxes.length >= 1 && lineBoxes[0].w >= 300, true);
+    await typeKeys(session, "j");
+    check("V extends to a second line", (await boxes()).length >= 2, true);
     await sendKey(session, "Escape");
+
+    // focus moves between fields: the caret must follow
+    await evaluate(session, "document.getElementById('single').focus()");
+    await sleep(80);
+    check("the caret follows focus to the other field", await visibleCarets(), 1);
+    check("...and the textarea's caret is gone", await evaluate(session, "document.getElementById('single').closest('body') && getComputedStyle(document.querySelectorAll('.jsbarevi-caret')[0]).display"), "none");
+    await evaluate(session, "document.getElementById('field').focus()");
 
     // --- :e through a TextEditAid-compatible server -----------------------
     const beforeEditor = await field();

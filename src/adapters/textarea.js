@@ -10,6 +10,7 @@
 import { Engine, Mode } from "../engine/engine.js";
 import { BlockCaret } from "./caret.js";
 import { HttpEditorSession } from "./editor-session.js";
+import { SelectionHighlight } from "./highlight.js";
 
 export class TextareaAdapter {
   constructor(el, opts = {}) {
@@ -28,16 +29,21 @@ export class TextareaAdapter {
     this.onPrompt = opts.onPrompt;
     // A hairline caret is invisible as a vi cursor: normal/visual get a block.
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
+    this.highlight = new SelectionHighlight(el);
     this._bound = {
       keydown: (e) => this._onKeydown(e),
       input: () => this.syncFromHost(),
-      blur: () => this.engine.reset(),
+      // Only the focused field may show a caret or a highlight: two fields on one
+      // page must not both look active.
+      blur: () => { this.engine.reset(); this.caret?.hide(); this.highlight.clear(); this.onModeChange?.(this.engine.mode, ""); },
+      focus: () => { this.el.style.caretColor = ""; this._emitMode(); },
     };
     this._bound.scroll = () => this._updateCaret();
-    this._bound.resize = () => { this.caret?.invalidate(); this._updateCaret(); };
+    this._bound.resize = () => { this.caret?.invalidate(); this.highlight.invalidate(); this._updateCaret(); };
     el.addEventListener("keydown", this._bound.keydown, true);
     el.addEventListener("input", this._bound.input);
     el.addEventListener("blur", this._bound.blur);
+    el.addEventListener("focus", this._bound.focus);
     el.addEventListener("scroll", this._bound.scroll);
     window.addEventListener("resize", this._bound.resize);
     // `:e` needs a transport; without one the engine reports why instead.
@@ -60,10 +66,12 @@ export class TextareaAdapter {
     this.el.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
     this.el.removeEventListener("blur", this._bound.blur);
+    this.el.removeEventListener("focus", this._bound.focus);
     this.el.removeEventListener("scroll", this._bound.scroll);
     window.removeEventListener("resize", this._bound.resize);
     this.el.style.caretColor = "";
     this.caret?.destroy();
+    this.highlight?.destroy();
   }
 
   describe() {
@@ -79,24 +87,39 @@ export class TextareaAdapter {
 
   _emitMode() {
     this.onModeChange?.(this.engine.mode, this.engine.pending?.count || "");
+    const focused = document.activeElement === this.el;
     const insert = this.engine.mode === Mode.INSERT;
     // hide the native hairline caret in normal/visual, show ours instead
-    this.el.style.caretColor = insert ? "" : "transparent";
-    if (insert) this.caret?.hide();
+    this.el.style.caretColor = insert || !focused ? "" : "transparent";
+    if (insert || !focused) { this.caret?.hide(); this.highlight.clear(); }
     else this._updateCaret();
   }
 
   _updateCaret() {
-    if (!this.caret) return;
-    if (this.engine.mode === Mode.INSERT) { this.caret.hide(); return; }
+    if (document.activeElement !== this.el) { this.caret?.hide(); this.highlight.clear(); return; }
+    if (this.engine.mode === Mode.INSERT) { this.caret?.hide(); this.highlight.clear(); return; }
     const linewise = this.engine.mode === Mode.VISUAL_LINE;
-    this.caret.update(this.engine.cursor, { linewise });
+    this.caret?.update(this.engine.cursor, { linewise });
+    const sel = this.engine.visualSelection();
+    if (sel) this.highlight.update(sel.from, sel.to, this.engine.text, { linewise: sel.linewise });
+    else this.highlight.clear();
   }
 
   _onKeydown(e) {
     if (e.isComposing) return; // IME: never touch it
     const key = this._token(e);
     if (key == null) return;
+
+    if (key === "C-c") {
+      const text = this.engine.visualText();
+      if (text) {
+        e.preventDefault();
+        e.stopPropagation();
+        navigator.clipboard?.writeText(text).catch(() => {});
+        this.onStatus?.(`copied ${text.length} chars`);
+        return;
+      }
+    }
 
     const r = this.engine.feed(key);
     this._emitMode();
@@ -128,22 +151,10 @@ export class TextareaAdapter {
 
   _commit() {
     if (this.el.value !== this.engine.text) this.el.value = this.engine.text;
-    const sel = this.engine.visualSelection();
-    if (sel) {
-      // VISUAL / VISUAL LINE: paint the range with the native selection so the
-      // highlight is the host's own (and therefore matches the field's theme).
-      const from = Math.min(sel.from, this.el.value.length);
-      const to = Math.min(sel.to, this.el.value.length);
-      if (from === to) {
-        const c = Math.min(this.engine.cursor, this.el.value.length);
-        this.el.setSelectionRange(c, c);
-      } else {
-        this.el.setSelectionRange(from, to, sel.linewise ? "backward" : "forward");
-      }
-    } else {
-      const c = Math.min(this.engine.cursor, this.el.value.length);
-      this.el.setSelectionRange(c, c);
-    }
+    // The overlay paints the selection; the native selection stays collapsed so
+    // the two never double-paint (and the OS highlight is too weak to rely on).
+    const c = Math.min(this.engine.cursor, this.el.value.length);
+    this.el.setSelectionRange(c, c);
     this._updateCaret();
   }
 
@@ -171,6 +182,7 @@ export class TextareaAdapter {
     };
     if (e.ctrlKey && !e.altKey && !e.metaKey) {
       const k = e.key.toLowerCase();
+      if (k === "c") return "C-c";
       if (["r", "w", "u", "d", "f", "b", "e", "y", "g"].includes(k)) return `C-${k}`;
       return null;
     }

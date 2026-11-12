@@ -1041,6 +1041,12 @@ export class Engine {
     return { handled: true };
   }
 
+  /** Text of the current visual selection (for Ctrl-C). */
+  visualText() {
+    const sel = this.visualSelection();
+    return sel ? this.text.slice(sel.from, sel.to) : "";
+  }
+
   /** Public: the current visual selection, or null when not in visual mode. */
   visualSelection() {
     if (this.mode !== Mode.VISUAL && this.mode !== Mode.VISUAL_LINE) return null;
