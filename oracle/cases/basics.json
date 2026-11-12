@@ -1,0 +1,118 @@
+{
+  "about": "Baseline behaviour that the engine must reproduce. Expectations are pinned by measurement (vim -N with pinned options decides behaviour); where a reference disagrees, the case records the divergence explicitly instead of hiding it.",
+  "cases": [
+    {
+      "name": "j moves one buffer line",
+      "input": "one\ntwo\nthree\n",
+      "keys": "jj",
+      "expect": {
+        "line": 3,
+        "col": 1
+      }
+    },
+    {
+      "name": "count on j",
+      "input": "a\nb\nc\nd\ne\n",
+      "keys": "3j",
+      "expect": {
+        "line": 4,
+        "col": 1
+      }
+    },
+    {
+      "name": "j at the last line stays put",
+      "input": "a\nb\n",
+      "keys": "jjj",
+      "expect": {
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "x deletes the character under the cursor",
+      "input": "abc\n",
+      "keys": "x",
+      "expect": {
+        "text": "bc\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "dd removes the line and keeps the cursor on the next one",
+      "input": "a\nb\nc\n",
+      "keys": "jdd",
+      "expect": {
+        "text": "a\nc\n",
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "J joins with a single space",
+      "input": "a\nb\n",
+      "keys": "J",
+      "expect": {
+        "text": "a b\n",
+        "line": 1
+      }
+    },
+    {
+      "name": "~ flips the case of the character under the cursor",
+      "input": "abc\n",
+      "keys": "~",
+      "expect": {
+        "text": "Abc\n",
+        "line": 1,
+        "col": 2
+      }
+    },
+    {
+      "name": "% jumps to the matching bracket",
+      "input": "if (x) {\n}\n",
+      "keys": "9l%",
+      "expect": {
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "dG deletes to the end of the buffer",
+      "input": "one\ntwo\nthree\n",
+      "keys": "jdG",
+      "expect": {
+        "text": "one\n"
+      }
+    },
+    {
+      "name": "gg goes to the first line (nvi has no gg)",
+      "input": "a\nb\nc\n",
+      "keys": "Ggg",
+      "engines": [
+        "vim",
+        "busybox"
+      ],
+      "expect": {
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "S changes the line (busybox has no S: it is a commented stub)",
+      "input": "  indented\nnext\n",
+      "keys": "Sx<Esc>",
+      "expect_by_engine": {
+        "vim": {
+          "text": "x\nnext\n"
+        },
+        "nvi": {
+          "text": "x\nnext\n"
+        }
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
+    }
+  ]
+}

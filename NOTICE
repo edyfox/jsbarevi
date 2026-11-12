@@ -1,0 +1,67 @@
+# NOTICE
+
+This product includes software derived from **Input Vim** (MIT), and refers to
+behaviour defined by **busybox vi** (GPLv2) and **nvi** (BSD-3-clause).
+
+## Input Vim — inherited code
+
+The following notice is retained as required by the MIT license:
+
+```
+Copyright (c) Matheus Kieling and Input Vim contributors
+https://github.com/matheuskieling/vim-input
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+Files that carry inherited code or derive from it are marked with an
+`SPDX-FileCopyrightText: Matheus Kieling and Input Vim contributors` header and
+`SPDX-License-Identifier: MIT`.
+
+## busybox vi — specification only, no code
+
+BusyBox is distributed under **version 2 of the GNU General Public License**
+(v2 only). **No BusyBox source code is present in this repository, and none is
+translated into it.** `editors/vi.c` was read as a specification for command
+behaviour, scope and edge cases; the JavaScript engine is written from the
+observed behaviour and from `docs/target-surface.md`.
+
+If any BusyBox-derived code ever needs to enter this repository, the project
+must be relicensed as GPLv2 first. It has not been, and the intent is that it
+never is: the design deliberately keeps busybox at the distance of a
+*specification*.
+
+## nvi — reference only
+
+nvi is distributed under the BSD-3-clause license (Copyright (c) 1991-1994 The
+Regents of the University of California; Keith Bostic; Sven Verdoolaege; Zhihao
+Yuan). No nvi source code is present in this repository. It is used to settle
+behavioural questions where busybox and Vim disagree.
+
+## TextEditAid — protocol only
+
+TextEditAid's source "can be freely used however you wish". This project
+implements a **compatible wire protocol** for the `:e` escape hatch so that an
+existing `edit-server.py` can be used unchanged. No TextEditAid code is copied.
+
+## Trademarks
+
+"vi" is a historical editor interface, not a trademark of this project. Vim, Neovim,
+BusyBox and nvi are the property of their respective owners; this project is not
+affiliated with or endorsed by any of them.
