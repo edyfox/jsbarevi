@@ -176,8 +176,10 @@ sigil itself leaves it, with focus back in the field. `Esc` and `Ctrl-C` cancel.
 | backspace ×7 → `:` deleted | exits | exits | exits | exits |
 
 Because a stale cached page is indistinguishable from a broken one, every page
-prints its build: `[jsbarevi] 0.1.0+dev attached to textarea` in the console, and
-the fixture shows the build next to its title.
+prints its build in three places: `[jsbarevi] 0.1.0+<commit> attached to textarea`
+in the console, next to the fixture's title, and — the one that matters when a key
+"doesn't work" — in the field itself via `:version`. A tab that was loaded before
+your last change keeps its old modules; `no-store` only helps once you reload.
 
 VISUAL and VISUAL LINE paint their own **overlay**: one box per selected line
 segment, measured with the same mirror technique as the caret, stretched to the

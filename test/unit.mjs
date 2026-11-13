@@ -432,5 +432,13 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   eq("insert mode still just adopts the host's text", e.hostText, "Xabc");
 }
 
+{
+  // :version carries the build, so a stale page is identifiable from inside the field
+  const e = mk("abc\n", 0, { version: "0.1.0+abc1234" });
+  e.feed(":");
+  const r = e.submitPrompt("version");
+  eq(":version reports the build, not just the semver", r.ex.message, "jsbarevi 0.1.0+abc1234");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

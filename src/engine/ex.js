@@ -254,6 +254,8 @@ export function runEx(engine, line) {
     return { ok: true, message: out.join("$\\n") + "$" };
   }
   if (cmd === "set" || cmd === "se") return applySet(engine, args);
+  // vim's :version reports the build, and here it is the only in-field way to tell
+  // a stale page from a broken one.
   if (cmd === "version" || cmd === "ve") return { ok: true, message: `jsbarevi ${engine.version || "0.1.0"}` };
   if (cmd === "features") {
     return { ok: true, message: "jsbarevi: no ex mode, no macros, no block visual, JS regex, marks, registers, visual, viewport" };

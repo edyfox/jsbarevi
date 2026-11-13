@@ -90,6 +90,9 @@ export function attach(el, opts = {}) {
   if (typeof console !== "undefined") console.info(`[jsbarevi] ${BUILD} attached to`, el.tagName.toLowerCase());
   const adapter = new TextareaAdapter(el, {
     ...opts,
+    // the full stamp, not just the semver: ":version" is the in-field way to tell
+    // one commit from another, which is what a stale page looks like from inside
+    version: BUILD,
     onStatus: (msg, kind) => ui.status(msg, kind),
     onModeChange: (mode, count) => ui.setMode(mode, count),
     onPrompt: (kind, initial) => {

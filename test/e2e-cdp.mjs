@@ -753,6 +753,17 @@ async function main() {
     const mY = await rowOfCursor();
     check("M lands between the two", mY >= firstRowY && mY <= lY, true);
 
+    // :version is the in-field way to tell a stale page from a broken one: it must
+    // report the commit the page actually loaded, not just the semver.
+    await evaluate(session, "document.getElementById('field').focus()");
+    await typeKeys(session, ":");
+    await evaluate(session, "window.jsbarevi.textarea.adapter.finishPrompt('ex', 'version')");
+    await sleep(30);
+    const versionLine = await evaluate(session, "document.querySelector('.jsbarevi-line')?.textContent || ''");
+    check(":version reports the build the page loaded",
+      /jsbarevi 0\.1\.0\+[0-9a-f]{7}/.test(versionLine), true);
+    check("...the same one entry.BUILD exposes", versionLine.includes((await evaluate(session, "window.jsbarevi.build")).replace(/^0\.1\.0\+/, "")), true);
+
     console.log("\n\x1b[1mreplace mode: R\x1b[0m");
     const REPLACE_TEXT = "alpha beta\ngamma";
     await evaluate(session, `(() => {
