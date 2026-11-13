@@ -51,6 +51,9 @@ export class Engine {
     this.viewport = opts.viewport || null; // () => ({top, height}) in buffer lines
     // (offset) => {x, y, width, height} in content coordinates, for screen lines.
     this.metrics = opts.metrics || null;
+    // () => {from, to} | null: the character range visible in a horizontally
+    // scrolled, non-wrapping field, in buffer offsets on the cursor's line.
+    this.hscroll = opts.hscroll || null;
     // The vertical wish, in SCREEN space, for gj/gk - separate from desiredCol,
     // which is in buffer columns for j/k. `g$` sets desireRowEnd instead.
     this.desiredX = null;
@@ -364,7 +367,7 @@ export class Engine {
     }
     if (p.gPending) {
       p.gPending = false;
-      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$" }[key];
+      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$", "^": "g^" }[key];
       if (gmotion) return this._doMotion(gmotion);
       return { handled: true }; // an unmapped g-command: swallow both keys
     }
@@ -447,7 +450,7 @@ export class Engine {
   _resolveMotionKey(key) {
     const named = new Set([
       "h", "l", "j", "k", "w", "b", "e", "W", "B", "E", "0", "^", "$",
-      "g0", "g$", "gj", "gk",
+      "g0", "g$", "g^", "gj", "gk",
       "{", "}", "(", ")", "%", "n", "N", "*", "#", "|", "+", "-", "_",
       "CR", " ", "H", "M", "L", "G", "gg", "/", "?",
     ]);
@@ -672,6 +675,19 @@ export class Engine {
     return lo;
   }
 
+  /**
+   * The visible column window of a horizontally scrolled field. With 'wrap' off the
+   * screen line is only the VISIBLE part of a long line, so vim's g0/g$/g^ are relative
+   * to that window rather than to the line (measured: `:help g0` - "when 'wrap' is off,
+   * this goes to the first character of the display line"). Null when the host cannot
+   * report one, which is the wrapping case where the row model already covers it.
+   */
+  _hscrollWindow() {
+    if (typeof this.hscroll !== "function") return null;
+    const w = this.hscroll();
+    return w && typeof w.from === "number" && typeof w.to === "number" && w.to >= w.from ? w : null;
+  }
+
   /** Document screen row of an offset (0-based), or null without a measurement. */
   _rowIndex(offset) {
     const p = this._point(offset);
@@ -803,13 +819,32 @@ export class Engine {
         return { to: C.endLine(text, B.lineOffset(text, line)), charwise: true, inclusive: true };
       }
       case "g0": {
+        const win = this._hscrollWindow();
+        if (win) return { to: win.from, charwise: true };
         const row = this._screenRow(cur);
         return { to: row ? row.start : C.beginLine(text, cur), charwise: true };
       }
       case "g$": {
+        const win = this._hscrollWindow();
+        if (win) return { to: win.to, charwise: true, inclusive: true };
         const row = this._screenRow(cur);
         if (!row) return { to: C.endLine(text, cur), charwise: true, inclusive: true };
         return { to: row.end, charwise: true, inclusive: true };
+      }
+      case "g^": {
+        // first non-blank of the SCREEN line: the visible window when the field scrolls
+        // horizontally, otherwise the wrapped row
+        const win = this._hscrollWindow();
+        let from;
+        let to;
+        if (win) { from = win.from; to = win.to; } else {
+          const row = this._screenRow(cur);
+          from = row ? row.start : C.beginLine(text, cur);
+          to = row ? row.end : C.endLine(text, cur);
+        }
+        let k = from;
+        while (k < to && B.isBlank(text[k])) k = B.nextChar(text, k);
+        return { to: k, charwise: true };
       }
       case "gj": case "gk": {
         const r = this._screenVertical(name === "gj" ? 1 : -1, count);
@@ -1736,7 +1771,7 @@ export class Engine {
     if (key === "g") { p.gPending = true; return { handled: true }; }
     if (p.gPending) {
       p.gPending = false;
-      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$" }[key];
+      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$", "^": "g^" }[key];
       if (gmotion) {
         const m = this._motion(gmotion, this._takeCount(1), {});
         if (m) this.state.cursor = Math.max(0, Math.min(m.to, Math.max(0, this.text.length - 1)));

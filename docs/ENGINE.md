@@ -494,3 +494,34 @@ does not have and every offset past the first wrap was wrong. The mirror now for
 `pre` for inputs, and it re-copies the whole text-affecting style on every use, because
 a field can change (a theme class, a container resize, a `<textarea>` switched to
 `nowrap`) long after attach.
+
+## Horizontal scrolling: the screen line is only the VISIBLE part
+
+With `'wrap'` off the "screen line" is not the buffer line either - it is the slice of the
+line that is currently on screen, and vim's `g0`/`g$`/`g^` are relative to *that*
+(`:help g0`: "when 'wrap' is off, this goes to the first character of the display line").
+
+So the host answers one more question, in buffer offsets on the cursor's line:
+
+```js
+hscroll() -> { from, to } | null     // null when the field wraps
+```
+
+`TextareaAdapter.hscrollWindow()` binary-searches the caret mirror for the offsets at
+`scrollLeft` and `scrollLeft + clientWidth` (content space, the same space the mirror
+reports). With it:
+
+| command | wrapping field | nowrap, scrolled field |
+|---|---|---|
+| `g0` | first character of the row | first character on SCREEN |
+| `g$` | last character of the row | last character on SCREEN |
+| `g^` | first non-blank of the row | first non-blank on SCREEN |
+| `0 $ ^` | line start / end / first non-blank | unchanged - still the LINE |
+
+Two things to keep straight, because they are the same word in vim and different things
+here: the **row** model (wrap on) and the **column window** (wrap off). Both are gated on
+a host capability, and both fall back to the buffer line when the host cannot answer - so
+a field that cannot measure still behaves predictably.
+
+The e2e fixture now has a third field, `#hscroll`, with `white-space: pre` and horizontal
+scrolling, so this path is exercised rather than assumed.

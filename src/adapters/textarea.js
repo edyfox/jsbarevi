@@ -37,6 +37,9 @@ export class TextareaAdapter {
       // scrolling) has exactly one screen row per buffer line, so the answer is
       // arithmetic - see metricsFor().
       metrics: (offset) => this.metricsFor(offset),
+      // g0/g$/g^ are relative to the visible COLUMN window when the field scrolls
+      // horizontally instead of wrapping; null when it wraps (the row model covers it).
+      hscroll: () => this.hscrollWindow(),
       onStatus: (msg, kind) => this.onStatus?.(msg, kind),
       onScroll: (line) => this.scrollToLine(line),
       describeBuffer: () => opts.describeBuffer?.() ?? this.describe(),
@@ -140,6 +143,52 @@ export class TextareaAdapter {
     if (this.el.tagName === "INPUT") return false;
     const ws = getComputedStyle(this.el).whiteSpace;
     return ws === "normal" || ws === "pre-wrap" || ws === "pre-line" || ws === "break-spaces";
+  }
+
+  /**
+   * The character range visible in a horizontally scrolled, non-wrapping field, as
+   * buffer offsets on the CURSOR's line - so `g0` goes to the first character on
+   * screen, `g$` to the last one on screen, and `g^` to the first non-blank between
+   * them, which is what vim does when 'wrap' is off (`:help g0`: "when 'wrap' is off,
+   * this goes to the first character of the display line").
+   *
+   * Null when the field wraps: there the screen line is a wrapped row, which the row
+   * model already answers.
+   */
+  hscrollWindow() {
+    if (this.wraps() || !this.caret) return null;
+    const el = this.el;
+    const t = this.engine.text;
+    const cur = Math.max(0, Math.min(this.engine.cursor, Math.max(0, t.length - 1)));
+    const start = B.lineStart(t, cur);
+    const end = B.lastCharOffset(t, cur);
+    if (end <= start) return null;
+    const xAt = (off) => this.caret.contentPoint(off).x;
+    // a window is measured from the content origin, and scrollLeft is in the same
+    // space, so the visible slice is [scrollLeft, scrollLeft + clientWidth]
+    const left = this._offsetAtX(start, end, el.scrollLeft, xAt, false);
+    const right = this._offsetAtX(start, end, el.scrollLeft + el.clientWidth, xAt, true);
+    return { from: left, to: Math.max(left, right) };
+  }
+
+  /** First (or last) offset in [start, end] whose content x is at `x`. */
+  _offsetAtX(start, end, x, xAt, last) {
+    let lo = start;
+    let hi = end;
+    if (last) {
+      // largest offset with x <= target
+      while (lo < hi) {
+        const mid = lo + ((hi - lo + 1) >> 1);
+        if (xAt(mid) <= x) lo = mid; else hi = mid - 1;
+      }
+      return lo;
+    }
+    // smallest offset with x >= target
+    while (lo < hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      if (xAt(mid) < x) lo = mid + 1; else hi = mid;
+    }
+    return lo;
   }
 
   /**

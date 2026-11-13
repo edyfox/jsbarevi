@@ -22,7 +22,7 @@ A command may only be excluded for one of three reasons:
 | Family | Commands |
 |---|---|
 | Motions, characters/lines | `h l j k ^H ^J ^N ^P <space> + - _ ^M 0 $ ^ \|` |
-| Motions, screen lines | `gj gk g0 g$` — see the note below |
+| Motions, screen lines | `gj gk g0 g$ g^` — see the note below |
 | Motions, words | `w b e W B E` |
 | Motions, paragraphs/sentences | `{ } ( )` |
 | Jumps and search | `f F t T ; , % / ? n N * # ^A G gg` |
@@ -69,9 +69,11 @@ different place depending on which mode you were in. They are gated on a `metric
 capability and degrade to `j k 0 $` without it, which is the same shape as the
 viewport commands.
 
-What they displace: `gm`, `g^`, `gM`, `g'`, `gE`, `g_` are **not** added. One
-family — row start, row end, one row up, one row down — is what a text field
-actually needs.
+What they displace: `gm`, `gM`, `g'`, `gE`, `g_` are **not** added. One family — row
+start, row end, one row up, one row down, first non-blank — is what a text field
+actually needs. (`g^` joined them on 2026-11-13, because with `'wrap'` off it is the
+only way to reach the first non-blank of the *visible* window, which is a real place in a
+horizontally scrolling field.)
 
 ## The `:` line: busybox parity
 

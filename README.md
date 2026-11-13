@@ -104,7 +104,7 @@ cursor does **not** need to be inside — a backwards search for an unmatched op
 then a forwards search for the next one), insert entries, replace mode (`R`), `r x X s S C D Y ~ J < > p P u U .`,
 marks (as motions too: a plain jump, under an operator — `d`a` — and extending a
 visual selection), registers, `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
-`G gg H M L z`, the screen-line motions `gj gk g0 g$`, `C-b C-d C-e C-f C-u C-y`,
+`G gg H M L z`, the screen-line motions `gj gk g0 g$ g^`, `C-b C-d C-e C-f C-u C-y`,
 search via `/ ? n N * #`, the `:` line
 (`s d y = list set version features file e w q x`) with ranges and the
 translate/refuse regex contract, and the viewport capability.
@@ -132,7 +132,11 @@ viewport — they count **screen rows**, so they stay correct on wrapped text.
 Fields that do not wrap — an `<input>`, or a `<textarea>` with `white-space: pre` and
 horizontal scrolling — take a shortcut that is not a special case but a simplification:
 one buffer line is one screen row, so rows are line numbers and columns are character
-indices, computed rather than measured.
+indices, computed rather than measured. There is a second, odder consequence that vim
+shares: with `'wrap'` off, `g0`/`g$`/`g^` are relative to the **visible column window**
+rather than to the line, so after scrolling sideways `g0` goes to the first character on
+screen. `0`/`$`/`^` keep their line meaning. The fixture's `#hscroll` field is there to
+exercise exactly this.
 
 `'joinspaces'` is not implemented: vim can insert two spaces after a sentence-ending
 punctuation when joining, nvi never does, and this engine follows the `nojoinspaces`

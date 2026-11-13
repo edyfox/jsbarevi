@@ -815,6 +815,48 @@ async function main() {
       inputProbe.mirrorWhiteSpace, "pre");
     check("two spaces take two cells", inputProbe.spaceCells.slice(0, 2), [inputProbe.spaceCells[0], inputProbe.spaceCells[0]]);
 
+    console.log("\n\x1b[1mhorizontal scrolling: g0/g$/g^ follow the visible window\x1b[0m");
+    // With 'wrap' off the screen line is only the VISIBLE part of a long line, so vim's
+    // g0/g$/g^ are relative to that window - not to the line, and not to the buffer.
+    const hs = await evaluate(session, `(() => {
+      const el = document.getElementById('hscroll');
+      const a = window.jsbarevi.hscroll.adapter;
+      a.engine.setText("0123456789 abcdefghij ABCDEFGHIJ klmnopqrst uvwxyz the quick brown fox jumps over the lazy dog 0123456789 end", 0);
+      a._commit(); a._emitMode(); el.focus();
+      const wraps = a.wraps();
+      const scrollable = el.scrollWidth > el.clientWidth;
+      // unscrolled first
+      el.scrollLeft = 0;
+      a.engine.feed("$");  const dollar = a.engine.cursor;
+      a.engine.feed("g"); a.engine.feed("0"); const g0Unscrolled = a.engine.cursor;
+      a.engine.feed("g"); a.engine.feed("$"); const gDollarUnscrolled = a.engine.cursor;
+      // now scroll far right and ask again
+      el.scrollLeft = 300;
+      a.engine.feed("g"); a.engine.feed("0"); const g0Scrolled = a.engine.cursor;
+      a.engine.feed("g"); a.engine.feed("$"); const gDollarScrolled = a.engine.cursor;
+      a.engine.feed("g"); a.engine.feed("^"); const gCaretScrolled = a.engine.cursor;
+      const win = a.hscrollWindow();
+      return { wraps, scrollable, dollar, g0Unscrolled, gDollarUnscrolled,
+               g0Scrolled, gDollarScrolled, gCaretScrolled, win,
+               text: el.value, scrollLeft: el.scrollLeft };
+    })()`);
+    check("the horizontal fixture does not wrap", hs.wraps, false);
+    check("...and its line is wider than the field", hs.scrollable, true);
+    check("$ is still the END OF THE LINE", hs.dollar, hs.text.length - 1);
+    check("g0 unscrolled is the line start", hs.g0Unscrolled, 0);
+    check("g$ unscrolled stops at the last VISIBLE character, not the line end",
+      hs.gDollarUnscrolled < hs.dollar, true);
+    check("g0 scrolled goes to the first character on screen, not the line start",
+      hs.g0Scrolled > 0, true);
+    check("...which is where the window says it starts", hs.g0Scrolled, hs.win.from);
+    check("g$ scrolled stops where the window ends", hs.gDollarScrolled, hs.win.to);
+    check("g^ scrolled lands on a non-blank inside the window",
+      [hs.gCaretScrolled >= hs.win.from, hs.gCaretScrolled <= hs.win.to], [true, true]);
+    check("0 is still the line start regardless of scrolling", await (async () => {
+      const r = await evaluate(session, "(() => { const a = window.jsbarevi.hscroll.adapter; a.engine.feed('0'); return a.engine.cursor; })()");
+      return r;
+    })(), 0);
+
     console.log("\n\x1b[1mno wrapping means a line IS a row: exact, no measurement\x1b[0m");
     // When the field does not wrap, screen rows and buffer lines coincide, so the
     // engine's screen-line machinery reduces to arithmetic. That makes gj == j and the

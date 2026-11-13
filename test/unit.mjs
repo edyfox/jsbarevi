@@ -499,5 +499,36 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   eq("k after a click uses the clicked column (0), not the old wish (3)", e.cursor, 0);
 }
 
+{
+  // With 'wrap' off the screen line is only the VISIBLE part of a long line, so g0/g$/
+  // g^ are relative to that window (measured: vim's :help g0). The host reports the
+  // window as a character range on the cursor's line.
+  const text = "0123456789 abcdefghij ABCDEFGHIJ\nsecond line\n";
+  const mkWin = (from, to) => new Engine({ hscroll: () => ({ from, to }) });
+  // offsets: "0123456789" is 0-9, space at 10, "abcdefghij" 11-20, space at 21,
+  // "ABCDEFGHIJ" 22-31, newline at 32. A window of 21..27 starts ON the space.
+  const e = mkWin(21, 27);
+  e.setText(text, 0);
+  e.feed("g"); e.feed("0");
+  eq("g0 goes to the first character in the window", e.cursor, 21);
+  e.feed("g"); e.feed("$");
+  eq("g$ goes to the last character in the window", e.cursor, 27);
+  e.feed("g"); e.feed("^");
+  eq("g^ goes to the first non-blank inside the window", e.cursor, 22);
+  e.feed("0");
+  eq("0 is still the line start", e.cursor, 0);
+  e.feed("$");
+  eq("$ is still the line end", e.cursor, 31);
+
+  const noWindow = new Engine({});
+  noWindow.setText(text, 0);
+  noWindow.feed("g"); noWindow.feed("0");
+  eq("without a window g0 is the line start", noWindow.cursor, 0);
+  noWindow.feed("g"); noWindow.feed("$");
+  eq("...and g$ the line end", noWindow.cursor, 31);
+  noWindow.feed("l"); noWindow.feed("g"); noWindow.feed("^");
+  eq("...and g^ the first non-blank of the line", noWindow.cursor, 0);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
