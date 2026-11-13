@@ -38,6 +38,8 @@ export const COMMANDS = [
   "sZ<Esc>", "SZ<Esc>", "CZ<Esc>", "2sZ<Esc>", "RXY<Esc>",
   // marks: a jump, a jump with an operator, a yank, and a jump in visual mode
   "ma`a", "ma'a", "mad`a", "may`a", "mav`ad",
+  // the cursor after a put depends on the register kind, so both kinds are here
+  "vjyp", "yyjp",
   "iZ<Esc>", "aZ<Esc>", "IZ<Esc>", "AZ<Esc>", "oZ<Esc>", "OZ<Esc>", "3iZ<Esc>",
   "0", "^", "G", "gg", "h", "l", "j", "k",
   "2J", "r<Esc>", "%",

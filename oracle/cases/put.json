@@ -1,0 +1,40 @@
+{
+  "about": "Where the cursor lands after a paste, by register kind. Measured 2026-11-13: a CHARWISE register that contains a line break leaves the cursor on the FIRST inserted character, a single-line charwise register on the LAST, and a linewise register on the first pasted line. nvi and busybox only agree on the linewise cases (their pty harness does not do the visual yank these cases need), so the charwise multi-line cases run vim-only. The rule matters because it decides where the NEXT command applies - a paste followed by `.` or `p` was inserting in the wrong place.",
+  "cases": [
+    {
+      "name": "a multi-line charwise paste puts the cursor on its FIRST character",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "vjyp",
+      "expect": { "text": "aabcdef\ngbcdef\nghijkl\nmnopqr\n", "line": 1, "col": 2 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "...and the same for P",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "vjyP",
+      "expect": { "text": "abcdef\ngabcdef\nghijkl\nmnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "...also when the paste starts at the end of a line",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "vjy$p",
+      "expect": { "text": "abcdefabcdef\ng\nghijkl\nmnopqr\n", "line": 1, "col": 7 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "a linewise paste puts the cursor on the first pasted line",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "yyjp",
+      "expect": { "text": "abcdef\nghijkl\nabcdef\nmnopqr\n", "line": 3, "col": 1 },
+      "engines": ["vim", "nvi", "busybox"]
+    },
+    {
+      "name": "...and P on the line it went above",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "yyjP",
+      "expect": { "text": "abcdef\nabcdef\nghijkl\nmnopqr\n", "line": 2, "col": 1 },
+      "engines": ["vim", "nvi", "busybox"]
+    }
+  ]
+}

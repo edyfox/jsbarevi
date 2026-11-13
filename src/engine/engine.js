@@ -1505,7 +1505,8 @@ export class Engine {
 
   _put(count, before) {
     const reg = this.registers.get(this.pending.reg || '"') || this.registers.get('"');
-    if (!reg) { this.onStatus("register empty", "error"); return { handled: true }; }
+    // an empty register has nothing to insert, and must not move the cursor either
+    if (!reg || reg.text === "") { this.onStatus("register empty", "error"); return { handled: true }; }
     const text = this.text;
     const cur = this.state.cursor;
     this._pushUndo({ text, cursor: cur });
@@ -1521,10 +1522,14 @@ export class Engine {
       this._setText(text.slice(0, insertAt) + (needsNewline ? "\n" : "") + payload.replace(/\n$/, "") + "\n" + text.slice(insertAt));
       this.state.cursor = B.firstNonBlank(this.state.text, insertAt + (needsNewline ? 1 : 0));
     } else {
-      insertAt = before ? cur : Math.min(text.length, B.nextChar(text, cur));
-      if (B.isLineEmpty(text, cur) && text.length > 0 && cur >= text.length) insertAt = text.length;
+      // `p` inserts after the cursor's character - but an EMPTY line has no character,
+      // so the paste lands at the line start (measured: on "a\n\nb\n" with the cursor
+      // on the empty line, `p` puts the text there and pushes the line break along).
+      insertAt = before || B.isLineEmpty(text, cur) ? cur : Math.min(text.length, B.nextChar(text, cur));
       this._setText(text.slice(0, insertAt) + payload + text.slice(insertAt));
-      this.state.cursor = Math.max(0, insertAt + payload.length - 1);
+      // measured (vim): a charwise register that CONTAINS a line break leaves the
+      // cursor on the FIRST inserted character; a single-line one on the last.
+      this.state.cursor = payload.includes("\n") ? insertAt : Math.max(0, insertAt + payload.length - 1);
     }
     this._noteChange({ kind: "put", count, before });
     return { handled: true, edit: true };
@@ -1693,7 +1698,24 @@ export class Engine {
       return { from, to, linewise: true };
     }
     const from = Math.min(a, b);
-    const to = Math.min(text.length, B.nextChar(text, Math.max(a, b)));
+    const last = Math.max(a, b);
+    // A charwise selection excludes the trailing newline of its last line - measured:
+    // `v$y` on "abcdef" yanks "abcdef", and `vjy` on "abcdef\ngh\n" yanks
+    // "abcdef\ng". An EMPTY last line is the exception: its only character IS the
+    // line break, and vim includes it (`vjy` on "a\n\nb\n" yanks "a\n\n"), while a
+    // selection that never leaves an empty line is empty (`v y` on an empty buffer
+    // yanks nothing, not "\n").
+    let to;
+    if (text[last] === "\n") {
+      // the cursor is ON a line break - an empty line, or the tail of a text object.
+      // That break is part of the selection, unless it is the buffer's own terminator:
+      // an empty buffer and an empty LAST line select nothing (measured).
+      to = last < text.length - 1 ? B.nextChar(text, last) : last;
+    } else {
+      // ... and a charwise selection excludes the trailing newline of its last line
+      // (measured: `v$y` yanks "abcdef", not "abcdef\n")
+      to = Math.min(B.lineEnd(text, last), B.nextChar(text, last));
+    }
     return { from, to, linewise: false };
   }
 

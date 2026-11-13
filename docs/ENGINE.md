@@ -434,3 +434,29 @@ Found while pinning the cases, not fixed: after a paste, the cursor for a CHARWI
 register that contains a newline differs (vim leaves it at the start of the pasted text,
 we put it at the end). Separate rule, separate measurement; recorded in the session
 notes rather than guessed at.
+
+## Where a put leaves the cursor, and what a visual selection covers
+
+The reported bug ("paste lands the cursor on the wrong character") was one rule; the
+audit found three more around it, all measured:
+
+- **The cursor after a put depends on the register kind.** A charwise register that
+  CONTAINS a line break leaves the cursor on the FIRST inserted character; a
+  single-line charwise register on the LAST; a linewise register on the first pasted
+  line. That matters because the next command (`.`, `p`, or a motion) starts there.
+- **`p` on an empty line inserts at the LINE START**, not after the line's newline -
+  the empty line has no character to paste after.
+- **A charwise visual selection excludes its last line's trailing newline** (`v$y`
+  yanks "abcdef", and `vjy` on "abcdef\ngh\n" yanks "abcdef\ng"), EXCEPT when the
+  cursor sits on the line break itself: an empty line selects its own break
+  (`v d` deletes the line, `v y` yanks "\n"), a text object can park the cursor there,
+  and a break that does not exist (an empty buffer, an empty last line) selects
+  nothing. Getting this wrong made `v y` on an empty buffer yank "\n", so `p` added a
+  line where vim does nothing.
+- **An empty register pastes nothing** - it must not nudge the cursor either.
+
+One reference quirk NOT followed: in this harness's `-N -u NONE` vim, visual `$` lands
+one column past the end when the line has a following line, so `v$y` yanks
+"abcdef\n" on a multi-line buffer but "abcdef" on a single-line one. Our engine always
+takes the line (the documented behaviour, and what nvi does), and nothing in the
+3000-combination sweep depends on the difference.
