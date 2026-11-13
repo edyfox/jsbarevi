@@ -228,11 +228,12 @@ permission justifications, screenshots and the privacy policy are in `store/`
 
 **In an Electron host (OpenCode Desktop, VS Code-family).** Copy `dist/` into the
 host's unpacked-extension directory (for OpenCode,
-`~/.local/share/opencode-desktop-extensions/jbarevi/`) and restart. The host patch is
-what makes the app's `oc://` window receive content scripts at all; see
-`_local/scratchpad/ext-injection/opencode.md` for the loader's rules. Two consequences
-specific to that world: settings fall back to `localStorage` (`chrome.storage` is not
-there), and `:e` needs a `pyTextFilter` that allows the `oc://` origin.
+`~/.local/share/opencode-desktop-extensions/jbarevi/`) and restart. A host patch is what
+makes an app's `oc://` window receive content scripts at all: Electron rejects custom
+schemes in content-script match patterns, so such hosts inject the extension's content
+scripts into the page world themselves. Two consequences specific to that world: settings
+fall back to `localStorage` (`chrome.storage` is not there), and `:e` needs a
+`pyTextFilter` that allows the `oc://` origin.
 
 ## Test traps that cost real time
 

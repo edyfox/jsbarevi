@@ -43,6 +43,24 @@ all.
 | `activeTab` | Lets the popup identify the current site when you click the toolbar icon, so you can turn the extension off for that site. |
 | `http://127.0.0.1/*`, `http://localhost/*` | The `:e` request to your own local editor server. |
 
+## Limited Use disclosure
+
+jsbarevi's use of any data it touches is limited to its single purpose — providing vi
+keybindings for text fields:
+
+- **Allowed use:** field text is read only to display and edit it in the field you are
+  focused on. Nothing is used for any other purpose.
+- **No transfer:** nothing is sold, transferred or disclosed to anyone. There is no
+  server, no analytics and no third party.
+- **No advertising:** no data is used or transferred for personalised, re-targeted or
+  interest-based advertising.
+- **No human reading:** no human — including the developer — can read what you type.
+  There is no channel for it to reach anyone.
+- **Local only:** the three settings described above are the only thing stored, and they
+  live in your browser's extension storage.
+
+This disclosure applies to the whole extension, not to a subset of features.
+
 ## Contact
 
 Open an issue in the project repository, or write to the address published with

@@ -55,7 +55,7 @@ async function main() {
 
   const banner = `/* jsbarevi ${versionName} — built ${new Date().toISOString()}\n`
     + ` * one classic script: the engine (src/) bundled for a content script.\n`
-    + ` * source: https://github.com/<you>/jsbarevi — MIT */`;
+    + ` * source: https://github.com/edyfox/jsbarevi — MIT */`;
 
   await esbuild.build({
     entryPoints: [path.join(EXT, "src", "content.js")],

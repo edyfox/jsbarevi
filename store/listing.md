@@ -65,7 +65,7 @@ click a chat box, a comment field or a search bar.
 Privacy: no analytics, no accounts, no network requests except the one you
 configure yourself for :e (to your own machine).
 
-Source and issue tracker: <repository URL>
+Source and issue tracker: https://github.com/edyfox/jsbarevi
 Licence: MIT
 ```
 

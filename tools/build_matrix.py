@@ -5,10 +5,13 @@ Every support column is derived from source (parse functions below), not from
 recall. Only the Verdict column carries judgement, and it is written out
 explicitly in VERDICTS so each decision is auditable and easy to overturn.
 """
+import os
 import re
 from pathlib import Path
 
-REPOS = Path.home() / "workspace/collectx-monorepo/_repos"
+# Checkouts of the reference projects (nvi2, busybox). Not vendored here: point the
+# variable at wherever you cloned them.
+REPOS = Path(os.environ.get("JSBAREVI_REPOS", Path.home() / "src"))
 OUT = Path(__file__).resolve().parent
 
 # --------------------------------------------------------------------------- nvi

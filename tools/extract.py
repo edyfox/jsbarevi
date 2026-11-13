@@ -4,12 +4,16 @@
 Source-derived only: nothing here is recalled from memory. Output is plain
 text lists consumed by the feature-matrix document.
 """
+import os
 import re
 import subprocess
 from pathlib import Path
 
-REPOS = Path.home() / "workspace/collectx-monorepo/_repos"
-OUT = Path.home() / "workspace/collectx-monorepo/_local/scratchpad/ext-injection/vi-minimal-2026-11-12"
+# Where the reference sources live (nvi2, busybox) and where the lists go. Both are
+# configurable because they are checkouts of OTHER projects: clone them wherever you
+# like and point these at them.
+REPOS = Path(os.environ.get("JSBAREVI_REPOS", Path.home() / "src"))
+OUT = Path(os.environ.get("JSBAREVI_OUT", Path.cwd() / "out/reference-lists"))
 OUT.mkdir(parents=True, exist_ok=True)
 
 
