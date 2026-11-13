@@ -119,8 +119,11 @@ export class Engine {
     const grown = hostText.length - prev.length;
     if (grown === 0) {
       if (hostText === prev) { this.setText(hostText, hostCursor); return; } // just a caret move
-      this.replaceSession = null;                                            // a real replacement elsewhere
+      // something replaced text in place (a framework rewriting the value, an IME
+      // commit, a paste). Adopt it and REBASE rather than dropping the session:
+      // silently becoming insert mode is exactly what the user cannot see.
       this.setText(hostText, hostCursor);
+      this.replaceSession = { at: Math.min(hostCursor, B.hostText(this.text).length), snap: B.hostText(this.text), typed: "" };
       return;
     }
     // the edit must continue (or shorten) the typed run; anything else - a click
@@ -133,8 +136,10 @@ export class Engine {
     } else if (grown < 0 && prefix + (-grown) >= session.at && prefix + (-grown) <= typedEnd) {
       session.typed = session.typed.slice(0, session.typed.length + grown);
     } else {
-      this.replaceSession = null;
+      // an edit that did not extend the typed run (a click elsewhere, IME, paste):
+      // adopt it, then continue replacing from where the cursor now is
       this.setText(hostText, hostCursor);
+      this.replaceSession = { at: Math.min(hostCursor, B.hostText(this.text).length), snap: B.hostText(this.text), typed: "" };
       return;
     }
     let consumed = 0;

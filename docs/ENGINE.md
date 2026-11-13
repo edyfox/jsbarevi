@@ -377,7 +377,11 @@ snap[0 .. at) + typed + snap[at + consumed ..)
 `typed` is tracked by diffing each host edit against the previous text (the
 browser's insertion at the caret, or its Backspace), and `consumed` counts how
 much of the original to drop, stopping at a newline so replacing never eats across
-a line break. Two properties fall out for free:
+a line break. An edit that does not extend the typed run - a click elsewhere, an
+IME commit, a framework rewriting the value - is adopted and the session is
+**rebased** at the new cursor rather than dropped: replace mode must not silently
+become insert mode, because that is the one change a user cannot see. Three
+properties fall out for free:
 
 - **Backspace restores the replaced character**, because the text is recomputed
   from the snapshot with a shorter `typed`, not patched in place.

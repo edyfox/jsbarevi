@@ -779,10 +779,23 @@ async function main() {
       "-- REPLACE --");
     await typeKeys(session, "X");
     check("typing overwrites instead of inserting", await field(), "Xlpha beta\ngamma");
+    // vim shows a BLOCK in replace mode: it marks the character about to be eaten,
+    // and a beam would say "insert".
+    const replaceCaret = await evaluate(session, `(() => {
+      const n = document.querySelector('.jsbarevi-caret');
+      const shown = n && getComputedStyle(n).display !== 'none';
+      return { shown: !!shown, native: getComputedStyle(document.getElementById('field')).caretColor };
+    })()`);
+    check("replace mode shows the block caret", replaceCaret.shown, true);
+    check("...and hides the native beam", replaceCaret.native, "rgba(0, 0, 0, 0)");
     await typeKeys(session, "Y");
     check("and the next character", await field(), "XYpha beta\ngamma");
     await sendKey(session, "Backspace");
     check("Backspace restores the character it replaced", await field(), "Xlpha beta\ngamma");
+    await sendKey(session, "Escape");
+    check("Esc returns to normal mode's block", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgba(0, 0, 0, 0)");
+    await typeKeys(session, "i");
+    check("only plain insert shows the native beam", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgb(238, 238, 238)");
     await sendKey(session, "Escape");
     await typeKeys(session, "u");
     check("one undo puts the whole replace back", await field(), REPLACE_TEXT);

@@ -294,20 +294,23 @@ export class TextareaAdapter {
 
   _emitMode() {
     // replace mode IS insert mode as far as the host is concerned (the browser
-    // types), but the badge should say what vim says.
-    const label = this.engine.replaceSession ? "REPLACE" : this.engine.mode;
+    // types), but vim shows a BLOCK there: the block marks the character about to
+    // be overwritten, which is the whole point of the mode. So only plain insert
+    // gets the native beam.
+    const replace = !!this.engine.replaceSession;
+    const label = replace ? "REPLACE" : this.engine.mode;
     this.onModeChange?.(label, this.engine.pending?.count || "");
     const focused = document.activeElement === this.el;
-    const insert = this.engine.mode === Mode.INSERT;
-    // hide the native hairline caret in normal/visual, show ours instead
-    this.el.style.caretColor = insert || !focused ? "" : "transparent";
-    if (insert || !focused) { this.caret?.hide(); this.highlight.clear(); }
+    const beam = this.engine.mode === Mode.INSERT && !replace;
+    this.el.style.caretColor = beam || !focused ? "" : "transparent";
+    if (beam || !focused) { this.caret?.hide(); this.highlight.clear(); }
     else this._updateCaret();
   }
 
   _updateCaret() {
     if (document.activeElement !== this.el) { this.caret?.hide(); this.highlight.clear(); return; }
-    if (this.engine.mode === Mode.INSERT) { this.caret?.hide(); this.highlight.clear(); return; }
+    // replace mode keeps the block: it is how the mode tells you what it will eat
+    if (this.engine.mode === Mode.INSERT && !this.engine.replaceSession) { this.caret?.hide(); this.highlight.clear(); return; }
     const linewise = this.engine.mode === Mode.VISUAL_LINE;
     this.caret?.update(this.engine.cursor, { linewise });
     const sel = this.engine.visualSelection();

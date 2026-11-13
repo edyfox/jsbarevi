@@ -425,6 +425,28 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   e.feed("Esc");
 }
 {
+  // An edit we did not predict (a framework rewriting the value, an IME commit,
+  // a paste) must NOT end replace mode: silently becoming insert mode is the one
+  // failure the user cannot see.
+  const e = mk("abcdef\n");
+  e.feed("R");
+  const type = (ch) => {
+    const v = e.hostText;
+    const c = e.cursor;
+    e.applyHostEdit(v.slice(0, c) + ch + v.slice(c), c + 1);
+  };
+  type("X");
+  eq("replace is running", e.hostText, "Xbcdef");
+  e.applyHostEdit("ZZZdef", 3);                    // a foreign, in-place rewrite
+  eq("a foreign edit is adopted", e.hostText, "ZZZdef");
+  eq("...and replace mode SURVIVES it", !!e.replaceSession, true);
+  type("Q");   // the foreign edit left the cursor at 3, so Q overwrites 'd'
+  eq("...so the next character still overwrites", e.hostText, "ZZZQef");
+  e.feed("Esc");
+  eq("only Esc ends it", e.replaceSession, null);
+}
+
+{
   // a plain insert is untouched: the host's text is the truth
   const e = mk("abc\n");
   e.feed("i");
