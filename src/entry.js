@@ -193,6 +193,11 @@ export function attach(el, opts = {}) {
   return {
     adapter,
     engine: adapter.engine,
+    // The extension claims a field on focus; a key can arrive first (an SPA that
+    // re-renders its composer and focuses the new node, a field that existed before
+    // the content script). Hand that key to the adapter directly — a listener added
+    // during dispatch never sees the event that is already in flight.
+    keydown: (e) => adapter._onKeydown(e),
     destroy() {
       adapter.destroy();
       ui.promptEl.removeEventListener("keydown", onPromptKey, true);

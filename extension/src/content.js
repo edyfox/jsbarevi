@@ -115,19 +115,44 @@ function shouldAttach() {
  * first), and the window is short and attempt-capped so a host with a focus loop can
  * never turn into a fight.
  */
+/**
+ * Diagnostics a person can actually use: every line is prefixed and says what the
+ * extension saw, so one Escape plus one key in the tab console explains the behaviour
+ * without guesswork. Content-script logs show up in the page's console.
+ */
+function trace(message) {
+  try { console.info(`[jsbarevi] ${message}`); } catch { /* no console */ }
+}
+
+function nameOf(node) {
+  if (!node) return "nowhere";
+  const tag = (node.tagName || "?").toLowerCase();
+  const id = node.id ? `#${node.id}` : "";
+  const mode = node.getAttribute?.("data-jsbarevi-mode");
+  const slot = node.getAttribute?.("data-slot") || node.getAttribute?.("data-component");
+  return `${tag}${id}${slot ? `[${slot}]` : ""}${mode ? ` (${mode})` : ""}`;
+}
+
 let escapeGuardUntil = 0;
 let escapeAttempts = 0;
 let pointerAt = 0;
-const ESCAPE_GUARD_MS = 600;
+const ESCAPE_GUARD_MS = 1200;
 
 document.addEventListener("pointerdown", () => { pointerAt = Date.now(); }, true);
 document.addEventListener("mousedown", () => { pointerAt = Date.now(); }, true);
 
 function guardEscape(el, handle) {
-  const onFocusOut = () => {
-    if (Date.now() > escapeGuardUntil) return;
-    if (Date.now() - pointerAt < ESCAPE_GUARD_MS) return;      // the user clicked away: let them
-    if (escapeAttempts >= 3) return;
+  const onFocusOut = (e) => {
+    const to = e.relatedTarget;
+    if (Date.now() > escapeGuardUntil) {
+      trace(`focusout -> ${nameOf(to)} (guard closed)`);
+      return;
+    }
+    if (Date.now() - pointerAt < ESCAPE_GUARD_MS) {             // the user clicked away: let them
+      trace(`focusout -> ${nameOf(to)} (pointer, not reclaiming)`);
+      return;
+    }
+    if (escapeAttempts >= 3) { trace(`focusout -> ${nameOf(to)} (attempt cap reached)`); return; }
     // Decide AFTER the focus settles. Inside focusout, document.activeElement is still
     // the old node (or body) — Chrome has not moved it yet — so an "is the prompt taking
     // focus?" test made here answers wrong, and the guard then stole focus back from our
@@ -139,13 +164,14 @@ function guardEscape(el, handle) {
       if (now === el) return;
       // Our own prompt owns focus while it is open; reclaiming it would swallow every
       // `:` the user types.
-      if (now && now.hasAttribute && now.hasAttribute("data-jsbarevi-ui")) return;
+      if (now && now.hasAttribute && now.hasAttribute("data-jsbarevi-ui")) {
+        trace("focusout -> our own command line (not reclaiming)");
+        return;
+      }
       escapeAttempts++;
       // Say who took it: if a host keeps stealing focus this line names the culprit in
       // the console instead of leaving us guessing from symptoms.
-      try {
-        console.info(`[jsbarevi] focus reclaimed from ${now ? (now.tagName || "?").toLowerCase() + (now.id ? "#" + now.id : "") : "nowhere"}`);
-      } catch { /* no console */ }
+      trace(`focus reclaimed from ${nameOf(now)} (attempt ${escapeAttempts})`);
       el.focus({ preventScroll: true });
     });
   };
@@ -295,6 +321,30 @@ globalThis.addEventListener?.("jsbarevi:suspend", (e) => {
 });
 
 document.addEventListener("focusin", onFocusIn, true);
+
+/**
+ * Claim a field the moment a key lands in it.
+ *
+ * Focus is normally the trigger, but a host can replace the composer node on Escape (a
+ * re-render) and focus the new one: focusin fires, our attach is asynchronous, and the
+ * key that follows can arrive first and be swallowed — which is indistinguishable from
+ * "I have to press a second key". Handing the key straight to the freshly built adapter
+ * closes that window, because a listener added during dispatch never sees the event.
+ */
+function onKeydownClaim(e) {
+  const el = e.composedPath?.()[0] ?? e.target;
+  if (!isEligible(el) || active.has(el)) return;
+  settingsReady.then(() => {
+    if (!shouldAttach() || active.has(el)) return;
+    const handle = attachField(el);
+    if (handle) {
+      trace(`claimed ${nameOf(el)} on keydown (no focus event had arrived)`);
+      handle.keydown(e);
+    }
+  });
+}
+
+document.addEventListener("keydown", onKeydownClaim, true);
 
 /**
  * The field that already has focus when we arrive.

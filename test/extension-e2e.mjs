@@ -243,6 +243,18 @@ async function main() {
     await typeKeys(page, "x");
     check("the first key after Escape acts as NORMAL", await evaluate(page, "document.getElementById('ce').textContent"), "rose");
 
+    // An app can also re-render the composer on Escape and focus the NEW node: the key
+    // that follows then belongs to an element we have never seen. It must still act.
+    await evaluate(page, `(() => {
+      const el = document.getElementById('ce');
+      const clone = el.cloneNode(true);
+      el.replaceWith(clone);
+      clone.focus();
+      return true;
+    })()`);
+    await typeKeys(page, "x");
+    check("a re-rendered composer still takes the first key", await evaluate(page, "document.getElementById('ce').textContent"), "ose");
+
     // A programmatic blur() is a function call, so no key handler can stop it: the
     // MAIN-world patch is what keeps the field focused.
     await evaluate(page, "document.getElementById('ce').blur()");
