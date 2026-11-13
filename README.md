@@ -181,6 +181,14 @@ in the console, next to the fixture's title, and — the one that matters when a
 "doesn't work" — in the field itself via `:version`. A tab that was loaded before
 your last change keeps its old modules; `no-store` only helps once you reload.
 
+The stamp itself has to be honest, and a file cannot be: `src/build-info.js` is
+written by `tools/stamp-build.mjs`, which runs *before* a commit, so the committed
+file describes the previous commit — a stale label on current code, which is the
+exact confusion the label exists to prevent. So the **dev server computes the stamp
+per request** from `git rev-parse` (`tools/build-id.mjs`, the one definition of the
+build identity, shared with the stamp script and with packaging). Reloading is now
+enough; the label can only ever describe what is being served.
+
 VISUAL and VISUAL LINE paint their own **overlay**: one box per selected line
 segment, measured with the same mirror technique as the caret, stretched to the
 field's right edge in linewise mode. The native selection is collapsed while the

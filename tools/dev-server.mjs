@@ -13,6 +13,7 @@
 // Then open http://127.0.0.1:8080/test/e2e.html and press `:e`.
 
 import { createServer, request } from "node:http";
+import { currentBuild, buildInfoSource } from "./build-id.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +38,19 @@ const MIME = {
 
 const server = createServer((req, res) => {
   const url = decodeURIComponent((req.url || "/").split("?")[0]);
+
+  // The build stamp is computed PER REQUEST, not served from the file on disk: a
+  // file stamped before a commit describes the previous commit forever, which puts a
+  // stale label on current code. Serving it live means the label can only ever
+  // describe what is being served right now.
+  if (url === "/src/build-info.js") {
+    res.writeHead(200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(buildInfoSource(currentBuild({ cwd: ROOT })));
+    return;
+  }
 
   if (url === "/edit" && req.method !== "POST") {
     // Health probe. Never proxies as POST: that would launch the editor.
