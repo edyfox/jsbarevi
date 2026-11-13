@@ -362,3 +362,38 @@ caret is drawn at the row's right edge instead of on its character. The mirror's
 width is now re-read on every measurement and a `ResizeObserver` invalidates it,
 because "the element got narrower without the window resizing" is a normal event
 in a web page and was indistinguishable from a rendering bug.
+
+## Replace mode when the host owns insert mode
+
+`R` overwrites instead of inserting. The problem is that the browser does the
+typing: we never see the character the user typed, only the input event that
+follows it. So the engine keeps a snapshot of the field when `R` was pressed and
+rebuilds the buffer on every host edit:
+
+```
+snap[0 .. at) + typed + snap[at + consumed ..)
+```
+
+`typed` is tracked by diffing each host edit against the previous text (the
+browser's insertion at the caret, or its Backspace), and `consumed` counts how
+much of the original to drop, stopping at a newline so replacing never eats across
+a line break. Two properties fall out for free:
+
+- **Backspace restores the replaced character**, because the text is recomputed
+  from the snapshot with a shorter `typed`, not patched in place.
+- **the whole session is one undo step**, because the block opened by `R` does not
+  close until insert mode ends.
+
+Measured after implementing, not before: vim, busybox and nvi all agree on
+overwriting, Backspace restore, and appending past the end of a line
+(`oracle/cases/replace.json`). Only the undo case separates them — busybox's
+per-operation undo leaves just the last piece, the same deviation recorded in
+`oracle/cases/undo.json`.
+
+**One convention worth stating once:** a `<textarea>` value is line-*separated*
+(`"a\nb\n"` is three lines, the last one empty) while the engine's buffer is
+line-*terminated*. `buffer.js:fromField()` is the single conversion, used by the
+adapter and by the test harness that simulates a host. Without it, a field value
+ending in a newline silently loses its empty last line — which is exactly how a
+second copy of the host-typing shim in the test suite went unnoticed until replace
+mode needed it.

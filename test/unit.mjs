@@ -325,5 +325,112 @@ const wrapMetrics = (text, perRow, charW = 10, lineH = 20) => {
   eq("v then gj extends the selection by a screen row", e.visualText(), "bcdef");
 }
 
+// The viewport family speaks SCREEN ROWS: viewport() reports clientHeight/lineHeight
+// rows, and feeding a row to lineOffset() is wrong the moment a line wraps. These
+// all run through the same measurement the g-motions use.
+console.log("\n\x1b[1mviewport commands in screen rows\x1b[0m");
+{
+  // 16 characters, 4 per row: rows are 0-3, 4-7, 8-11, 12-15. A 4-row window
+  // starting at the top means H/L/M must land on rows 0 / 3 / 2.
+  const text = "abcdefghijklmnop\n";
+  const m = wrapMetrics(text, 4);
+  const vp = { top: 0, height: 4 };
+  const mk = () => new Engine({ metrics: m, viewport: () => vp });
+  const go = (keys) => { const e = mk(); e.setText(text, 0); e.feedKeys(keys); return e; };
+  eq("H lands on the first row", go("H").cursor, 0);
+  eq("M lands on the middle row", go("M").cursor, 8);
+  eq("L lands on the last visible row", go("L").cursor, 12);
+  eq("2L counts from the bottom", go("2L").cursor, 8);
+  eq("H from row 0 of a scrolled window uses vp.top", (() => { vp.top = 1; const e = go("H"); vp.top = 0; return e.cursor; })(), 4);
+  const scrolled = [];
+  const e = new Engine({ metrics: m, viewport: () => vp, onScroll: (r) => scrolled.push(r) });
+  e.setText(text, 0);
+  e.feed("C-f");
+  eq("C-f moves the cursor a page of rows down", e.cursor, 8);
+  eq("...and scrolls the window by the same rows", scrolled.at(-1), 2);
+  const h = new Engine({ metrics: m, viewport: () => vp, onScroll: (r) => scrolled.push(r) });
+  h.setText(text, 0);
+  h.feed("C-d");
+  eq("C-d moves half a page of rows", h.cursor, 8);
+  eq("...scrolling by the same amount", scrolled.at(-1), 2);
+  const z = new Engine({ metrics: m, viewport: () => vp, onScroll: (r) => scrolled.push(r) });
+  z.setText(text, 8);                       // row 2
+  z.feedKeys("zt");
+  eq("zt scrolls the cursor's ROW to the top", scrolled.at(-1), 2);
+  z.feedKeys("zb");
+  eq("zb scrolls its row to the bottom of the window", scrolled.at(-1), 0);
+}
+{
+  // Without a measurement the old buffer-line behaviour is all a host can do.
+  const vp = { top: 0, height: 3 };
+  const e = new Engine({ viewport: () => vp });
+  e.setText("a\nb\nc\nd\ne\n", 0);
+  e.feedKeys("L");
+  eq("L without measurement still counts buffer lines", e.text.slice(0, e.cursor).split("\n").length, 3);
+}
+
+// Replace mode: insert is the host's, so the engine reconstructs the text from a
+// snapshot taken when R was pressed, and tracks what was typed by diffing. That is
+// what makes Backspace put the overwritten character back.
+console.log("\n\x1b[1mreplace mode: R\x1b[0m");
+{
+  // Simulate the host: it types at the caret and reports the new value.
+  const hostType = (e, ch) => {
+    const v = e.hostText;
+    const c = Math.min(e.cursor, v.length);
+    e.applyHostEdit(v.slice(0, c) + ch + v.slice(c), c + 1);
+  };
+  const hostBackspace = (e) => {
+    const v = e.hostText;
+    const c = Math.min(e.cursor, v.length);
+    if (c === 0) return;
+    e.applyHostEdit(v.slice(0, c - 1) + v.slice(c), c - 1);
+  };
+  const e = mk("abcdef\n");
+  e.feed("R");
+  eq("R enters insert mode", e.mode, "INSERT");
+  eq("...with a replace session", !!e.replaceSession, true);
+  hostType(e, "X");
+  eq("typing overwrites the character under the cursor", e.hostText, "Xbcdef");
+  hostType(e, "Y");
+  eq("and the next one", e.hostText, "XYcdef");
+  eq("the cursor follows the typed run", e.cursor, 2);
+  hostBackspace(e);
+  eq("Backspace restores the character it replaced", e.hostText, "Xbcdef");
+  hostBackspace(e);
+  eq("...and the one before that", e.hostText, "abcdef");
+  hostType(e, "Z");
+  eq("retyping after backing out still overwrites", e.hostText, "Zbcdef");
+  e.feed("Esc");
+  eq("Esc ends the session", e.replaceSession, null);
+  eq("...and the whole replace is ONE undo step", e.undoStack.length, 1);
+  e.feed("u");
+  eq("one u puts the original line back", e.hostText, "abcdef");
+}
+{
+  // past the end of the line R appends instead of eating the next line
+  const e = mk("ab\ncd\n");
+  e.feed("R");
+  const type = (ch) => {
+    const v = e.hostText;
+    const c = e.cursor;
+    e.applyHostEdit(v.slice(0, c) + ch + v.slice(c), c + 1);
+  };
+  type("Z");
+  eq("the first character overwrites the one under the cursor", e.hostText, "Zb\ncd");
+  type("W");
+  eq("the second overwrites the next one", e.hostText, "ZW\ncd");
+  type("V");
+  eq("typing past the end of the line appends instead of eating the newline", e.hostText, "ZWV\ncd");
+  e.feed("Esc");
+}
+{
+  // a plain insert is untouched: the host's text is the truth
+  const e = mk("abc\n");
+  e.feed("i");
+  e.applyHostEdit("Xabc", 1);
+  eq("insert mode still just adopts the host's text", e.hostText, "Xabc");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

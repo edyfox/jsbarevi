@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Engine, Mode } from "../../src/engine/engine.js";
+import { fromField } from "../../src/engine/buffer.js";
 
 const TOKENS = {
   "<Esc>": "Esc", "<CR>": "CR", "<Tab>": "Tab", "<BS>": "BS",
@@ -57,13 +58,19 @@ export function runVim(input, keys, { options = {} } = {}) {
   return { text: normalise(fs.readFileSync(file, "utf8")), line, col };
 }
 
-function hostType(engine, key) {
-  const t = engine.text;
-  const c = engine.cursor;
-  if (key === "BS") { if (c > 0) engine.setText(t.slice(0, c - 1) + t.slice(c), c - 1); return; }
-  if (key === "CR") { engine.setText(t.slice(0, c) + "\n" + t.slice(c), c + 1); return; }
-  if (key === "Tab") { engine.setText(t.slice(0, c) + "\t" + t.slice(c), c + 1); return; }
-  if (key.length === 1) engine.setText(t.slice(0, c) + key + t.slice(c), c + key.length);
+// The host's edit, exactly as the textarea adapter performs it: applyHostEdit, not
+// setText, because replace mode has to drop what the browser overwrote.
+function hostEdit(engine, nextText, nextCursor) {
+  engine.applyHostEdit(fromField(nextText), nextCursor);
+}
+
+export function hostType(engine, key) {
+  const t = engine.hostText;
+  const c = Math.min(engine.cursor, t.length);
+  if (key === "BS") { if (c > 0) hostEdit(engine, t.slice(0, c - 1) + t.slice(c), c - 1); return; }
+  if (key === "CR") { hostEdit(engine, t.slice(0, c) + "\n" + t.slice(c), c + 1); return; }
+  if (key === "Tab") { hostEdit(engine, t.slice(0, c) + "\t" + t.slice(c), c + 1); return; }
+  if (key.length === 1) hostEdit(engine, t.slice(0, c) + key + t.slice(c), c + key.length);
 }
 
 /** Run the same keystrokes in our engine with a minimal host for insert mode. */

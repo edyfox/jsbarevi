@@ -44,6 +44,9 @@ export class Engine {
     this.pending = this._emptyPending();
     this.visual = null;
     this.insertEntry = null;
+    // Replace mode (R): insert is the host's, so what was overwritten has to be
+    // reconstructed from a snapshot of the field at entry. See applyHostEdit().
+    this.replaceSession = null;
     this.prompt = null;
     this.viewport = opts.viewport || null; // () => ({top, height}) in buffer lines
     // (offset) => {x, y, width, height} in content coordinates, for screen lines.
@@ -94,6 +97,52 @@ export class Engine {
     const at = Math.max(0, Math.min(hostOffset, Math.max(0, t.length - 1)));
     this.state.cursor = B.clampToLineEnd(t, at, at);
     this._stayOffNewline();
+  }
+
+  /**
+   * The host applied an edit while insert mode owns the keyboard. In plain insert
+   * the host's text IS the truth. In REPLACE mode (R) it is not: the browser
+   * inserts, so the text it displaced has to be dropped. Recomputed from the
+   * snapshot taken when R was pressed:
+   *
+   *     snap[0 .. at) + typed + snap[at + consumed ..)
+   *
+   * `typed` is tracked by diffing the host's edits, which is what makes Backspace
+   * restore the replaced character for free - recomputing from the snapshot puts
+   * the original back. `consumed` stops at a newline, because replacing never eats
+   * across a line break: typing past the end of the line appends, as in vim.
+   */
+  applyHostEdit(hostText, hostCursor) {
+    const session = this.replaceSession;
+    if (!session) { this.setText(hostText, hostCursor); return; }
+    const prev = this.hostText;
+    const grown = hostText.length - prev.length;
+    if (grown === 0) {
+      if (hostText === prev) { this.setText(hostText, hostCursor); return; } // just a caret move
+      this.replaceSession = null;                                            // a real replacement elsewhere
+      this.setText(hostText, hostCursor);
+      return;
+    }
+    // the edit must continue (or shorten) the typed run; anything else - a click
+    // elsewhere, IME, a paste - ends replace tracking and takes the host's text
+    let prefix = 0;
+    while (prefix < prev.length && prefix < hostText.length && prev[prefix] === hostText[prefix]) prefix++;
+    const typedEnd = session.at + session.typed.length;
+    if (grown > 0 && prefix >= session.at && prefix <= typedEnd) {
+      session.typed += hostText.slice(prefix, prefix + grown);
+    } else if (grown < 0 && prefix + (-grown) >= session.at && prefix + (-grown) <= typedEnd) {
+      session.typed = session.typed.slice(0, session.typed.length + grown);
+    } else {
+      this.replaceSession = null;
+      this.setText(hostText, hostCursor);
+      return;
+    }
+    let consumed = 0;
+    const snap = session.snap;
+    while (consumed < session.typed.length
+      && session.at + consumed < snap.length
+      && snap[session.at + consumed] !== "\n") consumed++;
+    this.setText(snap.slice(0, session.at) + session.typed + snap.slice(session.at + consumed), hostCursor);
   }
 
   /**
@@ -487,7 +536,8 @@ export class Engine {
       const vp = this._viewport();
       this.pending = this._emptyPending();
       if (!vp) { this.onStatus("no viewport on this host", "error"); return { handled: true }; }
-      const line = B.lineNumber(this.text, this.state.cursor);
+      const row = this._rowIndex(this.state.cursor);
+      const line = row ?? B.lineNumber(this.text, this.state.cursor);
       const target = key === "t" ? line : key === "b" ? Math.max(0, line - vp.height + 1) : Math.max(0, line - Math.floor(vp.height / 2));
       this.onScroll(target);
       return { handled: true };
@@ -591,6 +641,55 @@ export class Engine {
       if (a && b && Math.abs(a.x - x) <= Math.abs(b.x - x)) return lo - 1;
     }
     return lo;
+  }
+
+  /** Document screen row of an offset (0-based), or null without a measurement. */
+  _rowIndex(offset) {
+    const p = this._point(offset);
+    if (!p) return null;
+    return Math.round(p.y / Math.max(1, p.height));
+  }
+
+  /**
+   * The offset on screen row `row`, at the screen column nearest `x` - what a
+   * viewport command needs, because `viewport()` speaks rows (clientHeight /
+   * lineHeight) and feeding a row to lineOffset() is wrong the moment anything
+   * wraps. Null when the row does not exist (before the top, after the bottom).
+   */
+  _offsetAtRow(row, x = 0) {
+    const t = this.text;
+    const last = Math.max(0, t.length - 1);
+    const p0 = this._point(0);
+    if (!p0) return null;
+    const h = Math.max(1, p0.height);
+    const rowOf = (i) => Math.round(this._point(i).y / h);
+    if (row < 0) return null;
+    // a window taller than the buffer asks for a row that does not exist: vim
+    // clamps H/M/L to the last line, so clamp to the last row rather than refusing
+    const lastRow = rowOf(last);
+    if (row > lastRow) row = lastRow;
+    let lo = 0, hi = last;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rowOf(mid) < row) lo = mid + 1; else hi = mid;
+    }
+    if (rowOf(lo) !== row) return null;
+    const rowStart = lo;
+    let a = rowStart, b = last;
+    while (a < b) {
+      const mid = (a + b + 1) >> 1;
+      if (rowOf(mid) === row) a = mid; else b = mid - 1;
+    }
+    return this._offsetNearX(rowStart, a, x);
+  }
+
+  /** Where a viewport command lands: the row's own start, or the first non-blank
+   *  when that row also begins its buffer line (H/M/L in vim go to the
+   *  first non-blank of the LINE, which a wrapped row may be in the middle of). */
+  _rowLanding(row, x = 0) {
+    const at = this._offsetAtRow(row, x);
+    if (at == null) return null;
+    return at === B.lineStart(this.text, at) ? B.firstNonBlank(this.text, at) : at;
   }
 
   /** `gj`/`gk`: the row above or below, at the same screen column. */
@@ -748,11 +847,16 @@ export class Engine {
       case "H": case "M": case "L": {
         const vp = this._viewport();
         if (!vp) { this.onStatus("no viewport on this host", "error"); return null; }
+        const here = this._point(cur);
+        const row = name === "H" ? vp.top + count - 1
+          : name === "L" ? vp.top + vp.height - count
+            : vp.top + Math.floor(vp.height / 2);
+        // a screen row is the unit the viewport speaks, so the target is a row
+        const landing = this._rowLanding(row, here ? here.x : 0);
+        if (landing != null) return { to: landing, linewise: true };
+        // no measurement on this host: fall back to counting buffer lines
         const lastLine = B.lineCount(text) - 1;
-        let line;
-        if (name === "H") line = Math.min(lastLine, vp.top + count - 1);
-        else if (name === "L") line = Math.max(vp.top, Math.min(lastLine, vp.top + vp.height - count));
-        else line = Math.min(lastLine, vp.top + Math.floor(vp.height / 2));
+        const line = Math.max(0, Math.min(lastLine, row));
         return { to: B.firstNonBlank(text, B.lineOffset(text, line)), linewise: true };
       }
       case "/": case "?": {
@@ -1441,7 +1545,11 @@ export class Engine {
         this.state.cursor = s;
         break;
       }
-      case "R": /* replace mode is approximated by insert; documented deviation */ break;
+      case "R":
+        // R overwrites instead of inserting. The host still does the typing, so the
+        // session keeps what the field looked like when R was pressed.
+        this.replaceSession = { at: entry, snap: B.hostText(text), typed: "" };
+        break;
       default: this.state.cursor = entry; break;
     }
     // capture the baseline AFTER the entry's own edit, otherwise the newline that
@@ -1454,6 +1562,7 @@ export class Engine {
     if (key === "Esc") {
       const entry = this.insertEntry;
       this.insertEntry = null;
+      this.replaceSession = null;
       this.mode = Mode.NORMAL;
       let repeated = false;
       if (entry) {
@@ -1647,17 +1756,35 @@ export class Engine {
     const vp = this._viewport();
     if (!vp) { this.onStatus("no viewport on this host", "error"); return { handled: true }; }
     const step = Math.max(1, vp.height - 2);
+    const row = Math.max(0, vp.top + dir * step);
+    const landing = this._rowLanding(row, 0);
+    if (landing != null) {
+      // vim puts the cursor on the first line of the new page
+      this.state.cursor = landing;
+      this.onScroll(row);
+      return { handled: true };
+    }
     const r = this._vertical(step, dir);
     this.state.cursor = B.firstNonBlank(this.text, B.lineOffset(this.text, B.lineNumber(this.text, r.to)));
-    this.onScroll(Math.max(0, B.lineNumber(this.text, this.state.cursor) - (dir > 0 ? 0 : vp.height - 1)));
+    this.onScroll(Math.max(0, vp.top + dir * step));
     return { handled: true };
   }
   _halfPage(dir) {
     const vp = this._viewport();
     const step = vp ? Math.max(1, Math.floor(vp.height / 2)) : this._takeCount(20);
+    const here = this._point(this.state.cursor);
+    const curRow = this._rowIndex(this.state.cursor);
+    if (vp && here && curRow != null) {
+      // the cursor moves half a page of ROWS and the window follows it, keeping
+      // the screen column - which is what vim's C-d/C-u do
+      const row = Math.max(0, curRow + dir * step);
+      const at = this._offsetAtRow(row, here.x);
+      if (at != null) this.state.cursor = at;
+      this.onScroll(Math.max(0, vp.top + dir * step));
+      return { handled: true };
+    }
     const r = this._vertical(step, dir);
     this.state.cursor = r.to;
-    if (vp) this.onScroll(Math.max(0, B.lineNumber(this.text, this.state.cursor) - (dir > 0 ? 0 : vp.height - 1)));
     return { handled: true };
   }
   _scrollLines(dir) {

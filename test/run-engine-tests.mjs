@@ -8,6 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Engine, Mode } from "../src/engine/engine.js";
+// ONE definition of "the host types", shared with the differential driver: a second
+// copy silently kept typing like plain insert after replace mode existed.
+import { hostType } from "./lib/engine-driver.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -20,18 +23,6 @@ const TOKENS = {
 };
 
 const norm = (tok) => TOKENS[tok] ?? tok;
-
-function hostType(engine, key) {
-  const t = engine.text;
-  const c = engine.cursor;
-  if (key === "BS") {
-    if (c > 0) engine.setText(t.slice(0, c - 1) + t.slice(c), c - 1);
-    return;
-  }
-  if (key === "CR") { engine.setText(t.slice(0, c) + "\n" + t.slice(c), c + 1); return; }
-  if (key === "Tab") { engine.setText(t.slice(0, c) + "\t" + t.slice(c), c + 1); return; }
-  if (key.length === 1) engine.setText(t.slice(0, c) + key + t.slice(c), c + key.length);
-}
 
 export function drive(engine, keys) {
   for (const tok of keys.match(/<[A-Za-z-]+>|[\s\S]/g) || []) {

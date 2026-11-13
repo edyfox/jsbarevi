@@ -21,6 +21,7 @@
 //      clampCursorToLine for a caret the DOM allows and vi does not.
 
 import { Engine, Mode } from "../engine/engine.js";
+import { fromField } from "../engine/buffer.js";
 import { BlockCaret } from "./caret.js";
 import { HttpEditorSession } from "./editor-session.js";
 import { SelectionHighlight } from "./highlight.js";
@@ -135,8 +136,13 @@ export class TextareaAdapter {
   }
 
   syncFromHost() {
-    this.engine.setText(this.el.value, this.el.selectionStart ?? 0);
-    this._updateCaret();
+    // applyHostEdit, not setText: in replace mode the engine has to drop what the
+    // browser overwrote, so the field can differ from what the host typed.
+    // fromField: a field value ending in a newline has an EMPTY LAST LINE, which
+    // the buffer's line-terminated model only sees if one more newline follows.
+    this.engine.applyHostEdit(fromField(this.el.value), this.el.selectionStart ?? 0);
+    if (this.engine.hostText !== this.el.value) this._commit();
+    else this._updateCaret();
   }
 
   /**
@@ -167,7 +173,7 @@ export class TextareaAdapter {
     }
     if (this.engine.mode === Mode.INSERT) {
       // While inserting the host's insertion point IS the model.
-      this.engine.setText(this.el.value, start);
+      this.engine.setText(fromField(this.el.value), start);
       return;
     }
     const before = this.engine.cursor;
@@ -287,7 +293,10 @@ export class TextareaAdapter {
   }
 
   _emitMode() {
-    this.onModeChange?.(this.engine.mode, this.engine.pending?.count || "");
+    // replace mode IS insert mode as far as the host is concerned (the browser
+    // types), but the badge should say what vim says.
+    const label = this.engine.replaceSession ? "REPLACE" : this.engine.mode;
+    this.onModeChange?.(label, this.engine.pending?.count || "");
     const focused = document.activeElement === this.el;
     const insert = this.engine.mode === Mode.INSERT;
     // hide the native hairline caret in normal/visual, show ours instead

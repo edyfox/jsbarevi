@@ -101,7 +101,7 @@ these should ever surface as a bare status code again.
 Implemented: modes (normal/insert/visual/visual-line), counts, operators with
 motions and text objects (bracket objects follow Vim's `current_block()`: the
 cursor does **not** need to be inside — a backwards search for an unmatched opener,
-then a forwards search for the next one), insert entries, `r R x X s S C D Y ~ J < > p P u U .`,
+then a forwards search for the next one), insert entries, replace mode (`R`), `r x X s S C D Y ~ J < > p P u U .`,
 marks, registers, `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
 `G gg H M L z`, the screen-line motions `gj gk g0 g$`, `C-b C-d C-e C-f C-u C-y`,
 search via `/ ? n N * #`, the `:` line
@@ -113,10 +113,16 @@ you typed after them are undone together (a command that changed nothing is not
 an undo step, so `i<Esc>u` does not consume one). Measured against vim and nvi;
 busybox's per-operation undo disagrees, which is recorded in `docs/ENGINE.md`.
 
-Deliberately approximated, documented in `docs/DECISIONS.md`: `R` behaves like
-insert, `.` replays an insert by diffing the snapshot (insert mode belongs to the
-host, so keystrokes cannot be recorded), and `H M L z C-b C-d C-e C-f C-u C-y`
-need an adapter that reports a viewport.
+`R` is real replace mode, not insert: typing overwrites, Backspace restores the
+character it replaced, and typing past the end of a line appends (measured against
+vim, busybox **and** nvi). Because insert mode belongs to the host, the engine
+rebuilds the text from a snapshot taken when `R` was pressed — see
+`Engine.applyHostEdit`.
+
+Deliberately approximated, documented in `docs/DECISIONS.md`: `.` replays an
+insert by diffing the snapshot (the host owns keystrokes, so they cannot be
+recorded), and `H M L z C-b C-d C-e C-f C-u C-y` need an adapter that reports a
+viewport — they count **screen rows**, so they stay correct on wrapped text.
 
 The cursor: in NORMAL and VISUAL the native hairline caret is made transparent
 and a block caret is drawn over the character at the engine cursor, measured with

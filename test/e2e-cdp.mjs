@@ -155,9 +155,12 @@ async function sendKey(session, ch) {
   // is consumed. A real browser only produces text when nothing prevented the
   // default action, which is exactly our insert-mode rule.
   const alnum = /^[A-Za-z0-9]$/.test(ch);
+  // Backspace is the one editing key we send: "keyDown" (not rawKeyDown) is what
+  // lets Chrome apply the field's own edit, which is the whole point in insert mode.
+  const editKey = ch === "Backspace";
   await session.send("Input.dispatchKeyEvent", {
-    type: "rawKeyDown", key: base.key, code: base.code,
-    ...(alnum ? { windowsVirtualKeyCode: base.keyCode, nativeVirtualKeyCode: base.keyCode } : {}),
+    type: editKey ? "keyDown" : "rawKeyDown", key: base.key, code: base.code,
+    ...(alnum || editKey ? { windowsVirtualKeyCode: base.keyCode, nativeVirtualKeyCode: base.keyCode } : {}),
   });
   const printable = base.text && ch !== "Escape" && ch !== "Enter";
   if (insert && printable) {
@@ -734,6 +737,60 @@ async function main() {
     check("g$ is End without the key", await cursor(), at0);
     await typeKeys(session, "g0");
     check("g0 is Home without the key", await cursor(), 0);
+    console.log("\n\x1b[1mviewport commands land on ROWS\x1b[0m");
+    await setupWrap();
+    await typeKeys(session, "gg");
+    const rowY = (off) => evaluate(session, `Math.round(window.jsbarevi.textarea.adapter.caret.contentPoint(${off}).y)`);
+    const rowOfCursor = () => evaluate(session, `Math.round(window.jsbarevi.textarea.adapter.caret.contentPoint(window.jsbarevi.textarea.engine.cursor).y)`);
+    const firstRowY = await rowY(0);
+    await typeKeys(session, "L");
+    const lY = await rowOfCursor();
+    check("L lands on a later ROW, not on a buffer line", lY > firstRowY, true);
+    check("...and not past the window", await evaluate(session, "window.jsbarevi.textarea.adapter.viewport().height > 1"), true);
+    await typeKeys(session, "H");
+    check("H returns to the top row", await rowOfCursor(), firstRowY);
+    await typeKeys(session, "M");
+    const mY = await rowOfCursor();
+    check("M lands between the two", mY >= firstRowY && mY <= lY, true);
+
+    console.log("\n\x1b[1mreplace mode: R\x1b[0m");
+    const REPLACE_TEXT = "alpha beta\ngamma";
+    await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText(${JSON.stringify(REPLACE_TEXT)}, 0);
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+    await typeKeys(session, "R");
+    check("R shows the replace badge",
+      await evaluate(session, "[...document.querySelectorAll('div,span')].map(n => n.textContent).find(t => t && t.trim().startsWith('--')) || ''"),
+      "-- REPLACE --");
+    await typeKeys(session, "X");
+    check("typing overwrites instead of inserting", await field(), "Xlpha beta\ngamma");
+    await typeKeys(session, "Y");
+    check("and the next character", await field(), "XYpha beta\ngamma");
+    await sendKey(session, "Backspace");
+    check("Backspace restores the character it replaced", await field(), "Xlpha beta\ngamma");
+    await sendKey(session, "Escape");
+    await typeKeys(session, "u");
+    check("one undo puts the whole replace back", await field(), REPLACE_TEXT);
+    // replace never grows a line until it runs out of characters to eat
+    await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText("ab", 0);
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+    await typeKeys(session, "R");
+    await typeKeys(session, "Z");
+    check("the first character overwrites", await field(), "Zb");
+    await typeKeys(session, "W");
+    check("the second overwrites the last one", await field(), "ZW");
+    await typeKeys(session, "Q");
+    check("typing past the end of the line appends", await field(), "ZWQ");
+    await sendKey(session, "Escape");
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");

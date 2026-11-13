@@ -33,6 +33,16 @@ export const ensureEol = (t) => (t.endsWith("\n") ? t : `${t}\n`);
 /** The host's view of the buffer: the documented text minus its terminator. */
 export const hostText = (t) => (t === "\n" ? "" : t.replace(/\n$/, ""));
 
+/**
+ * A <textarea>'s value is line-*separated*, not line-*terminated*: "a\nb\n" is
+ * three lines, the last one empty. The buffer is line-terminated, so a field value
+ * ending in a newline needs one more before it means the same thing - otherwise
+ * the empty last line disappears the moment the value goes through setText().
+ * File text (what the oracle cases contain) needs no conversion: there a trailing
+ * newline really is the terminator.
+ */
+export const fromField = (value) => (value.endsWith("\n") ? `${value}\n` : value);
+
 export function nextChar(text, i) {
   if (i >= text.length) return i;
   const cp = text.codePointAt(i);

@@ -49,7 +49,8 @@ function makeUi(el) {
     place,
     setMode(mode, count) {
       place();
-      const label = mode === "INSERT" ? "-- INSERT --" : mode === "VISUAL" ? "-- VISUAL --" : mode === "VISUAL_LINE" ? "-- VISUAL LINE --" : "";
+      const label = mode === "REPLACE" ? "-- REPLACE --" : mode === "INSERT" ? "-- INSERT --"
+        : mode === "VISUAL" ? "-- VISUAL --" : mode === "VISUAL_LINE" ? "-- VISUAL LINE --" : "";
       badge.textContent = label;
       badge.style.display = label ? "block" : "none";
       if (count) badge.textContent = `${label} ${count}`;

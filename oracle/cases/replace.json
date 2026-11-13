@@ -1,0 +1,61 @@
+{
+  "about": "Replace mode (R): typing overwrites instead of inserting, Backspace puts the replaced character back, and typing past the end of the line appends. Measured 2026-11-13: vim, busybox and nvi agree on all of it, except the undo case - busybox's per-operation undo leaves only the last piece (same deviation as oracle/cases/undo.json), so that case is vim+nvi. The engine implements R through the host: the browser inserts, so the text that was overwritten is reconstructed from a snapshot taken when R was pressed (Engine.applyHostEdit).",
+  "cases": [
+    {
+      "name": "R overwrites the characters under the cursor",
+      "input": "abcdef\n",
+      "keys": "RXY<Esc>",
+      "expect": { "text": "XYcdef\n", "line": 1, "col": 2 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "Backspace in replace mode restores the replaced character",
+      "input": "abcdef\n",
+      "keys": "RX<BS><Esc>",
+      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "two backspaces restore two characters",
+      "input": "abcdef\n",
+      "keys": "RXY<BS><BS><Esc>",
+      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "R past the end of the line appends",
+      "input": "abcdef\n",
+      "keys": "$RZW<Esc>",
+      "expect": { "text": "abcdeZW\n", "line": 1, "col": 7 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "R typing past the end of the only line appends",
+      "input": "ab\n",
+      "keys": "RXYZ<Esc>",
+      "expect": { "text": "XYZ\n", "line": 1, "col": 3 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "R with nothing typed changes nothing",
+      "input": "abcdef\n",
+      "keys": "R<Esc>",
+      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "R on a later line replaces there",
+      "input": "ab\ncd\n",
+      "keys": "jRZ<Esc>",
+      "expect": { "text": "ab\nZd\n", "line": 2, "col": 1 },
+      "engines": ["vim", "busybox", "nvi"]
+    },
+    {
+      "name": "the whole replace session is one undo step",
+      "input": "abcdef\n",
+      "keys": "RXY<Esc>u",
+      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    }
+  ]
+}

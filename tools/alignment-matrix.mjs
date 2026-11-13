@@ -32,7 +32,7 @@ export const COMMANDS = [
   "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "rq", "2x", "3~",
   "w", "b", "e", "dw", "de", "db", "d$", "d0",
   "cwZ<Esc>", "ccZ<Esc>", "yyP", ">j", "<j", "u", ".",
-  "sZ<Esc>", "SZ<Esc>", "CZ<Esc>", "2sZ<Esc>",
+  "sZ<Esc>", "SZ<Esc>", "CZ<Esc>", "2sZ<Esc>", "RXY<Esc>",
   "iZ<Esc>", "aZ<Esc>", "IZ<Esc>", "AZ<Esc>", "oZ<Esc>", "OZ<Esc>", "3iZ<Esc>",
   "0", "^", "G", "gg", "h", "l", "j", "k",
   "2J", "r<Esc>", "%",
