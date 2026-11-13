@@ -53,6 +53,7 @@ export class TextareaAdapter {
       keydown: (e) => this._onKeydown(e),
       input: () => this.syncFromHost(),
       mouseup: (e) => this._onMouseUp(e),
+      contextmenu: (e) => this._onContextMenu(e),
       mousedown: (e) => { if (this.el.contains(e.target)) { this._mouseDown = true; this._rememberBeforeClick(); } },
       selectionchange: () => this._onSelectionChange(),
       // Only the focused field may show a caret or a highlight: two fields on one
@@ -76,6 +77,7 @@ export class TextareaAdapter {
     el.addEventListener("blur", this._bound.blur);
     el.addEventListener("focus", this._bound.focus);
     el.addEventListener("scroll", this._bound.scroll);
+    el.addEventListener("contextmenu", this._bound.contextmenu);
     // Capture phase, on the document, like Input Vim: the caret has already moved
     // by the time these fire, and a host page may stop propagation lower down.
     document.addEventListener("mouseup", this._bound.mouseup, true);
@@ -104,6 +106,7 @@ export class TextareaAdapter {
     this.el.removeEventListener("blur", this._bound.blur);
     this.el.removeEventListener("focus", this._bound.focus);
     this.el.removeEventListener("scroll", this._bound.scroll);
+    this.el.removeEventListener("contextmenu", this._bound.contextmenu);
     document.removeEventListener("mouseup", this._bound.mouseup, true);
     document.removeEventListener("mousedown", this._bound.mousedown, true);
     document.removeEventListener("selectionchange", this._bound.selectionchange);
@@ -181,13 +184,23 @@ export class TextareaAdapter {
         this._emitMode();
         return;
       }
-      // Shift+click is vim's mouse way of adjusting a selection: the boundary
-      // nearest the click moves to it, the far boundary stays, so a click
-      // outside grows the selection and a click inside shrinks it (mouse.c:753
-      // sends it down the right-click path; mouse.c:934-963 chooses the side).
-      // In normal mode it starts a selection anchored at the cursor, which is
-      // what a zero-length drag would do.
       const before = this._beforeClick;
+      // Right click is vim's other mouse gesture for adjusting a selection: vim
+      // folds a shifted left click onto the right-button path (mouse.c:753), and
+      // the right-button path is where the anchor moves to the far side. Outside
+      // visual mode it is an ordinary caret move - the browser has already moved
+      // the caret, and _onSelectionChange synced the model.
+      if (e.button === 2) {
+        if (before && (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE)) {
+          this.engine.extendVisualToClick(start, before.anchor, before.cursor);
+        } else {
+          this.engine.setCursorFromHost(start);
+        }
+        this._commit();
+        this._emitMode();
+        return;
+      }
+      // Shift+click: the same adjustment, plus it can start a selection.
       if (e.shiftKey && start === end && before) {
         if (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE) {
           this.engine.extendVisualToClick(start, before.anchor, before.cursor);
@@ -230,6 +243,18 @@ export class TextareaAdapter {
       anchor: backward ? end - 1 : start,
       head: backward ? start : end - 1,
     };
+  }
+
+  /**
+   * The browser's menu is useless while WE own the selection: its Copy would copy
+   * the collapsed native selection (nothing), and its Paste would bypass the
+   * engine's registers and undo. So it is suppressed in visual mode only - in
+   * normal mode it belongs to the host, and Esc (which leaves visual) is the
+   * escape hatch to get it back.
+   */
+  _onContextMenu(e) {
+    if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) return;
+    e.preventDefault();
   }
 
   /** Remember where the caret and the selection were before the click lands. */

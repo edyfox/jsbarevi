@@ -142,10 +142,13 @@ behaviour, and the answer has two halves:
   the same thing, and whatever the host selects — a mouse drag, Shift+arrow, a
   selection the page makes — becomes the engine's selection. A plain click
   **ends** visual mode, which is vim's rule too (`mouse.c:769`); **Shift+click**
-  adjusts it instead — the boundary nearest the click moves to it and the far one
-  stays, so a click outside the selection grows it and a click inside cuts it
-  down (`mouse.c:753`, `mouse.c:934`). In NORMAL mode Shift+click starts a
-  selection anchored at the cursor.
+  and **right-click** adjust it instead — the boundary nearest the click moves to
+  it and the far one stays, so a click outside the selection grows it and a click
+  inside cuts it down (`mouse.c:753`, `mouse.c:934`). In NORMAL mode Shift+click
+  starts a selection anchored at the cursor. While a selection is active the
+  browser's context menu is suppressed: its Copy would copy the collapsed native
+  selection and its Paste would bypass the engine's registers and undo. Pressing
+  `Esc` leaves visual mode and brings the menu back.
 
 The native selection is still collapsed the moment it has been adopted, so exactly
 one of the two is ever visible; see the overlay note below for why the painting is
@@ -256,3 +259,30 @@ place, per file.
 
 MIT for our code; see `LICENSE`, `NOTICE` and `CREDITS.md` for the third-party
 picture.
+
+## The audits: one axis for a command, one for a sequence
+
+`tools/audit-align.mjs` answers *"does one command leave what vim leaves?"* — a
+command axis over 9 buffer shapes x 6 cursor positions x 51 commands. It cannot
+see a rule that only exists **across** commands, which is where `s` + Esc + `u`
+lived: the deletion and the insert were two undo steps, and the shape-by-shape
+audit was green throughout.
+
+`tools/audit-undo.mjs` adds that second axis, and it needs no reference editor
+because it is an invariant rather than a comparison:
+
+> if a command changed the buffer, then the same command followed by `u` must
+> restore it exactly.
+
+Run against the engine *before* the undo fix, it reports 80 failures; after, 0.
+It is 0.08 s (it only runs our engine), so it sits inside `npm test`. The two
+audits share one matrix definition (`tools/alignment-matrix.mjs`) — a matrix in
+two files is a matrix that is right in one of them.
+
+Adding `s`, `S`, `C` and `2s` to that matrix immediately paid for itself: the
+first run found **31 combinations** where `s` inserted in the wrong place. `s`
+had been letting its delete place the cursor (`$s` on `abc` deleted `c`, the
+delete clamped the cursor left, and the typed text landed before `b` instead of
+after it), so `_enterInsert` now takes the position the deletion started at.
+Command coverage is a decision, not a detail: the bug that started this was in a
+command the matrix did not contain.

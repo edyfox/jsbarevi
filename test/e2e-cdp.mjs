@@ -600,6 +600,34 @@ async function main() {
     await typeKeys(session, "x");
     await typeKeys(session, "u");
     check("an empty insert leaves no undo step for u to waste", await field(), BUFFER);
+    console.log("\n\x1b[1mright click: extends in visual mode, menu suppressed there only\x1b[0m");
+    const rightClickAt = async (x, y) => {
+      await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "right", buttons: 2, clickCount: 1 });
+      await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "right", buttons: 0, clickCount: 1 });
+      await sleep(60);
+    };
+    // A synthetic contextmenu tells us whether the page would have shown a menu,
+    // without depending on whether headless Chrome pops one.
+    const menuSuppressed = () => evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+      el.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    })()`);
+    await resetField();
+    await typeKeys(session, "gg");
+    await typeKeys(session, "w");                        // 6
+    await typeKeys(session, "v");
+    await typeKeys(session, "llll");                     // 6..10 = "beta "
+    await rightClickAt(atZero.x, atZero.y);              // outside, before it
+    check("right click extends the selection like shift+click", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha beta ");
+    check("right click keeps visual mode", await mode(), "VISUAL");
+    check("the context menu is suppressed while selecting", await menuSuppressed(), true);
+    await sendKey(session, "Escape");
+    check("...and comes back outside visual mode, which is the escape hatch", await menuSuppressed(), false);
+    await rightClickAt(atSix.x, atSix.y);
+    check("a right click in normal mode leaves normal mode", await mode(), "NORMAL");
+    await sendKey(session, "Escape");
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");
