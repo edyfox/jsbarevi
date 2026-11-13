@@ -1434,8 +1434,11 @@ export class Engine {
         out = out.slice(0, e) + out.slice(nextEnd);
       } else {
         const next = raw.replace(/^[ \t]+/, "");
-        // ... and no space is inserted when the line being joined INTO is blank
-        const sep = out.slice(target, e).trim() === "" ? "" : " ";
+        // measured (vim, nvi): a space is added only when the line joined INTO has no
+        // trailing blank of its own - an existing space or tab IS the separator. And
+        // none when that line is empty, where a space would be a leading one.
+        const first = out.slice(target, e);
+        const sep = first === "" || /[ \t]$/.test(first) ? "" : " ";
         out = out.slice(0, e) + sep + next + out.slice(nextEnd);
       }
       joinAt = e;

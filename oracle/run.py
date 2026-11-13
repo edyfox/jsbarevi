@@ -109,17 +109,26 @@ class Result:
 
 
 # --------------------------------------------------------------------------- vim
-def run_vim(text: str, keys: str, workdir: Path) -> Result:
+def run_vim(text: str, keys: str, workdir: Path, options: dict | None = None) -> Result:
     f = workdir / "buffer.txt"
     pos = workdir / "pos.txt"
     script = workdir / "script.ex"
     f.write_text(text)
+    # A case may pin the reference's own options ("options" in the case, same shape
+    # test/lib/engine-driver.mjs takes). Without this the run silently uses vim's
+    # defaults and a case that documents a configured reference is really testing
+    # something else - e.g. joinspaces, which is ON in this invocation.
+    settings = [
+        f"set {k}" if v is True else f"set no{k}" if v is False else f"set {k}={v}"
+        for k, v in (options or {}).items()
+    ]
     # ex mode positions the cursor on the LAST line (ed heritage), so a case that
     # does not say otherwise must be pinned to 1:1 first.
     script.write_text(
         "\n".join(
             [
                 "set nomodeline",
+                *settings,
                 f"call cursor({1}, {1})",
                 # feedkeys, not :normal! - a beeping key aborts :normal! and the
                 # rest of the sequence never runs (measured 2026-11-12)
@@ -295,7 +304,7 @@ def main() -> int:
                     td = Path(td)
                     try:
                         res = (run_vim if engine == "vim" else
-                               (lambda t, k, w: run_pty(engine, t, k, w)))(case["input"], case["keys"], td)
+                               (lambda t, k, w, o: run_pty(engine, t, k, w)))(case["input"], case["keys"], td, case.get("options"))
                     except Exception as exc:  # noqa: BLE001
                         res = Result(engine, "ERROR", detail=f"{type(exc).__name__}: {exc}")
                 ok, why = check(expect, res)

@@ -13,6 +13,9 @@ export const SHAPES = {
   "words": "one two three\nfour five\n",
   "brackets": "f(x) y\n[z]\n",
   "last-line-no-eol": "abc\ndef",
+  // a trailing blank is a shape, not a detail: `J` only adds a separator when there
+  // is none, and a space at a soft wrap hangs (see caret.js)
+  "trailing-space": "ab \ncd\n",
 };
 
 // A short path to a starting position; "" means column 1 of line 1.
