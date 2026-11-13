@@ -184,8 +184,11 @@ export class TextareaAdapter {
         const sel = this._selectionFromHost(start, end);
         this.engine.enterVisualFromHost(sel.anchor, sel.head);
       } else {
-        // A bare click: vi's cursor lands on the character clicked, and it ends
-        // any visual selection (Input Vim: "no selection - exit visual").
+        // A bare click ends any visual selection and puts the cursor where it
+        // was clicked. Both references agree, and vim says it in one line
+        // (mouse.c:769-776): a left click sets MOUSE_MAY_STOP_VIS, which calls
+        // end_visual_mode_keep_button(); only a left *drag* starts visual mode.
+        // Input Vim's handler does the same ("no selection - exit visual").
         if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) {
           this.engine.mode = Mode.NORMAL;
           this.engine.visual = null;
