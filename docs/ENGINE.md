@@ -326,3 +326,39 @@ same place for every command: measured, `aX<Esc>u` returns to 1:2 and
 `AX<Esc>u` to the last character of the line (the insert position), while
 `oX<Esc>u` returns to where the cursor was before the command, because the line
 `o` created no longer exists.
+
+## Screen lines are MEASURED, not computed
+
+A wrapped line has more screen lines than buffer lines, and the engine cannot
+derive where a soft wrap happens: it depends on the font, the field's width, tabs,
+kerning and `overflow-wrap`. So the host supplies it, exactly like the viewport
+capability:
+
+```js
+metrics: (offset) => ({ x, y, width, height })   // CONTENT coordinates
+```
+
+Content coordinates (the mirror's own space), not client ones, so scrolling
+cannot move a screen line out from under the calculation. The adapter answers it
+from the same mirror element the block caret uses.
+
+With it, vim's two families are both implemented and they stay distinct:
+
+| buffer lines | screen lines |
+|---|---|
+| `j k 0 $` | `gj gk g0 g$` |
+| `<Up>/<Down>` in vim are screen lines when `'wrap'` is set, and the browser does the same in insert mode - so our arrows and `Home`/`End` are the screen-line ones | |
+
+`gj`/`gk` keep the screen column, which is the character's index within the row
+(its left edge), not a pixel centre - measured against vim's behaviour in
+`:help gj`. Without a `metrics` capability the g-motions degrade to `j k 0 $`,
+which is exactly right for a host that cannot wrap.
+
+**The bug this was hiding.** The mirror used to cache `el.clientWidth` when it was
+created, and was only rebuilt on a `window.resize`. Resize the *field* (a container
+changes, a sidebar toggles, devtools open) and the mirror keeps measuring at the
+old width: every wrapped offset is then measured in the wrong space and the block
+caret is drawn at the row's right edge instead of on its character. The mirror's
+width is now re-read on every measurement and a `ResizeObserver` invalidates it,
+because "the element got narrower without the window resizing" is a normal event
+in a web page and was indistinguishable from a rendering bug.

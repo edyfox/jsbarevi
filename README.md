@@ -103,7 +103,8 @@ motions and text objects (bracket objects follow Vim's `current_block()`: the
 cursor does **not** need to be inside — a backwards search for an unmatched opener,
 then a forwards search for the next one), insert entries, `r R x X s S C D Y ~ J < > p P u U .`,
 marks, registers, `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
-`G gg H M L z`, `C-b C-d C-e C-f C-u C-y`, search via `/ ? n N * #`, the `:` line
+`G gg H M L z`, the screen-line motions `gj gk g0 g$`, `C-b C-d C-e C-f C-u C-y`,
+search via `/ ? n N * #`, the `:` line
 (`s d y = list set version features file e w q x`) with ranges and the
 translate/refuse regex contract, and the viewport capability.
 
@@ -125,13 +126,17 @@ the block disappears and the native caret returns.
 **Who owns the caret** is the question that decides most of the interaction
 behaviour, and the answer has two halves:
 
-- **The engine owns the keys that move a caret and that vi also has.** Arrows are
-  `h j k l`, `Home`/`End` are `0`/`$`, `PageUp`/`PageDown` are `C-b`/`C-f`, and
-  outside insert mode they are intercepted like any other command. That keeps the
-  model authoritative (an arrow in VISUAL extends the selection instead of the
-  browser painting a selection we then have to guess back), and End never leaves
-  the cursor one column past the line, which is where the DOM would put it. In
-  INSERT they stay native, because that caret is the host's.
+- **The engine owns the keys that move a caret and that vi also has.** PageUp and
+  PageDown are `C-b`/`C-f`; arrows and `Home`/`End` are the **screen-line** motions
+  `gk gj g0 g$`, because that is what the browser does with a caret in insert mode
+  (which we cannot change — insert mode is the host's) and what vim's arrows do
+  when `'wrap'` is set. `0 $ j k` remain the buffer-line motions they are in vim,
+  so a wrapped paragraph behaves like vim *and* like the field. Outside insert mode
+  the keys are intercepted like any other command, which keeps the model
+  authoritative: an arrow in VISUAL extends the selection instead of the browser
+  painting a selection we then have to guess back, and End never leaves the cursor
+  one column past the row, which is where the DOM would put it. In INSERT they are
+  native.
 - **The host owns the mouse.** A click is a caret move that is adopted and clamped
   onto a character (a DOM caret is a position *between* characters and vi's is a
   character); a drag is a selection that is adopted as VISUAL, with the anchor

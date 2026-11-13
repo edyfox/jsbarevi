@@ -30,6 +30,9 @@ export class TextareaAdapter {
     this.el = el;
     this.engine = new Engine({
       viewport: () => this.viewport(),
+      // Screen lines need measurement, not arithmetic: only the host knows where
+      // a soft wrap happens. Content coordinates, so scrolling cannot affect it.
+      metrics: (offset) => this.caret?.contentPoint(offset) ?? null,
       onStatus: (msg, kind) => this.onStatus?.(msg, kind),
       onScroll: (line) => this.scrollToLine(line),
       describeBuffer: () => opts.describeBuffer?.() ?? this.describe(),
@@ -84,6 +87,14 @@ export class TextareaAdapter {
     document.addEventListener("mousedown", this._bound.mousedown, true);
     document.addEventListener("selectionchange", this._bound.selectionchange);
     window.addEventListener("resize", this._bound.resize);
+    // A container can resize the field without a window resize (flex layout,
+    // sidebar toggling, devtools opening), and a stale mirror measures wrapped
+    // text in the wrong coordinate space - which draws the block at the row's
+    // right edge instead of its start.
+    if (typeof ResizeObserver !== "undefined") {
+      this._resizeObserver = new ResizeObserver(() => this._bound.resize());
+      this._resizeObserver.observe(el);
+    }
     // `:e` needs a transport; without one the engine reports why instead.
     if (opts.editorUrl) {
       this.engine.session = new HttpEditorSession({
@@ -111,6 +122,7 @@ export class TextareaAdapter {
     document.removeEventListener("mousedown", this._bound.mousedown, true);
     document.removeEventListener("selectionchange", this._bound.selectionchange);
     window.removeEventListener("resize", this._bound.resize);
+    this._resizeObserver?.disconnect();
     this.el.style.caretColor = "";
     this.caret?.destroy();
     this.highlight?.destroy();
@@ -381,9 +393,14 @@ export class TextareaAdapter {
     // of the browser painting a selection we then have to guess back). Same
     // mapping vim uses: arrows are h/j/k/l, Home/End are 0/$, PageUp/PageDown are
     // C-b/C-f. In insert mode they belong to the browser, and Shift+arrows select.
+    // Screen-line keys. vim maps <Up>/<Down> to the screen-line motions when
+    // 'wrap' is set, and the browser does the same with carets in insert mode -
+    // which we cannot change, because insert mode is the host's. So normal mode
+    // follows the same rule: arrows and Home/End are gj/gk/g0/g$, and 0/$/j/k stay
+    // the buffer-line motions they are in vim.
     const caret = {
-      ArrowLeft: "h", ArrowRight: "l", ArrowUp: "k", ArrowDown: "j",
-      Home: "0", End: "$", PageUp: "C-b", PageDown: "C-f",
+      ArrowLeft: "h", ArrowRight: "l", ArrowUp: "gk", ArrowDown: "gj",
+      Home: "g0", End: "g$", PageUp: "C-b", PageDown: "C-f",
     };
     if (caret[e.key] !== undefined) {
       if (this.engine.mode === Mode.INSERT || e.shiftKey) return null;

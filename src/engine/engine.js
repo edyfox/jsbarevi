@@ -46,6 +46,12 @@ export class Engine {
     this.insertEntry = null;
     this.prompt = null;
     this.viewport = opts.viewport || null; // () => ({top, height}) in buffer lines
+    // (offset) => {x, y, width, height} in content coordinates, for screen lines.
+    this.metrics = opts.metrics || null;
+    // The vertical wish, in SCREEN space, for gj/gk - separate from desiredCol,
+    // which is in buffer columns for j/k. `g$` sets desireRowEnd instead.
+    this.desiredX = null;
+    this.desireRowEnd = false;
     this.status = [];
     this.onStatus = (msg, kind) => { if (msg) this.status.push(msg); (opts.onStatus || (() => {}))(msg, kind); };
     this.onScroll = opts.onScroll || (() => {});
@@ -298,6 +304,12 @@ export class Engine {
       p.gPending = true;
       return { handled: true };
     }
+    if (p.gPending) {
+      p.gPending = false;
+      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$" }[key];
+      if (gmotion) return this._doMotion(gmotion);
+      return { handled: true }; // an unmapped g-command: swallow both keys
+    }
 
     // counts
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) {
@@ -377,6 +389,7 @@ export class Engine {
   _resolveMotionKey(key) {
     const named = new Set([
       "h", "l", "j", "k", "w", "b", "e", "W", "B", "E", "0", "^", "$",
+      "g0", "g$", "gj", "gk",
       "{", "}", "(", ")", "%", "n", "N", "*", "#", "|", "+", "-", "_",
       "CR", " ", "H", "M", "L", "G", "gg", "/", "?",
     ]);
@@ -483,7 +496,125 @@ export class Engine {
     return { handled: true };
   }
 
-  // --- motions -------------------------------------------------------------
+  // --- screen lines --------------------------------------------------------
+  // A wrapped line has more screen lines than buffer lines, and vim keeps the two
+  // apart on purpose: `j`/`k`/`0`/`$` are buffer-line motions, `gj`/`gk`/`g0`/`g$`
+  // are screen-line motions, and `<Up>`/`<Down>` are screen-line motions too when
+  // 'wrap' is set. The host supplies the measurement the same way it supplies a
+  // viewport - `metrics(offset) -> {x, y, width, height}` in CONTENT coordinates,
+  // so scrolling cannot affect it. Without it the g-motions fall back to the
+  // buffer-line ones, which is exactly right for a host that cannot wrap.
+  _point(offset) {
+    if (typeof this.metrics !== "function") return null;
+    const t = this.text;
+    const at = Math.max(0, Math.min(offset, Math.max(0, t.length - 1)));
+    return this.metrics(at) || null;
+  }
+
+  /** Same screen line? Half a line box of tolerance absorbs fractional heights. */
+  _sameRow(a, b) {
+    if (!a || !b) return false;
+    const h = Math.max(1, (a.height || 16) * 0.5);
+    return Math.abs(a.y - b.y) < h;
+  }
+
+  /**
+   * The screen row containing `offset`, as the first and last character offsets of
+   * that row. Bounded by the buffer line, because a soft wrap never crosses a hard
+   * line break - which also keeps the binary searches short.
+   */
+  _screenRow(offset) {
+    const t = this.text;
+    const here = this._point(offset);
+    if (!here) return null;
+    const lineStart = B.lineStart(t, offset);
+    const lineEnd = B.lastCharOffset(t, offset);
+    if (lineEnd <= lineStart) return { start: lineStart, end: lineStart };
+
+    // first offset on the row
+    let lo = lineStart, hi = offset;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this._sameRow(this._point(mid), here)) hi = mid; else lo = mid + 1;
+    }
+    const start = lo;
+
+    // last offset on the row
+    let a = offset, b = lineEnd;
+    if (this._sameRow(this._point(lineEnd), here)) {
+      a = lineEnd;
+    } else {
+      while (a < b) {
+        const mid = (a + b + 1) >> 1;
+        if (this._sameRow(this._point(mid), here)) a = mid; else b = mid - 1;
+      }
+    }
+    return { start, end: Math.max(start, a) };
+  }
+
+  /** First offset of the row after `rowEnd`, or null at the end of the buffer. */
+  _nextScreenRow(rowEnd) {
+    const t = this.text;
+    let next = rowEnd + 1;
+    if (next >= t.length) return null;
+    if (t[next] === "\n") next += 1; // a hard line break ends the row
+    return next < t.length ? next : null;
+  }
+
+  /** Last offset of the row before `rowStart`, or null at the start of the buffer. */
+  _prevScreenRow(rowStart) {
+    const t = this.text;
+    if (rowStart <= 0) return null;
+    let prev = B.prevChar(t, rowStart);
+    if (t[prev] === "\n" && prev > 0) prev = B.prevChar(t, prev);
+    const row = this._screenRow(prev);
+    return row ? row.end : null;
+  }
+
+  /**
+   * The offset in [start, end] nearest `x`. vim keeps the SCREEN COLUMN, which is
+   * the character's index within the row - that is its left edge, not a pixel
+   * centre, so `gj` from the second character of a row lands on the second
+   * character of the next one.
+   */
+  _offsetNearX(start, end, x) {
+    let lo = start, hi = end;
+    while (lo < hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      const p = this._point(mid);
+      if (!p) return mid;
+      if (p.x < x) lo = mid + 1; else hi = mid;
+    }
+    if (lo > start) {
+      const a = this._point(lo - 1);
+      const b = this._point(lo);
+      if (a && b && Math.abs(a.x - x) <= Math.abs(b.x - x)) return lo - 1;
+    }
+    return lo;
+  }
+
+  /** `gj`/`gk`: the row above or below, at the same screen column. */
+  _screenVertical(dir, count) {
+    const t = this.text;
+    const cur = this.state.cursor;
+    const here = this._point(cur);
+    if (!here) return null; // no measurement: the caller falls back to j/k
+    const wantX = this.desiredX ?? here.x;
+    let at = cur;
+    for (let i = 0; i < count; i++) {
+      const row = this._screenRow(at);
+      if (!row) return null;
+      const next = dir > 0 ? this._nextScreenRow(row.end) : this._prevScreenRow(row.start);
+      if (next == null) break; // vim stops at the edge rather than beeping
+      at = next;
+    }
+    const row = this._screenRow(at);
+    if (!row) return null;
+    if (this.desireRowEnd) return { to: row.end };
+    return { to: this._offsetNearX(row.start, row.end, wantX) };
+  }
+
+
   _viewport() {
     if (typeof this.viewport !== "function") return null;
     const vp = this.viewport();
@@ -529,6 +660,21 @@ export class Engine {
         let line = B.lineNumber(text, cur);
         line = Math.min(B.lineCount(text) - 1, line + count - 1);
         return { to: C.endLine(text, B.lineOffset(text, line)), charwise: true, inclusive: true };
+      }
+      case "g0": {
+        const row = this._screenRow(cur);
+        return { to: row ? row.start : C.beginLine(text, cur), charwise: true };
+      }
+      case "g$": {
+        const row = this._screenRow(cur);
+        if (!row) return { to: C.endLine(text, cur), charwise: true, inclusive: true };
+        return { to: row.end, charwise: true, inclusive: true };
+      }
+      case "gj": case "gk": {
+        const r = this._screenVertical(name === "gj" ? 1 : -1, count);
+        if (r) return { to: r.to, charwise: true };
+        // no measurement (or no wrap): the buffer-line motion is the same thing
+        return { ...this._vertical(count, name === "gj" ? 1 : -1), linewise: true };
       }
       case "|": {
         const s = B.lineStart(text, cur);
@@ -712,6 +858,12 @@ export class Engine {
 
   _doMotion(name) {
     const count = this._takeCount(1);
+    const screenMotion = name === "gj" || name === "gk";
+    if (screenMotion && this.desiredX == null && !this.desireRowEnd) {
+      // before the move: afterwards the wish would just be "where I landed"
+      const p = this._point(this.state.cursor);
+      if (p) this.desiredX = p.x;
+    }
     const motion = this._motion(name, count, {});
     this.pending = this._emptyPending();
     if (!motion) return { handled: true };
@@ -721,6 +873,13 @@ export class Engine {
     if (name === "$") this.desiredCol = Infinity;
     else if (LINE_MOTIONS.has(name)) { /* keep desiredCol */ }
     else this._setDesiredCol();
+    // The screen-line wish is a separate track: gj/gk keep it (so a short row does
+    // not lose the column), g$ remembers "end of the row", anything else drops it.
+    if (name === "g$") this.desireRowEnd = true;
+    else if (!screenMotion) {
+      this.desiredX = null;
+      this.desireRowEnd = false;
+    }
     return { handled: true };
   }
 
@@ -1389,8 +1548,19 @@ export class Engine {
     if (key === "V") { this.mode = Mode.VISUAL_LINE; return { handled: true }; }
     if (key === "o") { const a = this.visual.anchor; this.visual.anchor = this.state.cursor; this.state.cursor = a; return { handled: true }; }
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) { p.count += key; return { handled: true }; }
+    if (key === "g") { p.gPending = true; return { handled: true }; }
+    if (p.gPending) {
+      p.gPending = false;
+      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$" }[key];
+      if (gmotion) {
+        const m = this._motion(gmotion, this._takeCount(1), {});
+        if (m) this.state.cursor = Math.max(0, Math.min(m.to, Math.max(0, this.text.length - 1)));
+        return { handled: true };
+      }
+      return { handled: true };
+    }
 
-    // text objects extend the selection to exactly that object (vim-only: busybox
+    // text objects extend the selection to exactly that object&# (vim-only: busybox
     // has no visual mode at all)
     if (p.textObj) {
       const prefix = p.textObj;

@@ -22,6 +22,7 @@ A command may only be excluded for one of three reasons:
 | Family | Commands |
 |---|---|
 | Motions, characters/lines | `h l j k ^H ^J ^N ^P <space> + - _ ^M 0 $ ^ \|` |
+| Motions, screen lines | `gj gk g0 g$` — see the note below |
 | Motions, words | `w b e W B E` |
 | Motions, paragraphs/sentences | `{ } ( )` |
 | Jumps and search | `f F t T ; , % / ? n N * # ^A G gg` |
@@ -56,6 +57,21 @@ no counterpart, `Q` `\` (ex mode).
   them. They are inert on a host that cannot report a viewport.
 - **`^G`** is in by the rule, against Edward's own preference, reporting
   `[Modified] line N of M · col C · K chars`.
+
+### Screen-line motions, and why they are not scope creep
+
+`gj gk g0 g$` were added on 2026-11-13, after the freeze, and the displacement
+argument is the host's own behaviour: a browser caret moves by **screen** line
+(`<Up>`, `<Down>`, `Home`, `End` all wrap-aware in insert mode), and vim's arrows
+are screen-line motions too when `'wrap'` is set. Without them, normal mode could
+not be consistent with insert mode in the same field — the caret would jump to a
+different place depending on which mode you were in. They are gated on a `metrics`
+capability and degrade to `j k 0 $` without it, which is the same shape as the
+viewport commands.
+
+What they displace: `gm`, `g^`, `gM`, `g'`, `gE`, `g_` are **not** added. One
+family — row start, row end, one row up, one row down — is what a text field
+actually needs.
 
 ## The `:` line: busybox parity
 

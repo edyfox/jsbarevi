@@ -69,6 +69,30 @@ export class BlockCaret {
 
   hide() { this.node.style.display = "none"; }
 
+  /**
+   * Where the character at `offset` sits in CONTENT space (the mirror's own
+   * coordinates), which is what a screen-line question needs: it is independent of
+   * how far the field is scrolled and of whether the character is on screen.
+   *
+   * `height` is the line box, so two offsets are on the same screen line when
+   * their `y` differs by less than half of it - rounding on a fractional line
+   * height otherwise splits a row in two.
+   */
+  contentPoint(offset) {
+    const el = this.el;
+    const text = el.value ?? "";
+    const mirror = this._getMirror();
+    mirror.textContent = "";
+    mirror.appendChild(document.createTextNode(text.slice(0, offset)));
+    const probe = document.createElement("span");
+    probe.textContent = text.slice(offset, offset + 1) || "\u200b";
+    mirror.appendChild(probe);
+    const pr = probe.getBoundingClientRect();
+    const mr = mirror.getBoundingClientRect();
+    const height = pr.height || parseFloat(getComputedStyle(el).lineHeight) || 16;
+    return { x: pr.left - mr.left, y: pr.top - mr.top, width: pr.width, height };
+  }
+
   /** Position and size of the character at `offset`, in client coordinates. */
   measure(offset) {
     const el = this.el;
@@ -100,8 +124,18 @@ export class BlockCaret {
     return { left, top, width: pr.width || (height * 0.6), height };
   }
 
+  /**
+   * A cached mirror whose WIDTH is re-read on every use: the field can be
+   * resized by its container without a window resize event, and a mirror whose
+   * width is stale wraps at the wrong column, which is exactly how the block
+   * caret ended up sitting at the right edge of a wrapped row.
+   */
   _getMirror() {
-    if (this.mirror) return this.mirror;
+    if (this.mirror) {
+      const w = `${this.el.clientWidth}px`;
+      if (this.mirror.style.width !== w) this.mirror.style.width = w;
+      return this.mirror;
+    }
     const el = this.el;
     const cs = getComputedStyle(el);
     const mirror = document.createElement("div");

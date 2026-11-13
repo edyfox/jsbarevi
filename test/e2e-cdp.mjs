@@ -628,6 +628,112 @@ async function main() {
     await rightClickAt(atSix.x, atSix.y);
     check("a right click in normal mode leaves normal mode", await mode(), "NORMAL");
     await sendKey(session, "Escape");
+    // ---------------------------------------------------------------------
+    // Soft wrap. A screen line is not a buffer line, and the caret has to be
+    // measured in screen space: at a wrap boundary the browser keeps the
+    // trailing space on the previous row, so a naive mirror measurement puts the
+    // block at the row's right edge.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1msoft wrap: screen-line measurement\x1b[0m");
+    const LONG = "This is a test This is a test This is a test This is a test This is a test This is a test This is a test";
+    const setupWrap = async () => {
+      await evaluate(session, `(() => {
+        const el = document.getElementById('field');
+        el.style.width = "360px";
+        const a = window.jsbarevi.textarea.adapter;
+        a.engine.setText(${JSON.stringify(LONG)}, 0);
+        a._commit();
+        a._emitMode();
+        el.focus();
+        return true;
+      })()`);
+      await sleep(50);
+    };
+    const blockRect = () => evaluate(session, `(() => {
+      const n = document.querySelector('.jsbarevi-caret');
+      if (!n || getComputedStyle(n).display === 'none') return null;
+      const r = n.getBoundingClientRect();
+      const e = document.getElementById('field').getBoundingClientRect();
+      return { left: Math.round(r.left), top: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height),
+               fieldLeft: Math.round(e.left), fieldRight: Math.round(e.right), fieldTop: Math.round(e.top) };
+    })()`);
+    const rowOf = (offset) => evaluate(session, `window.jsbarevi.textarea.adapter.caret.contentPoint(${offset}).y`);
+    const points = (from, to) => evaluate(session, `(() => {
+      const c = window.jsbarevi.textarea.adapter.caret;
+      const out = [];
+      for (let i = ${from}; i <= ${to}; i++) { const p = c.contentPoint(i); out.push([i, Math.round(p.x), Math.round(p.y)]); }
+      return out;
+    })()`);
+    await setupWrap();
+    const rowEnd = (from = 0) => evaluate(session, `(() => {
+      const c = window.jsbarevi.textarea.adapter.caret;
+      const text = document.getElementById('field').value;
+      const p0 = c.contentPoint(${from});
+      let last = ${from};
+      for (let i = ${from}; i < text.length; i++) {
+        if (Math.abs(c.contentPoint(i).y - p0.y) < p0.height / 2) last = i; else break;
+      }
+      return last;
+    })()`);
+    const at0 = await rowEnd(0);
+    check("the long line really wraps (more than one row)", await evaluate(session, `(() => {
+      const c = window.jsbarevi.textarea.adapter.caret;
+      return Math.round(c.contentPoint(${JSON.stringify(LONG)}.length - 1).y) > Math.round(c.contentPoint(0).y);
+    })()`), true);
+
+    // The mirror must measure in the FIELD's width. It used to keep a stale width
+    // (created at 640px, then the field was set to 360px), so every wrapped offset
+    // was measured in the wrong space and the block sat at the row's right edge
+    // instead of on its character - the reported rendering bug.
+    check("the measuring mirror follows the field's current width",
+      await evaluate(session, "window.jsbarevi.textarea.adapter.caret._getMirror().style.width === document.getElementById('field').clientWidth + 'px'"), true);
+    const wrapAt = await evaluate(session, `(() => {
+      const c = window.jsbarevi.textarea.adapter.caret;
+      const first = c.contentPoint(0);
+      for (let i = 1; i < document.getElementById('field').value.length; i++) {
+        if (Math.abs(c.contentPoint(i).y - first.y) > first.height / 2) return i;
+      }
+      return -1;
+    })()`);
+    await evaluate(session, `(() => { const a = window.jsbarevi.textarea.adapter; a.engine.setText(${JSON.stringify(LONG)}, ${wrapAt}); a._commit(); a._emitMode(); document.getElementById('field').focus(); return true; })()`);
+    await sleep(30);
+    const boundary = await blockRect();
+    check("the block on the first character of a wrapped row is at the row's LEFT",
+      boundary.left - boundary.fieldLeft < 40, true);
+    check("...and on the second row, not the first", boundary.top > boundary.fieldTop + 15, true);
+
+    console.log("\n\x1b[1mscreen-line keys: Home/End and the arrows\x1b[0m");
+    await evaluate(session, `(() => { const a = window.jsbarevi.textarea.adapter; a.engine.setText(${JSON.stringify(LONG)}, 0); a._commit(); a._emitMode(); document.getElementById('field').focus(); return true; })()`);
+    await typeKeys(session, "gg");
+    await sendNamedKey(session, "End");
+    check("End goes to the end of the SCREEN row, as the browser does in insert mode", await cursor(), at0);
+    check("...which is not the end of the buffer line", (await cursor()) < LONG.length - 1, true);
+    const endBlock = await blockRect();
+    check("...and the block is on the first row", endBlock.top < boundary.top, true);
+    await typeKeys(session, "0");
+    check("0 is still the buffer-line start", await cursor(), 0);
+    await typeKeys(session, "$");
+    check("$ is still the buffer-line end", await cursor(), LONG.length - 1);
+    const dollarBlock = await blockRect();
+    // the buffer line ends on the SECOND row, which is also where the wrap boundary
+    // was measured - so >= rather than >
+    check("...with the block on the last row, inside the field", dollarBlock.top >= boundary.top && dollarBlock.left < dollarBlock.fieldRight, true);
+    await typeKeys(session, "0");
+    await sendNamedKey(session, "ArrowDown");
+    check("ArrowDown is a SCREEN row", await evaluate(session, `(() => Math.round(window.jsbarevi.textarea.adapter.caret.contentPoint(window.jsbarevi.textarea.engine.cursor).y))()`), Math.round(await rowOf(wrapAt)));
+    check("...keeping the screen column", await cursor(), await wrapAt);
+    await sendNamedKey(session, "ArrowUp");
+    check("ArrowUp comes back to the first row", await cursor(), 0);
+    await typeKeys(session, "j");
+    check("j is still a buffer-line motion: one long line, so it does not move", await cursor(), 0);
+    await typeKeys(session, "gj");
+    check("gj is the screen-line motion (typed), same as ArrowDown", await cursor(), await wrapAt);
+    await typeKeys(session, "gk");
+    check("gk is the screen-line motion up", await cursor(), 0);
+    await typeKeys(session, "g$");
+    check("g$ is End without the key", await cursor(), at0);
+    await typeKeys(session, "g0");
+    check("g0 is Home without the key", await cursor(), 0);
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");

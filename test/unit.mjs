@@ -243,5 +243,87 @@ console.log("\n\x1b[1mundo granularity: one block per change command\x1b[0m");
   eq("...and the next u undoes the :d", e.hostText, "a\nb\nc");
 }
 
+// Screen lines vs buffer lines: `j k 0 $` are buffer-line motions, `gj gk g0 g$`
+// are screen-line motions (vim: gj/gk are display lines; <Up>/<Down> are too when
+// 'wrap' is set). The engine gets the wrap from a `metrics` capability, so the
+// logic is testable here with a synthetic one - no browser needed.
+console.log("\n\x1b[1mscreen lines: gj gk g0 g$\x1b[0m");
+const wrapMetrics = (text, perRow, charW = 10, lineH = 20) => {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) if (text[i] === "\n") starts.push(i + 1);
+  return (offset) => {
+    const at = Math.max(0, Math.min(offset, text.length - 1));
+    let line = 0;
+    for (let n = 0; n < starts.length; n++) if (starts[n] <= at) line = n;
+    const col = at - starts[line];
+    return { x: (col % perRow) * charW, y: (line + Math.floor(col / perRow)) * lineH, width: charW, height: lineH };
+  };
+};
+{
+  // 10 characters, 4 per screen row: rows are 0-3, 4-7, 8-9.
+  const text = "abcdefghij\n";
+  const e = mk(text, 5, { metrics: wrapMetrics(text, 4) });
+  e.feedKeys("g0");
+  eq("g0 goes to the start of the SCREEN row, not the line", e.cursor, 4);
+  e.feedKeys("g$");
+  eq("g$ goes to the last character of the SCREEN row", e.cursor, 7);
+  eq("...which is not the end of the buffer line", e.cursor !== 9, true);
+  e.feedKeys("0");
+  eq("0 is still the buffer-line start", e.cursor, 0);
+  e.feedKeys("$");
+  eq("$ is still the buffer-line end", e.cursor, 9);
+}
+{
+  const text = "abcdefghij\n";
+  const e = mk(text, 1, { metrics: wrapMetrics(text, 4) });
+  e.feedKeys("gj");
+  eq("gj moves one SCREEN row, keeping the screen column", e.cursor, 5);
+  e.feedKeys("gj");
+  eq("gj again", e.cursor, 9);
+  e.feedKeys("gk");
+  eq("gk moves back up", e.cursor, 5);
+  e.feedKeys("j");
+  eq("j is still a buffer-line motion (there is no line 2)", e.cursor, 5);
+}
+{
+  const text = "abcdefghij\nklmnop\n";
+  const e = mk(text, 9, { metrics: wrapMetrics(text, 4) });
+  e.feedKeys("gj");
+  // screen column 2 of the row (offset 9 is the row's 2nd character), so the
+  // destination is the 2nd character of the next row
+  eq("gj crosses a hard line break into the next line's first row", e.cursor, 12);
+  e.feedKeys("gk");
+  eq("gk comes back", e.cursor, 9);
+  e.feedKeys("3gj");
+  eq("gj with a count stops at the last row instead of beeping", e.cursor, 16);
+}
+{
+  // The screen column is a WISH: a short row clamps it, the next row must not lose it.
+  const text = "abcdefgh\nab\ncd\n";
+  const e = mk(text, 2, { metrics: wrapMetrics(text, 8) });   // row 0 holds 0-7
+  e.feedKeys("gj");
+  eq("gj to a shorter row clamps to its end", e.cursor, 10);
+  eq("...and the wish is remembered for the next gj", e.desiredX, 20);
+}
+{
+  // Without a metrics capability the g-motions degrade to the buffer-line ones,
+  // which is exactly right on a host that cannot wrap.
+  const e = mk("abcdef\n");
+  e.feedKeys("llg$");
+  eq("g$ without measurement is $", e.cursor, 5);
+  e.feedKeys("0g0");
+  eq("g0 without measurement is 0", e.cursor, 0);
+  const v = mk("ab\ncd\n");
+  v.feedKeys("gj");
+  eq("gj without measurement is j", v.cursor, 3);
+}
+{
+  // visual mode extends on the screen-line motions too
+  const text = "abcdefghij\n";
+  const e = mk(text, 1, { metrics: wrapMetrics(text, 4) });
+  e.feedKeys("vgj");
+  eq("v then gj extends the selection by a screen row", e.visualText(), "bcdef");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
