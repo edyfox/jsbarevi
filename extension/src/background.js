@@ -11,6 +11,14 @@
 // and the body all come from the adapter, so the wire format stays defined in
 // src/adapters/editor-session.js and this file cannot drift from it.
 
+// A content script asks this before deciding whether to route `:e` here at all:
+// in a host that loads the extension but never runs an MV3 worker (Electron), the
+// question must fail fast instead of hanging inside a port nobody answers.
+chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
+  if (msg?.type !== "jsbarevi:ping") return;
+  respond({ ok: true });
+});
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "jsbarevi:fetch") return;
   port.onMessage.addListener((msg) => {

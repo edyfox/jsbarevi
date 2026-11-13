@@ -148,6 +148,10 @@ async function main() {
     check("textarea attached", await focusAndAttach(page, "field"), true);
     check("badge exists in the page", await evaluate(page, "!!document.querySelector('.jsbarevi-badge')"), true);
     check("caret is owned by the engine", await evaluate(page, "document.getElementById('field').style.caretColor"), "transparent");
+    // The overlay CSS must actually apply: hosts with a strict style-src (Electron
+    // apps, webviews) refuse an inline <style>, and the badge would then be unstyled.
+    check("overlay CSS is in force", await evaluate(page, "getComputedStyle(document.querySelector('.jsbarevi-badge')).position"), "fixed");
+    check("the stylesheet is constructable, not an inline <style>", await evaluate(page, "document.adoptedStyleSheets.length > 0 && !document.getElementById('jsbarevi-style')"), true);
 
     // ---- normal mode ------------------------------------------------------
     await typeKeys(page, "dw");

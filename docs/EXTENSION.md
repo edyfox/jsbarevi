@@ -66,7 +66,27 @@ The worker does not know the protocol: URL, method, headers and body all come fr
 the adapter, so the wire format has exactly one definition.
 
 Where there is no worker (Electron's page-world copy) the seam falls back to a plain
-`fetch` — the same request a page would have made, with the same diagnostics.
+`fetch` — the same request a page would have made, with the same diagnostics. The
+decision is a real round trip (`jsbarevi:ping` → the worker answers), not a feature
+test: Electron *loads* the extension but never runs an MV3 worker, so
+`chrome.runtime.connect` exists and produces a port nobody will ever answer.
+
+## Two things that are only true outside Chrome
+
+Written down because both cost an install to find:
+
+- **Settings may arrive callback-style.** Chrome's `chrome.storage.local.get`
+  returns a promise (and accepts a callback); Electron hosts that inject the content
+  script into a page world supply a localStorage-backed shim that is
+  **callback-only** and returns `undefined`. `loadSettings()` therefore handles both
+  — reading only one style silently ignores whichever host chose the other.
+- **The overlay CSS is a constructable stylesheet** (`document.adoptedStyleSheets`)
+  rather than an inline `<style>` element. A host with a strict `style-src` — an
+  Electron app served from a custom scheme, a webview, Lark — refuses the inline
+  element, and the badge would render as unstyled text over the page. CSSOM
+  insertion is not subject to `style-src`; the `<style>` path remains as a fallback.
+  The extension test asserts the computed `position: fixed`, so a regression fails
+  the suite rather than looking slightly wrong in one host.
 
 ## What attaches, and when
 

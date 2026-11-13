@@ -15,12 +15,35 @@ const OVERLAY_CSS = `
   background:#111;color:#fd971f;border:0;outline:0;padding:2px 8px;border-radius:3px}
 `;
 
+let overlaySheet = null;
+
+/**
+ * Install the overlay CSS.
+ *
+ * A constructable stylesheet first, deliberately: a host with a strict
+ * `style-src` (Lark, VS Code webviews, Electron apps serving from a custom
+ * scheme) refuses an inline <style> element, and the badge would then render as
+ * unstyled text over the page. CSSOM insertion is not subject to style-src, so
+ * this is the one form that works everywhere; the <style> path stays as a
+ * fallback for browsers without constructable sheets.
+ */
 function ensureStyles() {
-  if (document.getElementById("jsbarevi-style")) return;
+  if (overlaySheet) return;
+  try {
+    if (document.adoptedStyleSheets && typeof CSSStyleSheet === "function") {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(OVERLAY_CSS);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      overlaySheet = sheet;
+      return;
+    }
+  } catch { /* fall through to the element */ }
+  if (document.getElementById("jsbarevi-style")) { overlaySheet = document.getElementById("jsbarevi-style").sheet; return; }
   const style = document.createElement("style");
   style.id = "jsbarevi-style";
   style.textContent = OVERLAY_CSS;
   document.documentElement.appendChild(style);
+  overlaySheet = style.sheet;
 }
 
 function makeUi(el) {

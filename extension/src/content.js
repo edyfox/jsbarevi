@@ -38,14 +38,26 @@ const settingsReady = loadSettings().then((s) => { settings = s; });
 function loadSettings() {
   const local = globalThis.chrome?.storage?.local;
   if (local?.get) {
-    try {
-      return Promise.resolve(local.get(DEFAULTS))
-        .then((got) => ({ ...DEFAULTS, ...(got || {}) }))
-        .catch(() => ({ ...DEFAULTS, ...readLocalStorage() }));
-    } catch { /* fall through to localStorage */ }
+    // Both styles are real: Chrome's MV3 API returns a promise (and also accepts a
+    // callback), while the Electron page-world shim is callback-only and returns
+    // undefined. Handling one style silently ignores the other — and with the shim
+    // that means ignoring the settings the host injected.
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (got) => {
+        if (settled) return;
+        settled = true;
+        resolve({ ...DEFAULTS, ...(got || {}) });
+      };
+      try {
+        const maybe = local.get(DEFAULTS, (got) => done(got));
+        if (maybe && typeof maybe.then === "function") maybe.then(done, () => done(null));
+      } catch {
+        done(null);
+      }
+    });
   }
-  // The Electron oc:// injected copy has no chrome.storage; it arrives through a
-  // localStorage shim and __injectInitial, so read the same value from there.
+  // No storage API at all: read the same value from localStorage.
   return Promise.resolve({ ...DEFAULTS, ...readLocalStorage() });
 }
 
@@ -130,10 +142,36 @@ function onFocusIn(e) {
  * page-world copy) this falls back to a plain fetch.
  */
 let seq = 0;
-function workerFetch(url, init = {}) {
-  const runtime = globalThis.chrome?.runtime;
-  if (!runtime?.connect) return fetch(url, init);
 
+/**
+ * Is there a service worker to route through?
+ *
+ * Asked once: a host can load this extension without ever running an MV3 worker
+ * (Electron's `loadExtension` does exactly that), and `connect()` to a worker that
+ * will never answer produces a port that hangs instead of an error. So the decision
+ * is made by a real round trip, and a failure falls back to a plain fetch.
+ */
+let workerAlive = null;
+function hasWorker() {
+  if (workerAlive) return workerAlive;
+  workerAlive = new Promise((resolve) => {
+    const runtime = globalThis.chrome?.runtime;
+    if (!runtime?.sendMessage) { resolve(false); return; }
+    try {
+      runtime.sendMessage({ type: "jsbarevi:ping" }, (reply) => {
+        resolve(!!reply?.ok && !runtime.lastError);
+      });
+    } catch { resolve(false); }
+  });
+  return workerAlive;
+}
+
+function workerFetch(url, init = {}) {
+  return hasWorker().then((alive) => (alive ? portFetch(url, init) : fetch(url, init)));
+}
+
+function portFetch(url, init) {
+  const runtime = globalThis.chrome.runtime;
   const id = ++seq;
   return new Promise((resolve, reject) => {
     let port;
