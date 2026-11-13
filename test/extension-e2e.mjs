@@ -54,7 +54,7 @@ zeta eta theta</textarea>
 <input id="secret" type="password" value="hunter2">
 <input id="plain" type="number" value="42">
 <div data-jsbarevi="off"><textarea id="optedout">leave me alone</textarea></div>
-<div id="ce" contenteditable="true" role="textbox" aria-label="composer">editable prose</div>
+<div id="ce-wrapper"><div id="ce" contenteditable="true" role="textbox" aria-label="composer">editable prose</div></div>
 <button id="elsewhere">elsewhere</button>
 <script>
   // Both shapes of the real bug, because they fail differently:
@@ -73,6 +73,16 @@ zeta eta theta</textarea>
     if (e.key !== "Escape") return;
     setTimeout(() => document.getElementById("elsewhere").focus(), 0);
   });
+  // A third shape, and the one behind the real report: the app runs its own key driver
+  // as a WINDOW-capture listener (chext_driver.js in OpenCode). A listener on document
+  // runs after it, sees nothing, and the field is already gone.
+  window.__driverSawEsc = 0;
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    window.__driverSawEsc++;
+    const wrapper = document.getElementById("ce-wrapper");
+    if (wrapper) wrapper.blur();          // blur the WRAPPER, not the field
+  }, true);
 </script>
 </body></html>`;
 
@@ -236,6 +246,7 @@ async function main() {
     await typeKeys(page, "<Esc>");
     check("Escape returns the composer to NORMAL", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "NORMAL");
     check("Escape does not reach the host's own Escape handler", await evaluate(page, "window.__escSeen"), 0);
+    check("Escape does not reach the app's WINDOW-capture key driver", await evaluate(page, "window.__driverSawEsc"), 0);
     // The host moves focus on keyup (a path we do not, and should not, intercept).
     check("focus is reclaimed after the host moves it", !!(await waitFor(page, "document.activeElement.id === 'ce'", 3000)), true);
     // The user-facing symptom was "the next key does nothing": the FIRST key after

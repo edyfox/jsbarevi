@@ -52,6 +52,7 @@ export class TextareaAdapter {
     this.onModeChange = opts.onModeChange;
     this.onPrompt = opts.onPrompt;
     this.onKeyConsumed = opts.onKeyConsumed;
+    this._keysDispatchedByHost = !!opts.keysDispatchedByHost;
     // A hairline caret is invisible as a vi cursor: normal/visual get a block.
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
     this.highlight = new SelectionHighlight(el);
@@ -84,7 +85,14 @@ export class TextareaAdapter {
     };
     this._bound.scroll = () => this._updateCaret();
     this._bound.resize = () => { this.caret?.invalidate(); this.highlight.invalidate(); this._updateCaret(); };
-    el.addEventListener("keydown", this._bound.keydown, true);
+    // WINDOW capture, not document: a host's own key driver listens on window and runs
+    // before anything on document.
+    //
+    // Skipped when the HOST dispatches keys to us (`opts.keysDispatchedByHost`): the
+    // extension registers one listener at document_start — before any page script — and
+    // routes each key to the owning adapter. Registering here as well would run every
+    // key twice, and `d` twice is `dd`: it deleted a whole line instead of a word.
+    if (!opts.keysDispatchedByHost) window.addEventListener("keydown", this._bound.keydown, true);
     el.addEventListener("input", this._bound.input);
     el.addEventListener("blur", this._bound.blur);
     el.addEventListener("focus", this._bound.focus);
@@ -112,7 +120,7 @@ export class TextareaAdapter {
   }
 
   destroy() {
-    this.el.removeEventListener("keydown", this._bound.keydown, true);
+    if (!this._keysDispatchedByHost) window.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
     this.el.removeEventListener("blur", this._bound.blur);
     this.el.removeEventListener("focus", this._bound.focus);
@@ -408,6 +416,11 @@ export class TextareaAdapter {
   }
 
   _onKeydown(e) {
+    // Ownership: the listener is on WINDOW (capture), so every attached field sees every
+    // keystroke on the page. Without this, typing into one field would also feed the
+    // engine of every other attached field — including our own command line.
+    const target = e.composedPath?.()[0] ?? e.target;
+    if (!(target === this.el || this.el.contains(target))) return;
     // IME: never touch it — but only while the HOST owns typing. In NORMAL/VISUAL
     // there is no composition to protect, and a key flagged isComposing after an
     // Escape (Chrome keeps the flag briefly) must not be dropped: that swallows

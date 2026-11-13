@@ -141,9 +141,31 @@ const ESCAPE_GUARD_MS = 1200;
 document.addEventListener("pointerdown", () => { pointerAt = Date.now(); }, true);
 document.addEventListener("mousedown", () => { pointerAt = Date.now(); }, true);
 
+/** Was there a pointer interaction just now? A click is the user's decision to leave. */
+function pointerRecently() { return Date.now() - pointerAt < 400; }
+
 function guardEscape(el, handle) {
   const onFocusOut = (e) => {
     const to = e.relatedTarget;
+    // Independent of Escape and of who else is listening: while the engine owns a field
+    // and the user has not clicked anywhere, losing focus to "nowhere" is not something
+    // the user asked for. A host key driver, another extension (Vimium's Escape), or a
+    // framework effect all end the same way — focus to body. Take it back.
+    if (!pointerRecently()) {
+      const now = document.activeElement;
+      if (to == null && (now === null || now === document.body || now === document.documentElement)) {
+        requestAnimationFrame(() => {
+          if (!el.isConnected) return;
+          const cur = document.activeElement;
+          if (cur === el) return;
+          if (cur && cur.hasAttribute && cur.hasAttribute("data-jsbarevi-ui")) return;
+          if (pointerRecently()) return;
+          trace("focus kept: it was dropped to nowhere without a click");
+          el.focus({ preventScroll: true });
+        });
+        return;
+      }
+    }
     if (Date.now() > escapeGuardUntil) {
       trace(`focusout -> ${nameOf(to)} (guard closed)`);
       return;
@@ -189,6 +211,9 @@ function attachField(el) {
       pageUrl: location.href,
       fetchImpl: workerFetch,
     }),
+    // The extension owns the key listener (document_start, before any page script) and
+    // routes keys here; the adapter must not also register its own.
+    keysDispatchedByHost: true,
     onKeyConsumed: (key) => {
       if (key === "composing") {
         // Diagnostic only: a key dropped for composition in NORMAL mode is the "press
@@ -357,7 +382,35 @@ function onKeydownClaim(e) {
   });
 }
 
-document.addEventListener("keydown", onKeydownClaim, true);
+/**
+ * Deliver keys to the adapter for the field that owns them.
+ *
+ * This listener has to be installed HERE, at document_start, not per attach: adapters
+ * register their own keydown when a field is focused, which is after the page has
+ * parsed — so a host's window-capture key driver (OpenCode's chext_driver, any app with
+ * a global keymap) would already be registered ahead of us and would see Escape first.
+ * A listener registered before the page's scripts cannot be beaten.
+ */
+function onKeydownDispatch(e) {
+  const target = e.composedPath?.()[0] ?? e.target;
+  let node = target;
+  while (node && node !== document) {
+    const handle = active.get(node);
+    if (handle) { handle.keydown(e); return; }
+    node = node.parentNode;
+  }
+}
+
+window.addEventListener("keydown", onKeydownDispatch, true);
+// Claims an unowned field when a key lands in it first (see the comment there).
+window.addEventListener("keydown", onKeydownClaim, true);
+
+/** Trace that an Escape reached us at all — the difference from "never arrived". */
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const el = e.composedPath?.()[0] ?? e.target;
+  if (isTextField(el)) trace(`Escape reached us (target ${nameOf(el)})`);
+}, true);
 
 /**
  * The field that already has focus when we arrive.

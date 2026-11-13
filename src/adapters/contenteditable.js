@@ -58,6 +58,7 @@ export class ContenteditableAdapter {
     this.onModeChange = opts.onModeChange;
     this.onPrompt = opts.onPrompt;
     this.onKeyConsumed = opts.onKeyConsumed;
+    this._keysDispatchedByHost = !!opts.keysDispatchedByHost;
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
     this.highlight = new SelectionHighlight(el);
 
@@ -87,7 +88,11 @@ export class ContenteditableAdapter {
       scroll: () => this._updateCaret(),
       resize: () => { this.highlight.invalidate(); this._updateCaret(); },
     };
-    document.addEventListener("keydown", this._bound.keydown, true);
+    // WINDOW capture, not document: a host's own key driver listens on window and runs
+    // before anything on document — which is exactly how an app handles Escape first.
+    // Skipped when the extension dispatches keys to us (see textarea.js: two listeners
+    // mean every key twice, and `d` twice is `dd`).
+    if (!opts.keysDispatchedByHost) window.addEventListener("keydown", this._bound.keydown, true);
     el.addEventListener("input", this._bound.input);
     el.addEventListener("contextmenu", this._bound.contextmenu);
     el.addEventListener("blur", this._bound.blur);
@@ -109,7 +114,7 @@ export class ContenteditableAdapter {
   }
 
   destroy() {
-    document.removeEventListener("keydown", this._bound.keydown, true);
+    if (!this._keysDispatchedByHost) window.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
     this.el.removeEventListener("contextmenu", this._bound.contextmenu);
     this.el.removeEventListener("blur", this._bound.blur);

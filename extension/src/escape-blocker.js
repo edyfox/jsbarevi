@@ -23,8 +23,12 @@
   const nativeBlur = proto.blur;
   const blocked = function () {
     // While the engine owns this element, focus is released only by the extension
-    // itself (:q / :q!), which calls the native method from its own world.
+    // itself (:q / :q!), which calls the native method from its own world. The
+    // ANCESTOR case is separate and real: an app may blur the composer's wrapper,
+    // which takes the field out of focus just as effectively, and the wrapper carries
+    // no marker of its own.
     if (this.getAttribute && this.getAttribute("data-jsbarevi-mode") !== null) return;
+    if (this.querySelector && this.querySelector("[data-jsbarevi-mode]")) return;
     return nativeBlur.apply(this, arguments);
   };
   blocked.__jsbareviBlocked = true;
