@@ -78,58 +78,96 @@ export class BlockCaret {
    * their `y` differs by less than half of it - rounding on a fractional line
    * height otherwise splits a row in two.
    */
-  contentPoint(offset) {
+  /**
+   * The rect of the character at `offset`, in content space, read with a Range over
+   * ONE text node.
+   *
+   * The previous technique appended the measured character as a <span> after the text
+   * before it, and a span boundary is a line-break opportunity in Chrome: measuring at
+   * a wrap point therefore MOVED the wrap, and every position after a soft break came
+   * out one cell late ("the cursor can go one past the row's end and `l` lands on the
+   * second character of the next row"). A Range reads the layout instead of joining it,
+   * and the mirror holds the whole text once instead of being rebuilt per measurement.
+   *
+   * Content-box relative, not border-box: with padding, a border-box origin puts row 0
+   * at y = paddingTop and rounding y/lineHeight calls that row 1, which shifts every
+   * screen-row index against viewport().
+   */
+  _charRect(offset) {
     const el = this.el;
     const text = el.value ?? "";
-    const mirror = this._getMirror();
-    mirror.textContent = "";
-    mirror.appendChild(document.createTextNode(text.slice(0, offset)));
-    const probe = document.createElement("span");
-    probe.textContent = text.slice(offset, offset + 1) || "\u200b";
-    mirror.appendChild(probe);
-    const pr = probe.getBoundingClientRect();
+    const mirror = this._getMirror(true);
+    if (!this._textNode || this._textNode.data !== text || this._textNode.parentNode !== mirror) {
+      mirror.textContent = "";
+      this._textNode = document.createTextNode(text);
+      mirror.appendChild(this._textNode);
+    }
+    const node = this._textNode;
+    const range = document.createRange();
+    const start = Math.max(0, Math.min(offset, text.length));   // a -1 must not reach setStart
+    range.setStart(node, start);
+    range.setEnd(node, Math.min(start + 1, text.length));
+    let rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0 && offset >= text.length) {
+      // past the last character: use the collapsed caret position instead
+      range.setStart(node, text.length);
+      range.setEnd(node, text.length);
+      rect = range.getBoundingClientRect();
+    }
     const mr = mirror.getBoundingClientRect();
     const mcs = getComputedStyle(mirror);
-    const height = pr.height || parseFloat(getComputedStyle(el).lineHeight) || 16;
-    // Relative to the mirror's CONTENT box, not its border box: a field with 10px of
-    // padding would otherwise put the first row at y = 10, and rounding y/lineHeight
-    // makes that row 1 - which silently shifts every screen-row index (gj/gk are
-    // consistent with themselves, but H/M/L/C-d compare against viewport(), which
-    // counts rows from the content top).
-    const padTop = parseFloat(mcs.paddingTop) || 0;
-    const padLeft = parseFloat(mcs.paddingLeft) || 0;
-    return { x: pr.left - mr.left - padLeft, y: pr.top - mr.top - padTop, width: pr.width, height };
+    const height = rect.height || parseFloat(mcs.lineHeight) || 16;
+    return {
+      x: rect.left - mr.left - (parseFloat(mcs.paddingLeft) || 0),
+      y: rect.top - mr.top - (parseFloat(mcs.paddingTop) || 0),
+      width: rect.width,
+      height,
+    };
+  }
+
+  /**
+   * Where the character at `offset` is drawn, in content space. A SPACE at a soft
+   * wrap is special: the field hangs it at the end of the row (it has no cell of its
+   * own), so where the browser reports the space itself is not where you see it, and
+   * the row's last character looks advanceable.
+   */
+  contentPoint(offset) {
+    const text = this.el.value ?? "";
+    if (offset < 0) offset = 0;
+    const own = this._charRect(offset);
+    if (text[offset] !== " " || offset === 0) return own;
+    const prev = this._charRect(offset - 1);
+    const h = own.height || prev.height || 16;
+    if (Math.abs(own.y - prev.y) < h / 2) return own; // an ordinary space, same row
+    // it wrapped: the space hangs at the end of the previous row, where it is drawn
+    return { x: prev.x + prev.width, y: prev.y, width: 0, height: prev.height };
   }
 
   /** Position and size of the character at `offset`, in client coordinates. */
   measure(offset) {
     const el = this.el;
-    const text = el.value ?? "";
     const box = el.getBoundingClientRect();
     if (box.width === 0 && box.height === 0) return null;
 
-    const mirror = this._getMirror();
-    mirror.textContent = "";
-    mirror.appendChild(document.createTextNode(text.slice(0, offset)));
-    const probe = document.createElement("span");
-    probe.textContent = text.slice(offset, offset + 1) || "\u200b";
-    mirror.appendChild(probe);
-
-    const pr = probe.getBoundingClientRect();
-    const mr = mirror.getBoundingClientRect();
-    const left = box.left + (pr.left - mr.left) - el.scrollLeft;
-    let top = box.top + (pr.top - mr.top) - el.scrollTop;
-    const height = pr.height || parseFloat(getComputedStyle(el).lineHeight) || 16;
+    const cp = this.contentPoint(offset);
+    const cs = getComputedStyle(el);
+    const height = cp.height || parseFloat(cs.lineHeight) || 16;
+    // a hanging space has no width of its own; the block still needs a cell to draw in
+    const width = cp.width > 0.5 ? cp.width : Math.max(2, height * 0.6);
+    const innerLeft = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+    const innerTop = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
+    const left = box.left + innerLeft + cp.x - el.scrollLeft;
+    let top = box.top + innerTop + cp.y - el.scrollTop;
 
     // Keep the block inside the field's box.
-    const visibleTop = box.top + parseFloat(getComputedStyle(el).borderTopWidth || "0");
+    const visibleTop = box.top + (parseFloat(cs.borderTopWidth) || 0);
     const visibleBottom = box.bottom;
     if (top + height < visibleTop || top > visibleBottom) {
       this.hide();
       return null;
     }
     if (top < visibleTop) top = visibleTop;
-    return { left, top, width: pr.width || (height * 0.6), height };
+    return { left, top, width, height };
   }
 
   /**
@@ -150,10 +188,11 @@ export class BlockCaret {
     return Math.max(1, el.clientWidth - pl - pr);
   }
 
-  _getMirror() {
+  _getMirror(keepText = false) {
     if (this.mirror) {
       const w = `${this._contentWidth(this.el, getComputedStyle(this.el))}px`;
       if (this.mirror.style.width !== w) this.mirror.style.width = w;
+      void keepText;   // the text node is reused by _charRect; callers that slice set it
       return this.mirror;
     }
     const el = this.el;
@@ -178,5 +217,6 @@ export class BlockCaret {
   invalidate() {
     this.mirror?.remove();
     this.mirror = null;
+    this._textNode = null;   // it belonged to the removed mirror
   }
 }

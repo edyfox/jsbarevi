@@ -354,6 +354,17 @@ With it, vim's two families are both implemented and they stay distinct:
 `:help gj`. Without a `metrics` capability the g-motions degrade to `j k 0 $`,
 which is exactly right for a host that cannot wrap.
 
+**Measuring without joining the layout.** The mirror's positions come from a `Range`
+over one text node, not from appending a `<span>` per measurement: a span boundary is
+a line-break opportunity, so measuring at a soft wrap *moved* the wrap and every
+position after it came out one cell late - which is how "the cursor can go one past the
+row's end and `l` lands on the second character of the next row" happened. A `Range`
+reads the layout instead of taking part in it. Two further rules: a **space at a wrap
+hangs** at the end of the row it fills (it has no cell of its own, so it is reported
+where the previous character ends), and content coordinates are **content-box**
+relative, because a border-box origin puts row 0 at `y = paddingTop` and rounding
+`y / lineHeight` calls that row 1.
+
 **The bug this was hiding.** The mirror used to cache `el.clientWidth` when it was
 created, and was only rebuilt on a `window.resize`. Resize the *field* (a container
 changes, a sidebar toggles, devtools open) and the mirror keeps measuring at the

@@ -788,6 +788,41 @@ async function main() {
     })()`);
     check("content coordinates start at the content box, not the border box", [origin.x, origin.y], [0, 0]);
 
+    console.log("\n\x1b[1ma hanging space belongs to the row it hangs on\x1b[0m");
+    // At a soft wrap the field HANGS the space at the end of the row: it has no cell of
+    // its own. Measuring the space where it "starts" puts it on the next row, which
+    // makes the row's last character look advanceable - and `l` from there appears to
+    // land on the SECOND character of the next row.
+    const hang = await evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const a = window.jsbarevi.textarea.adapter;
+      el.style.width = "300px"; el.style.height = "120px"; el.style.overflowY = "";
+      // short words, so the fold lands on a SPACE - the reported case: the default
+      // wrap is between words.
+      const text = "aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr ss tt uu vv ww xx yy zz aaa bbb ccc ddd eee fff";
+      a.engine.setText(text, 0); a._commit(); a._emitMode();
+      const c = a.caret;
+      const p0 = c.contentPoint(0);
+      let fold = -1;
+      for (let i = 1; i < text.length; i++) {
+        if (Math.abs(c.contentPoint(i).y - p0.y) > p0.height / 2) { fold = i; break; }
+      }
+      const last = c.contentPoint(fold - 1);
+      const first = c.contentPoint(fold);
+      const second = c.contentPoint(fold + 1);
+      return { fold, charBeforeFold: JSON.stringify(text[fold - 1]),
+        rowOfLast: Math.round(last.y / last.height), rowOfFirst: Math.round(first.y / first.height),
+        xFirst: Math.round(first.x), xSecond: Math.round(second.x),
+        xOfLast: Math.round(last.x) };
+    })()`);
+    check("the character that starts a new row is that row's FIRST cell", hang.xFirst, 0);
+    check("...and the row's last character is on the row before", hang.rowOfLast + 1, hang.rowOfFirst);
+    check("...with the second character of the row one cell further right",
+      hang.xSecond > hang.xFirst, true);
+    check("a space at the fold is reported on the row it hangs on",
+      hang.charBeforeFold === JSON.stringify(" "),
+      hang.charBeforeFold !== JSON.stringify(" ") || hang.rowOfLast === hang.rowOfFirst - 1);
+
     console.log("\n\x1b[1ma click resets the vertical wish\x1b[0m");
     await setupWrap();
     const yOf = (off) => evaluate(session, `Math.round(window.jsbarevi.textarea.adapter.caret.contentPoint(${off}).y)`);
