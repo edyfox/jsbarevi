@@ -430,10 +430,17 @@ the operator form but not the visual one; busybox supports neither, so
 The generalisation: **a "thing you can jump to" is not a feature, it is a motion**, and
 a motion that only exists on one of the three paths is two features missing.
 
-Found while pinning the cases, not fixed: after a paste, the cursor for a CHARWISE
-register that contains a newline differs (vim leaves it at the start of the pasted text,
-we put it at the end). Separate rule, separate measurement; recorded in the session
-notes rather than guessed at.
+Found while pinning the cases, not fixed at the time (fixed since): after a paste, the
+cursor for a charwise register containing a newline differs - vim leaves it at the start
+of the pasted text.
+
+**The same lesson, a third time.** `gg` had exactly the mark bug: it existed only as a
+cursor move, so `dgg` moved the cursor and dropped the pending operator, and `gg` in
+visual mode did nothing. Both now come from one table of g-motions dispatched like any
+other motion, so a plain jump, a pending operator and a visual extension see the same
+set. A motion implemented on one path is two features missing - once is a bug, three
+times is a rule: when adding a motion, wire it through the dispatch, never straight to
+the cursor.
 
 ## Where a put leaves the cursor, and what a visual selection covers
 
@@ -494,6 +501,14 @@ does not have and every offset past the first wrap was wrong. The mirror now for
 `pre` for inputs, and it re-copies the whole text-affecting style on every use, because
 a field can change (a theme class, a container resize, a `<textarea>` switched to
 `nowrap`) long after attach.
+
+### The join rule lives in one place
+
+`J`, `3J` and visual `J` all go through `_joinPair()`. They did not: the visual handler
+had its own regex that replaced each newline-plus-blanks with a single space, so the "two
+spaces between" bug survived the fix that was meant to remove exactly that. A visual
+selection ending on a blank line reports its last line from `range.to - 1` - `range.to` is
+exclusive, and using it made the join eat the following line as well.
 
 ## Horizontal scrolling: the screen line is only the VISIBLE part
 

@@ -1,0 +1,58 @@
+{
+  "about": "The g-motions as motions, not as jumps: `gg` under an operator (`dgg`), and `gg` extending a visual selection (`vgg`). Measured 2026-11-13: vim and busybox both support `dgg`; nvi does not (it is modern-vim lineage), and neither nvi nor busybox does the visual form, so those cases are vim-only. Both broke in the same way marks once did: `gg` existed only as a cursor move, so a pending operator was dropped and the cursor moved instead of deleting. `Gdgg` is vim-only: busybox reports the surviving empty line as a newline where vim normalises it away - the same buffer in two reporting conventions.",
+  "cases": [
+    {
+      "name": "dgg deletes back to the top of the buffer",
+      "input": "a\nb\nc\nd\n",
+      "keys": "Gdgg",
+      "expect": {
+        "text": "",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dgg from the second line deletes one line",
+      "input": "a\nb\nc\nd\n",
+      "keys": "jdgg",
+      "expect": {
+        "text": "c\nd\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim",
+        "busybox"
+      ]
+    },
+    {
+      "name": "vgg extends the selection to the top and d takes it",
+      "input": "ab\ncd\nef\n",
+      "keys": "Gvkggd",
+      "expect": {
+        "text": "f\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "gg in visual mode moves the head, so the selection collapses to line 1",
+      "input": "ab\ncd\nef\n",
+      "keys": "VGggd",
+      "expect": {
+        "text": "cd\nef\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

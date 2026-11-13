@@ -15,6 +15,12 @@ export const Mode = { NORMAL: "NORMAL", INSERT: "INSERT", VISUAL: "VISUAL", VISU
 
 const LINE_MOTIONS = new Set(["j", "k", "+", "-", "_", "CR", "G", "gg", "H", "M", "L"]);
 
+// The two-key `g` motions. Kept in one table because every path - a plain jump, a
+// pending operator (`dgg`, `dgj`) and a visual extension - has to see the same set;
+// when this lived inside the key handler, `dgg` moved the cursor and dropped the
+// operator.
+const G_MOTIONS = { j: "gj", k: "gk", "0": "g0", $: "g$", "^": "g^", g: "gg" };
+
 export class Engine {
   constructor(opts = {}) {
     this.version = opts.version || "0.1.0";
@@ -360,17 +366,21 @@ export class Engine {
     if (key === "f" || key === "F" || key === "t" || key === "T") { p.awaiting = key; return { handled: true }; }
     if (key === "m") { p.awaiting = "mark"; return { handled: true }; }
     if (key === "'" || key === "`") { p.awaiting = key; return { handled: true }; }
-    if (key === "g") {
-      if (p.gPending) { p.gPending = false; return this._doMotion("gg"); }
-      p.gPending = true;
-      return { handled: true };
-    }
     if (p.gPending) {
       p.gPending = false;
-      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$", "^": "g^" }[key];
-      if (gmotion) return this._doMotion(gmotion);
-      return { handled: true }; // an unmapped g-command: swallow both keys
+      const gmotion = G_MOTIONS[key];
+      if (!gmotion) return { handled: true }; // an unmapped g-command: swallow both keys
+      if (p.op) {
+        const op = p.op;
+        const reg = p.reg;
+        const count = parseInt(p.opCount || p.count || "1", 10);
+        this.pending = this._emptyPending();
+        this._operatorWithMotion(op, gmotion, count, reg);
+        return { handled: true, edit: op !== "y" };
+      }
+      return this._doMotion(gmotion);
     }
+    if (key === "g") { p.gPending = true; return { handled: true }; }
 
     // counts
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) {
@@ -1468,6 +1478,32 @@ export class Engine {
     return { handled: true, edit: true };
   }
 
+  /**
+   * Join line `ln` with the one below it. THE join rule, in one place: `J`, `3J` and
+   * visual `J` all come through here, because a second copy of it - the visual handler
+   * replaced every newline-plus-blanks with a single space - inserted a space even when
+   * the line already ended in one: "two spaces between" survived the fix that was meant
+   * to remove exactly that.
+   *
+   * Measured (vim, nvi): a blank or whitespace-only next line is removed outright with
+   * no separator, and otherwise a space is added only when the line joined INTO has no
+   * trailing blank of its own (and none at all when that line is empty, where it would
+   * be a leading space).
+   */
+  _joinPair(out, ln) {
+    const target = B.lineOffset(out, ln);
+    const e = B.lineEnd(out, target);
+    const nextStart = e + 1;
+    if (nextStart > out.length) return null;
+    const nextEnd = B.lineEnd(out, nextStart);
+    const raw = out.slice(nextStart, nextEnd);
+    if (raw.trim() === "") return { out: out.slice(0, e) + out.slice(nextEnd), joinAt: e };
+    const next = raw.replace(/^[ \t]+/, "");
+    const first = out.slice(target, e);
+    const sep = first === "" || /[ \t]$/.test(first) ? "" : " ";
+    return { out: out.slice(0, e) + sep + next + out.slice(nextEnd), joinAt: e };
+  }
+
   _join(count) {
     const text = this.text;
     const cur = this.state.cursor;
@@ -1475,35 +1511,17 @@ export class Engine {
     if (line >= B.lineCount(text) - 1) return { handled: true };
     this._pushUndo({ text, cursor: cur });
     let out = text;
-    let changed = 0;
     let joinAt = -1;
     // vim: [count]J joins [count] lines, i.e. count-1 joins
     const joins = Math.max(1, count - 1);
-    let ln = line;
+    const ln = line;
     for (let i = 0; i < joins && ln < B.lineCount(out) - 1; i++) {
-      const target = B.lineOffset(out, ln);
-      const e = B.lineEnd(out, target);
-      const nextStart = e + 1;
-      if (nextStart > out.length) break;
-      const nextEnd = B.lineEnd(out, nextStart);
-      const raw = out.slice(nextStart, nextEnd);
-      if (raw.trim() === "") {
-        // measured: a blank (or whitespace-only) line is removed outright and
-        // no space is inserted - "a\n\nb" + J is "a\nb", not "a \nb".
-        out = out.slice(0, e) + out.slice(nextEnd);
-      } else {
-        const next = raw.replace(/^[ \t]+/, "");
-        // measured (vim, nvi): a space is added only when the line joined INTO has no
-        // trailing blank of its own - an existing space or tab IS the separator. And
-        // none when that line is empty, where a space would be a leading one.
-        const first = out.slice(target, e);
-        const sep = first === "" || /[ \t]$/.test(first) ? "" : " ";
-        out = out.slice(0, e) + sep + next + out.slice(nextEnd);
-      }
-      joinAt = e;
-      changed++;
+      const r = this._joinPair(out, ln);
+      if (!r) break;
+      out = r.out;
+      joinAt = r.joinAt;
     }
-    if (!changed) return { handled: true };
+    if (joinAt < 0) return { handled: true };
     this._setText(out);
     this.state.cursor = Math.min(joinAt, Math.max(0, out.length - 1));
     this._noteChange({ kind: "join", count });
@@ -1768,10 +1786,9 @@ export class Engine {
     if (p.awaiting) return this._consumeArgument(p.awaiting, key);
     if (key === "'" || key === "`") { p.awaiting = key; return { handled: true }; }
     if (key === "m") { p.awaiting = "mark"; return { handled: true }; }
-    if (key === "g") { p.gPending = true; return { handled: true }; }
     if (p.gPending) {
       p.gPending = false;
-      const gmotion = { j: "gj", k: "gk", "0": "g0", $: "g$", "^": "g^" }[key];
+      const gmotion = G_MOTIONS[key];
       if (gmotion) {
         const m = this._motion(gmotion, this._takeCount(1), {});
         if (m) this.state.cursor = Math.max(0, Math.min(m.to, Math.max(0, this.text.length - 1)));
@@ -1779,6 +1796,7 @@ export class Engine {
       }
       return { handled: true };
     }
+    if (key === "g") { p.gPending = true; return { handled: true }; }
 
     // text objects extend the selection to exactly that object&# (vim-only: busybox
     // has no visual mode at all)
@@ -1824,12 +1842,36 @@ export class Engine {
       return { handled: true, edit: true };
     }
     if (key === "J") {
+      // join every line the selection spans, through the same rule as `J`
       const range = this._visualRange();
-      const slice = this.text.slice(range.from, range.to).replace(/\n\s*/g, " ");
-      this._pushUndo({ text: this.text, cursor: this.state.cursor });
-      this._setText(this.text.slice(0, range.from) + slice + this.text.slice(range.to));
-      this.state.cursor = range.from;
-      this.mode = Mode.NORMAL; this.visual = null;
+      const text = this.text;
+      const first = B.lineNumber(text, range.from);
+      // range.to is EXCLUSIVE: the last line of the selection is the one holding to-1,
+      // otherwise a selection ending on a blank line reports one line too many and the
+      // join then eats the following line too ("a b" instead of "a\nb").
+      const lastOffset = Math.max(range.from, Math.min(range.to - 1, Math.max(0, text.length - 1)));
+      const last = B.lineNumber(text, lastOffset);
+      const joins = Math.max(0, last - first);
+      this._pushUndo({ text, cursor: this.state.cursor });
+      let out = text;
+      let joinAt = -1;
+      for (let i = 0; i < joins; i++) {
+        const r = this._joinPair(out, first);
+        if (!r) break;
+        out = r.out;
+        joinAt = r.joinAt;
+      }
+      this.mode = Mode.NORMAL;
+      this.visual = null;
+      if (joinAt < 0) {
+        // nothing to join (a one-line selection): vim still parks the cursor at the
+        // start of the selection, which is where the join would have happened.
+        this.state.cursor = Math.min(range.from, Math.max(0, this.text.length - 1));
+        return { handled: true };
+      }
+      this._setText(out);
+      this.state.cursor = Math.min(joinAt, Math.max(0, this.text.length - 1));
+      this._noteChange({ kind: "join", count: 1 });
       return { handled: true, edit: true };
     }
     if (key === "p" || key === "P") {

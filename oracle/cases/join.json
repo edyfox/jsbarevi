@@ -1,69 +1,185 @@
 {
-  "about": "J and the separator it inserts. Measured 2026-11-13: a space is added ONLY when the line joined into has no trailing blank of its own - an existing space or tab already separates, and vim does not add a second one. vim and nvi agree on every case here; busybox always inserts a space (it replaces the newline with ' ' and then eats the next line's leading blanks), so these run vim+nvi and busybox stays the scope oracle. The '. ' case carries options.joinspaces=false because vim's own default in this harness inserts TWO spaces after a sentence-ending punctuation; nvi never does, and this engine implements the nojoinspaces rule (the option is not in DECISIONS' :set surface).",
+  "about": "J and the separator it inserts. Measured 2026-11-13: a space is added ONLY when the line joined into has no trailing blank of its own - an existing space or tab already separates, and vim does not add a second one. vim and nvi agree on every case here; busybox always inserts a space (it replaces the newline with ' ' and then eats the next line's leading blanks), so these run vim+nvi and busybox stays the scope oracle. The '. ' case carries options.joinspaces=false because vim's own default in this harness inserts TWO spaces after a sentence-ending punctuation; nvi never does, and this engine implements the nojoinspaces rule (the option is not in DECISIONS' :set surface). The visual-mode cases (vjJ, VjjJ, VGJ) run vim-only: neither nvi nor busybox joins a visual selection.",
   "cases": [
     {
       "name": "a plain join adds one space",
       "input": "ab\ncd\n",
       "keys": "J",
-      "expect": { "text": "ab cd\n", "line": 1, "col": 3 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "ab cd\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "a trailing space is the separator: no second one",
       "input": "ab \ncd\n",
       "keys": "J",
-      "expect": { "text": "ab cd\n", "line": 1, "col": 4 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "ab cd\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "two trailing spaces are kept, and none is added",
       "input": "ab  \ncd\n",
       "keys": "J",
-      "expect": { "text": "ab  cd\n", "line": 1, "col": 5 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "ab  cd\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "a trailing tab is the separator",
       "input": "ab\t\ncd\n",
       "keys": "J",
-      "expect": { "text": "ab\tcd\n", "line": 1, "col": 4 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "ab\tcd\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "an existing space plus the next line's indent still gives one",
       "input": "ab \n cd\n",
       "keys": "J",
-      "expect": { "text": "ab cd\n", "line": 1, "col": 4 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "ab cd\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "no trailing blank: the next line's indent is dropped and one space added",
       "input": "ab\n  cd\n",
       "keys": "J",
-      "expect": { "text": "ab cd\n", "line": 1, "col": 3 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "ab cd\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "after a full stop only one space, because joinspaces is off",
       "input": "ab. \ncd\n",
       "keys": "J",
-      "options": { "joinspaces": false },
-      "expect": { "text": "ab. cd\n", "line": 1, "col": 5 },
-      "engines": ["vim"]
+      "options": {
+        "joinspaces": false
+      },
+      "expect": {
+        "text": "ab. cd\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "joining into a blank line adds no space at all",
       "input": "a\n \nb\n",
       "keys": "jJ",
-      "expect": { "text": "a\n b\n", "line": 2, "col": 2 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "a\n b\n",
+        "line": 2,
+        "col": 2
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
     },
     {
       "name": "joining a blank line away keeps the first line's trailing space",
       "input": "a \n\nb\n",
       "keys": "J",
-      "expect": { "text": "a \nb\n", "line": 1, "col": 2 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "a \nb\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
+    },
+    {
+      "name": "visual J over two lines, line already ends in a space",
+      "input": "ab \ncd\n",
+      "keys": "vjJ",
+      "expect": {
+        "text": "ab cd\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "...with two trailing spaces they are kept",
+      "input": "ab  \ncd\n",
+      "keys": "vjJ",
+      "expect": {
+        "text": "ab  cd\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "visual J over a linewise range joins them all",
+      "input": "ab\ncd\nef\n",
+      "keys": "VjjJ",
+      "expect": {
+        "text": "ab cd ef\n",
+        "line": 1,
+        "col": 6
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "visual J to the last line",
+      "input": "a\nb\nc\nd\n",
+      "keys": "VGJ",
+      "expect": {
+        "text": "a b c d\n",
+        "line": 1,
+        "col": 6
+      },
+      "engines": [
+        "vim"
+      ]
     }
   ]
 }

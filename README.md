@@ -123,7 +123,8 @@ rebuilds the text from a snapshot taken when `R` was pressed — see
 `J` inserts a separator only when the line joined into has **none of its own**: a
 trailing space or tab already separates, so no second one is added (measured against
 vim and nvi; busybox always inserts one, and is the scope oracle here, not the
-behaviour one).
+behaviour one). The same rule serves `3J` and visual `J` - one implementation, so they
+cannot disagree.
 
 Deliberately approximated, documented in `docs/DECISIONS.md`: `.` replays an
 insert by diffing the snapshot (the host owns keystrokes, so they cannot be

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { Engine, Mode } from "../src/engine/engine.js";
 // ONE definition of "the host types", shared with the differential driver: a second
 // copy silently kept typing like plain insert after replace mode existed.
-import { hostType } from "./lib/engine-driver.mjs";
+import { hostType, normalise } from "./lib/engine-driver.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -48,12 +48,16 @@ function runCase(c) {
   drive(engine, c.keys);
   const pos = position(engine);
   const bad = [];
-  if (c.expect.text !== undefined && engine.text !== c.expect.text) {
-    bad.push(`text ${JSON.stringify(engine.text)} != ${JSON.stringify(c.expect.text)}`);
+  // normalise on BOTH sides, exactly as test/differential.mjs does: the case files hold
+  // vim's file text while the buffer always ends with its terminator, and the two differ
+  // for an EMPTY buffer ("" versus "\n") - which is how `dgg` deleting everything
+  // looked like a failure of the engine rather than of the comparison.
+  if (c.expect.text !== undefined && normalise(engine.text) !== normalise(c.expect.text)) {
+    bad.push(`text ${JSON.stringify(normalise(engine.text))} != ${JSON.stringify(normalise(c.expect.text))}`);
   }
   if (c.expect.line !== undefined && pos.line !== c.expect.line) bad.push(`line ${pos.line} != ${c.expect.line}`);
   if (c.expect.col !== undefined && pos.col !== c.expect.col) bad.push(`col ${pos.col} != ${c.expect.col}`);
-  return { ok: bad.length === 0, why: bad.join("; "), pos, text: engine.text };
+  return { ok: bad.length === 0, why: bad.join("; "), pos, text: normalise(engine.text) };
 }
 
 function main() {

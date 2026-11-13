@@ -40,6 +40,8 @@ export const COMMANDS = [
   "ma`a", "ma'a", "mad`a", "may`a", "mav`ad",
   // the cursor after a put depends on the register kind, so both kinds are here
   "vjyp", "yyjp",
+  // the g-motions as MOTIONS: under an operator and extending a selection
+  "Gdgg", "vjJ", "VjjJ",
   "iZ<Esc>", "aZ<Esc>", "IZ<Esc>", "AZ<Esc>", "oZ<Esc>", "OZ<Esc>", "3iZ<Esc>",
   "0", "^", "G", "gg", "h", "l", "j", "k",
   "2J", "r<Esc>", "%",
