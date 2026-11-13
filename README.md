@@ -135,7 +135,12 @@ behaviour, and the answer has two halves:
   (`cursor-controller.js`, `getMouseSelection`, `clampCursorToLine`), which is why
   a drag does not need its own mode: the native selection and visual mode become
   the same thing, and whatever the host selects — a mouse drag, Shift+arrow, a
-  selection the page makes — becomes the engine's selection.
+  selection the page makes — becomes the engine's selection. A plain click
+  **ends** visual mode, which is vim's rule too (`mouse.c:769`); **Shift+click**
+  adjusts it instead — the boundary nearest the click moves to it and the far one
+  stays, so a click outside the selection grows it and a click inside cuts it
+  down (`mouse.c:753`, `mouse.c:934`). In NORMAL mode Shift+click starts a
+  selection anchored at the cursor.
 
 The native selection is still collapsed the moment it has been adopted, so exactly
 one of the two is ever visible; see the overlay note below for why the painting is
