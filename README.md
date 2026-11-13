@@ -107,6 +107,11 @@ marks, registers, `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
 (`s d y = list set version features file e w q x`) with ranges and the
 translate/refuse regex contract, and the viewport capability.
 
+Undo is vim's: **one `u` per change command**, so `s`, `cw`, `cc` and whatever
+you typed after them are undone together (a command that changed nothing is not
+an undo step, so `i<Esc>u` does not consume one). Measured against vim and nvi;
+busybox's per-operation undo disagrees, which is recorded in `docs/ENGINE.md`.
+
 Deliberately approximated, documented in `docs/DECISIONS.md`: `R` behaves like
 insert, `.` replays an insert by diffing the snapshot (insert mode belongs to the
 host, so keystrokes cannot be recorded), and `H M L z C-b C-d C-e C-f C-u C-y`

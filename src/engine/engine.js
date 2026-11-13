@@ -36,6 +36,7 @@ export class Engine {
     this.lastFind = null; // {kind, char, forward}
     this.undoStack = [];
     this.redoStack = [];
+    this.undoBlock = null;
     this.lastChange = null;
     this.lineSnapshot = null;
     this.state = { text: "", cursor: 0 };
@@ -178,11 +179,18 @@ export class Engine {
 
   feed(key) {
     if (this.prompt) return { handled: false };
-    if (this.mode === Mode.INSERT) return this._insertKey(key);
-    const res = this.mode === Mode.VISUAL || this.mode === Mode.VISUAL_LINE
-      ? this._visualKey(key)
-      : this._normalKey(key);
-    this._stayOffNewline();
+    let res;
+    if (this.mode === Mode.INSERT) {
+      res = this._insertKey(key);
+    } else {
+      res = this.mode === Mode.VISUAL || this.mode === Mode.VISUAL_LINE
+        ? this._visualKey(key)
+        : this._normalKey(key);
+      this._stayOffNewline();
+    }
+    // One undo block per change command; insert mode keeps the block open until
+    // Esc, so the command that opened insert and the typing undo together.
+    if (this.mode === Mode.NORMAL) this._closeUndo();
     return res;
   }
 
@@ -246,6 +254,9 @@ export class Engine {
     }
     if (kind === "ex") {
       const result = runEx(this, value);
+      // An ex command mutates outside `feed()`, so it has to close its own undo
+      // block - otherwise the block stays open and swallows the next command's.
+      this._closeUndo();
       if (result.message) this.onStatus(result.message, result.ok ? "info" : "error");
       if (result.ok && !result.message) this.onStatus("");
       return { handled: true, ex: result };
@@ -994,8 +1005,30 @@ export class Engine {
   }
 
   // --- edits ---------------------------------------------------------------
+  /**
+   * vim's unit of undo is the CHANGE COMMAND, not the operation under it: `s`,
+   * `cw` and `cc` record one block and the insert they open belongs to it, so a
+   * single `u` puts back the deletion *and* what was typed. Measured: vim and
+   * nvi agree on every one of those. busybox does not - its undo is
+   * per-operation, so `sX<Esc>u` there undoes only the insert - which is why this
+   * rule is taken from vim/nvi and not from the scope oracle.
+   *
+   * Recording opens a block on the first mutation of a command and commits it
+   * when the command finishes (`_closeUndo`). A block that changed no text is
+   * dropped rather than becoming an undo step that does nothing, which is what
+   * `i<Esc>u` must not create.
+   */
   _pushUndo(snapshot) {
-    this.undoStack.push(snapshot);
+    if (this.undoBlock) return; // already recording this change
+    this.undoBlock = { text: snapshot.text, cursor: snapshot.cursor };
+  }
+
+  _closeUndo() {
+    const block = this.undoBlock;
+    this.undoBlock = null;
+    if (!block) return;
+    if (block.text === this.text) return; // nothing changed: not an undo step
+    this.undoStack.push(block);
     if (this.undoStack.length > 500) this.undoStack.shift();
     this.redoStack.length = 0;
   }
@@ -1208,7 +1241,16 @@ export class Engine {
   _enterInsert(kind, count = 1) {
     const text = this.text;
     const cur = this.state.cursor;
-    this._pushUndo({ text, cursor: cur });
+    // vim opens the undo block where the change BEGINS, and that is also where
+    // undo puts the cursor back: after the entry motion for i/a/I/A (measured:
+    // `aX<Esc>u` returns to 1:2, `AX<Esc>u` to the last character of the line),
+    // but at the pre-command cursor for o/O, whose new line is gone after the
+    // undo. `s`/`c` have already opened the block at the deleted position.
+    const entry = kind === "a" ? C.right(text, cur)
+      : kind === "I" ? B.firstNonBlank(text, cur)
+        : kind === "A" ? B.lineEnd(text, cur)
+          : cur;
+    this._pushUndo({ text, cursor: entry });
     this.lineSnapshot = B.lineText(text, cur);
     this.mode = Mode.INSERT;
     this.pending = this._emptyPending();
@@ -1216,9 +1258,9 @@ export class Engine {
     switch (kind) {
       // appends after the cursor character; dot_right refuses to step past a
       // newline, which is what an empty line needs
-      case "a": this.state.cursor = C.right(text, cur); break;
-      case "I": this.state.cursor = B.firstNonBlank(text, cur); break;
-      case "A": this.state.cursor = B.lineEnd(text, cur); break;
+      case "a": this.state.cursor = entry; break;
+      case "I": this.state.cursor = entry; break;
+      case "A": this.state.cursor = entry; break;
       case "o": {
         const e = B.lineEnd(text, cur);
         this._setText(text.slice(0, e) + "\n" + text.slice(e));

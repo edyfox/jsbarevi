@@ -566,6 +566,40 @@ async function main() {
     check("shift+click in normal mode starts a visual selection", await mode(), "VISUAL");
     check("...anchored at the old cursor and headed at the click", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha ");
     await sendKey(session, "Escape");
+    console.log("\n\x1b[1mundo granularity: one block per change command\x1b[0m");
+    // Insert mode is the HOST's here, so this is the layer where the reported bug
+    // lived: the deletion and the insert were recorded as two undo steps, and the
+    // first `u` only stepped the cursor right.
+    await resetField();
+    await typeKeys(session, "s");
+    check("s deleted the character and is inserting", await mode(), "INSERT");
+    await sendKey(session, "Escape");
+    check("Esc back to normal", await mode(), "NORMAL");
+    await typeKeys(session, "u");
+    check("one u puts the character back", await field(), BUFFER);
+    check("...and the cursor is where the change began", await cursor(), 0);
+
+    await resetField();
+    await typeKeys(session, "s");
+    await typeKeys(session, "Q");
+    await sendKey(session, "Escape");
+    check("s + typed text is in the field", (await field()).startsWith("Qlpha"), true);
+    await typeKeys(session, "u");
+    check("one u undoes the deletion AND the typed text", await field(), BUFFER);
+
+    await resetField();
+    await typeKeys(session, "cw");
+    await typeKeys(session, "Z");
+    await sendKey(session, "Escape");
+    await typeKeys(session, "u");
+    check("cw and its insert undo as one change", await field(), BUFFER);
+
+    await resetField();
+    await typeKeys(session, "i");
+    await sendKey(session, "Escape");
+    await typeKeys(session, "x");
+    await typeKeys(session, "u");
+    check("an empty insert leaves no undo step for u to waste", await field(), BUFFER);
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");

@@ -1,0 +1,138 @@
+{
+  "about": "Undo granularity: the unit is the CHANGE COMMAND, so `s`/`cw`/`cc` and the insert they open undo together. Measured 2026-11-13 across the references: vim and nvi agree on every case here; busybox does NOT - its undo is per-operation, so `sX<Esc>u` leaves 'bc' (only the insert undone) and `oX<Esc>u` leaves an extra blank line - so it is the scope oracle, not the behaviour oracle, for this rule. nvi has a single undo level, which is why the multi-undo and redo cases are vim-only. Expect values are vim's measured output; test/differential.mjs re-runs every case against vim at test time.",
+  "cases": [
+    {
+      "name": "s then Esc then u restores the deleted character",
+      "input": "abc\ndef\n",
+      "keys": "s<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "s and the text typed after it undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "sX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "2s and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "2sX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "cw and its insert undo as one change",
+      "input": "abc def\n",
+      "keys": "cwX<Esc>u",
+      "expect": { "text": "abc def\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "cc and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "ccX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "S and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "SX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "C and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "CX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "o and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "oX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "O and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "OX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "i and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "iX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "a and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "aX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 2 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "A and its insert undo as one change",
+      "input": "abc\ndef\n",
+      "keys": "AX<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 3 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "an empty insert is not an undo step",
+      "input": "abc\ndef\n",
+      "keys": "i<Esc>u",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "x then u",
+      "input": "abc\ndef\n",
+      "keys": "xu",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "dd then u",
+      "input": "abc\ndef\n",
+      "keys": "ddu",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "a change then two undos walk back two changes",
+      "input": "abc\ndef\n",
+      "keys": "sX<Esc>uAX<Esc>uu",
+      "expect": { "text": "abc\ndef\n", "line": 1, "col": 3 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "u then C-r redoes the whole change",
+      "input": "abc\ndef\n",
+      "keys": "xu<C-r>",
+      "expect": { "text": "bc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "u then C-r redoes a change command with its insert",
+      "input": "abc\ndef\n",
+      "keys": "sX<Esc>u<C-r>",
+      "expect": { "text": "Xbc\ndef\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "a new change after u clears the redo stack",
+      "input": "abc\ndef\n",
+      "keys": "xuAX<Esc><C-r>",
+      "expect": { "text": "abcX\ndef\n", "line": 1, "col": 4 },
+      "engines": ["vim"]
+    }
+  ]
+}

@@ -55,12 +55,16 @@ TOKEN_TO_VIM = {
     "<CR>": "\\<CR>",
     "<Tab>": "\\<Tab>",
     "<BS>": "\\<BS>",
+    # redo: vim only (nvi's `u` toggles, busybox has no redo), but the token has
+    # to exist or a redo case aborts the whole run
+    "<C-r>": "\\<C-R>",
 }
 TOKEN_TO_BYTES = {
     "<Esc>": b"\x1b",
     "<CR>": b"\r",
     "<Tab>": b"\t",
     "<BS>": b"\x7f",
+    "<C-r>": b"\x12",
 }
 
 

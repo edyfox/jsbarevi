@@ -193,5 +193,55 @@ const textOf = (e) => e.visualText();
   eq("...and keeps whole lines on the side it kept", textOf(e), "aa\nbb\ncc\n");
 }
 
+console.log("\n\x1b[1mundo granularity: one block per change command\x1b[0m");
+{
+  // the reported bug: `s` deleted, Esc ended the insert, and the first `u` only
+  // stepped the cursor right because the deletion and the insert were recorded
+  // separately. Now the insert belongs to the command that opened it.
+  const e = mk("abc\ndef\n");
+  e.feedKeys("s<Esc>");
+  eq("s + Esc records exactly one undo step", e.undoStack.length, 1);
+  e.feed("u");
+  eq("one u puts the deleted character back", e.hostText, "abc\ndef");
+  eq("...and leaves the cursor where the change began", e.cursor, 0);
+  eq("...with the step consumed", e.undoStack.length, 0);
+}
+{
+  const e = mk("abc\ndef\n");
+  e.feedKeys("i<Esc>");
+  eq("an insert that typed nothing is not an undo step", e.undoStack.length, 0);
+}
+{
+  const e = mk("abc\ndef\n");
+  e.feedKeys("xu");
+  eq("x then u", e.hostText, "abc\ndef");
+}
+{
+  const e = mk("abc\ndef\n");
+  e.feedKeys("ddu");
+  eq("dd then u", e.hostText, "abc\ndef");
+}
+{
+  // a change command's two halves must not leave a step behind: after `u` the
+  // stack has to be empty, or a second u would undo something older.
+  const e = mk("abc\ndef\n");
+  e.feedKeys("cc<Esc>");
+  eq("cc + Esc is one step", e.undoStack.length, 1);
+  e.feed("u");
+  eq("...and one u restores the line", e.hostText, "abc\ndef");
+}
+{
+  // `:d` mutates outside feed(); it must close its own block or it would swallow
+  // the next command's undo step.
+  const e = mk("a\nb\nc\n");
+  ex(e, "2d");
+  e.feedKeys("x");
+  eq("an ex delete and a following x are two steps", e.undoStack.length, 2);
+  e.feed("u");
+  eq("u undoes only the x", e.hostText, "a\nc");
+  e.feed("u");
+  eq("...and the next u undoes the :d", e.hostText, "a\nb\nc");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

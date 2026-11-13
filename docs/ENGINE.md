@@ -287,3 +287,42 @@ mutation in the engine and in `ex.js` goes through it), `hostText` is the view
 the field and `:e` transport get, and `lineCount()`/`lineEnd()` can keep their
 "a trailing newline terminates the last line" reading because the terminator is
 guaranteed rather than incidental.
+
+## Undo is per CHANGE COMMAND, not per operation
+
+`u` after `s` + Esc did nothing visible except step the cursor right, and the
+second `u` did the work. That is what "one undo entry per mutation" looks like:
+the deletion and the insert it opened were recorded separately, so the first
+entry had identical text and only a different cursor.
+
+The unit is the *change command*. Everything a command does — the delete and the
+typing that follows it — is one step, and an entry that changed no text is not a
+step at all (`i<Esc>u` must not consume a `u`).
+
+Measured across the references before implementing (the table is what the corpus
+now pins):
+
+| Sequence | vim | nvi | busybox |
+|---|---|---|---|
+| `s<Esc>u` | original | original | original |
+| `sX<Esc>u` | original | original | **only the insert undone** (`bc`) |
+| `cwX<Esc>u` | original | original | **` def`** |
+| `ccX<Esc>u` | original | original | **`\ndef`** |
+| `oX<Esc>u` | original | original | **extra blank line** |
+
+So this is one of the places where busybox is the *scope* oracle and not the
+behaviour oracle: vim and nvi agree, busybox's per-operation undo does not. The
+cases live in `oracle/cases/undo.json`, which runs vim and nvi; the redo
+(`C-r`) and multi-undo cases are vim-only, because nvi has a single undo level
+(`u` toggles) and busybox has no redo at all.
+
+Recording is a block: `_pushUndo()` opens it on the first mutation of a command,
+`_closeUndo()` commits it when the mode returns to NORMAL — which is why the
+insert opened by `s`/`cw` is inside the same block, while `:d` (an ex command,
+which mutates outside `feed()`) closes its own.
+
+The block also carries the cursor the undo should restore, and that is not the
+same place for every command: measured, `aX<Esc>u` returns to 1:2 and
+`AX<Esc>u` to the last character of the line (the insert position), while
+`oX<Esc>u` returns to where the cursor was before the command, because the line
+`o` created no longer exists.
