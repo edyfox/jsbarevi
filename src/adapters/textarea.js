@@ -76,6 +76,12 @@ export class TextareaAdapter {
       blur: () => {
         const inPrompt = document.activeElement?.classList?.contains("jsbarevi-prompt");
         if (this.engine.prompt || inPrompt) return;
+        // A blur can be the ONLY exit we ever see (another extension or a host key
+        // driver may take the Escape keydown). Leave insert through the engine's own
+        // path so the cursor still steps one character left, as vim does — a bare
+        // reset leaves it at the insertion point, which draws the block on the
+        // character AFTER the beam.
+        if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
         this.engine.reset();
         this.caret?.hide();
         this.highlight.clear();

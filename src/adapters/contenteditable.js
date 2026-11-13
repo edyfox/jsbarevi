@@ -263,6 +263,9 @@ export class ContenteditableAdapter {
   _onBlur() {
     const active = document.activeElement;
     if (this.engine.prompt || active?.classList?.contains("jsbarevi-prompt")) return;
+    // See textarea.js: leaving insert on a blur must still take vim's step to the left,
+    // or the block lands on the character after where the beam was.
+    if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
     this.engine.reset();
     this.caret?.hide();
     this.highlight.clear();

@@ -197,6 +197,19 @@ async function main() {
     check("the block cursor is drawn in NORMAL", await evaluate(page, "[...document.querySelectorAll('.jsbarevi-caret')].some((c) => getComputedStyle(c).display !== 'none')"), true);
     check("the cursor sits ON the last character, not past it", await evaluate(page, "window.handle.engine.hostText[window.handle.engine.cursor]"), await evaluate(page, "window.handle.engine.hostText.slice(-1)"));
 
+    // ---- a blur that stands in for the Escape we never received ----------
+    // Another extension can take the Escape keydown and blur the field. Leaving insert
+    // must still take vim's step to the left, otherwise the block lands on the
+    // character AFTER where the beam was — the reported "cursor covers the wrong char".
+    await typeKeys(page, "gg0lll");
+    await typeKeys(page, "iZ");
+    const beforeBlur = await evaluate(page, "window.handle.engine.cursor");
+    await evaluate(page, "document.activeElement.blur()");
+    const afterBlur = await evaluate(page, "JSON.stringify({ mode: window.handle.engine.mode, cursor: window.handle.engine.cursor, under: window.handle.engine.hostText[window.handle.engine.cursor] })");
+    check("a blur while inserting steps the cursor left", JSON.parse(afterBlur), { mode: "NORMAL", cursor: beforeBlur - 1, under: "Z" });
+    await evaluate(page, "document.getElementById('editor').focus()");
+    await sleep(120);
+
     // ---- visual line ------------------------------------------------------
     await typeKeys(page, "gg");
     const beforeVisual = await text();
