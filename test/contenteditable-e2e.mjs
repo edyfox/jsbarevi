@@ -1,0 +1,201 @@
+// End-to-end test for the CONTENTEDITABLE adapter, in real headless Chrome.
+//
+// The fixture is a chat composer shaped like the one that forced this adapter: a
+// `role="textbox"` contenteditable holding one flat run of text, `<br>`s for
+// newlines, and a non-editable mention chip. It also carries the two host behaviours
+// that make a rich composer different from a textarea, and both are asserted:
+//
+//   * the host has its OWN keydown handler (Enter sends) — a key the engine consumes
+//     must never reach it;
+//   * the host keeps its own model and rebuilds it from the DOM on `input` — an
+//     engine edit that did not dispatch `input` would leave the host sending stale
+//     text while the screen showed the new text.
+//
+//   node test/contenteditable-e2e.mjs
+
+import { createServer } from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { launchChrome, openPage, evaluate, waitFor, typeKeys, sleep } from "./lib/cdp.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json" };
+
+let pass = 0;
+let fail = 0;
+const check = (name, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  console.log(`  ${ok ? "\x1b[32mPASS\x1b[0m" : "\x1b[31mFAIL\x1b[0m"} ${name}${ok ? "" : `\n       got  ${JSON.stringify(got)}\n       want ${JSON.stringify(want)}`}`);
+  ok ? pass++ : fail++;
+};
+
+const PAGE = `<!doctype html>
+<html><head><meta charset="utf-8"><title>composer fixture</title>
+<style>
+  body{margin:0;padding:24px;background:#14161a;color:#e6e8eb;font:15px/1.6 system-ui}
+  #editor{width:520px;min-height:120px;padding:12px 14px;border-radius:10px;border:1px solid #2b3038;
+    background:#0f1115;white-space:pre-wrap;outline:none}
+  [data-mention]{color:#7fb4ff;background:#1b2a3d;border-radius:4px;padding:0 3px}
+</style></head>
+<body>
+<div id="editor" role="textbox" aria-multiline="true" aria-label="Compose a message" contenteditable="true">hello world<br>second line <span contenteditable="false" data-mention="file" data-path="a.ts">@a.ts</span> tail</div>
+<script type="module">
+  window.hostLog = { keys: [], inputs: 0, model: "" };
+  const editor = document.getElementById("editor");
+
+  // A host keymap: Enter sends. This is the composer's own handler, and a key the
+  // engine consumes must not reach it.
+  editor.addEventListener("keydown", (e) => {
+    window.hostLog.keys.push(e.key);
+    if (e.key === "Enter") { e.preventDefault(); window.hostLog.sent = (window.hostLog.sent || 0) + 1; }
+  });
+
+  // A host model rebuilt from the DOM on every input, exactly like the real one.
+  const parse = () => {
+    let text = "";
+    const visit = (n) => {
+      if (n.nodeType === 3) { text += n.data; return; }
+      if (n.nodeType !== 1) return;
+      if (n.hasAttribute("data-mention")) { text += n.textContent; return; }
+      if (n.tagName === "BR") { text += "\\n"; return; }
+      [...n.childNodes].forEach(visit);
+    };
+    [...editor.childNodes].forEach((n, i, all) => {
+      visit(n);
+      if (n.nodeType === 1 && ["DIV", "P"].includes(n.tagName) && i < all.length - 1) text += "\\n";
+    });
+    return text;
+  };
+  editor.addEventListener("input", () => {
+    window.hostLog.inputs++;
+    window.hostLog.model = parse();
+  });
+
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  window.hostLog.model = parse();
+  window.ready = true;
+</script>
+</body></html>`;
+
+function serve() {
+  const server = createServer((req, res) => {
+    const url = decodeURIComponent((req.url || "/").split("?")[0]);
+    if (url === "/" || url === "/ce") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(PAGE);
+      return;
+    }
+    const file = path.join(ROOT, url);
+    if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      res.writeHead(404).end("nope");
+      return;
+    }
+    res.writeHead(200, { "content-type": MIME[path.extname(file)] || "text/javascript" });
+    fs.createReadStream(file).pipe(res);
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+async function main() {
+  const server = await serve();
+  const port = server.address().port;
+  const chromePort = 9550 + Math.floor(Math.random() * 100);
+  const { child } = await launchChrome({ port: chromePort });
+  let page;
+  try {
+    page = await openPage(chromePort, `http://127.0.0.1:${port}/ce`);
+    await waitFor(page, "!!window.ready", 10000);
+
+    const text = () => evaluate(page, "window.handle.engine.hostText");
+    const cursor = () => evaluate(page, "window.handle.engine.cursor");
+    const domText = () => evaluate(page, "document.getElementById('editor').innerText");
+    const host = () => evaluate(page, "JSON.parse(JSON.stringify(window.hostLog))");
+    const focus = () => evaluate(page, "document.getElementById('editor').focus()");
+
+    await focus();
+    await sleep(150);
+
+    // The flat model is Input Vim's: text, "\n" for <br> and block joins, and a
+    // mention chip contributing its own text (offsets inside it stay inside it).
+    check("flat text matches the host's own model", await text(), "hello world\nsecond line @a.ts tail");
+    check("caret starts on the first character", await cursor(), 0);
+
+    // ---- motions ----------------------------------------------------------
+    await typeKeys(page, "j");
+    check("j moves to the second line", await cursor(), 12);
+    await typeKeys(page, "w");
+    check("w moves a word", await cursor(), 19);
+    await typeKeys(page, "w");
+    check("w lands on the mention", await cursor(), 24);
+    await typeKeys(page, "w");
+    // The buffer holds the mention's TEXT (Input Vim's model), so `w` steps into it
+    // like text — "@" is punctuation, so the next word starts at "a". The ELEMENT is
+    // still unbreakable, which the delete below proves.
+    check("w steps into the mention's text", await cursor(), 25);
+
+    // ---- operators over a rich document ----------------------------------
+    await typeKeys(page, "0dd");
+    check("dd removes the line from the buffer", await text(), "hello world");
+    check("and from the DOM", (await domText()).trim(), "hello world");
+    await typeKeys(page, "u");
+    check("u restores the line", await text(), "hello world\nsecond line @a.ts tail");
+    check("u restores the mention ELEMENT, not its text", await evaluate(page, "document.querySelectorAll('[data-mention]').length"), 1);
+
+    // ---- deleting an unbreakable element ---------------------------------
+    await typeKeys(page, "j0ww");
+    check("cursor is on the mention", await cursor(), 24);
+    await typeKeys(page, "x");
+    check("x removes the whole element", await evaluate(page, "document.querySelectorAll('[data-mention]').length"), 0);
+    check("and the buffer adopts what the host really did", await text(), "hello world\nsecond line  tail");
+    await typeKeys(page, "u");
+    check("undo brings the mention back", await evaluate(page, "document.querySelectorAll('[data-mention]').length"), 1);
+    check("with its text", await text(), "hello world\nsecond line @a.ts tail");
+
+    // ---- insert mode belongs to the host --------------------------------
+    // gg0 = the real start of the document (0 alone is the start of the LINE, which
+    // after the undo is line 2 — a reminder that the engine is vi, not a text input).
+    await typeKeys(page, "gg0i");
+    await typeKeys(page, "X");
+    await typeKeys(page, "<Esc>");
+    check("typed text landed at the cursor in the document", (await domText()).startsWith("Xhello"), true);
+    check("and the host's own model saw it", (await host()).model.startsWith("Xhello"), true);
+
+    // ---- the host's keymap must not double-act ---------------------------
+    const beforeKeys = (await host()).keys.length;
+    await typeKeys(page, "<CR>");
+    check("Enter in NORMAL does not reach the host keymap", (await host()).keys.length, beforeKeys);
+    check("so nothing was sent", (await host()).sent ?? 0, 0);
+
+    // ---- engine edits must tell the host ---------------------------------
+    const beforeInputs = (await host()).inputs;
+    await typeKeys(page, "dw");
+    const afterCommit = await host();
+    check("an engine edit dispatches input", afterCommit.inputs > beforeInputs, true);
+    check("and the host re-parsed exactly the engine's buffer", afterCommit.model, await text());
+
+    // ---- visual line ------------------------------------------------------
+    await typeKeys(page, "gg");
+    const beforeVisual = await text();
+    await typeKeys(page, "Vd");
+    check("Vd deleted a line", (await text()) !== beforeVisual, true);
+    await typeKeys(page, "u");
+    check("u restored it", await text(), beforeVisual);
+
+    // ---- :version reports the build --------------------------------------
+    await typeKeys(page, ":version<CR>");
+    check("status line carries the build", (await evaluate(page, "document.querySelector('.jsbarevi-line').textContent")).startsWith("jsbarevi 0.1.0+"), true);
+  } finally {
+    try { page?.close(); } catch { /* ignore */ }
+    child.kill("SIGKILL");
+    server.close();
+  }
+  console.log(`\n  ${fail === 0 ? "\x1b[32m" : "\x1b[31m"}${pass} passed, ${fail} failed\x1b[0m`);
+  process.exit(fail === 0 ? 0 : 1);
+}
+
+main().catch((err) => {
+  console.error(err.stack || String(err));
+  process.exit(1);
+});

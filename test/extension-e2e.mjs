@@ -54,7 +54,7 @@ zeta eta theta</textarea>
 <input id="secret" type="password" value="hunter2">
 <input id="plain" type="number" value="42">
 <div data-jsbarevi="off"><textarea id="optedout">leave me alone</textarea></div>
-<div id="ce" contenteditable="true">editable prose</div>
+<div id="ce" contenteditable="true" role="textbox" aria-label="composer">editable prose</div>
 </body></html>`;
 
 // A page that focuses its field BEFORE the content script exists — the autofocus
@@ -195,14 +195,19 @@ async function main() {
     await evaluate(page, "document.getElementById('search').focus()");
     await sleep(400);
     check("text input attaches", await evaluate(page, "document.getElementById('search').hasAttribute('data-jsbarevi-active')"), true);
-    for (const id of ["secret", "plain", "optedout", "ce"]) {
+    for (const id of ["secret", "plain", "optedout"]) {
       await evaluate(page, `document.getElementById('${id}').focus()`);
       await sleep(200);
     }
     check("password field never attaches", await evaluate(page, "document.getElementById('secret').hasAttribute('data-jsbarevi-active')"), false);
     check("number field never attaches", await evaluate(page, "document.getElementById('plain').hasAttribute('data-jsbarevi-active')"), false);
     check("data-jsbarevi=off is honoured", await evaluate(page, "document.getElementById('optedout').hasAttribute('data-jsbarevi-active')"), false);
-    check("contenteditable is not claimed yet", await evaluate(page, "document.getElementById('ce').hasAttribute('data-jsbarevi-active')"), false);
+    await evaluate(page, "document.getElementById('ce').focus()");
+    check("a contenteditable composer IS claimed", !!(await waitFor(page, "document.getElementById('ce').hasAttribute('data-jsbarevi-active')", 3000)), true);
+
+    // ---- the composer case, end to end through the packaged bundle ---------
+    await typeKeys(page, "dw");
+    check("a rich composer is editable through the extension", await evaluate(page, "document.getElementById('ce').textContent"), "prose");
 
     // ---- per-site switch --------------------------------------------------
     await setSettings(worker, { disabledHosts: ["127.0.0.1"] });

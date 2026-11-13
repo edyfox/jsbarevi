@@ -24,7 +24,8 @@ import { Engine, Mode } from "../engine/engine.js";
 import * as B from "../engine/buffer.js";
 import { fromField } from "../engine/buffer.js";
 import { BlockCaret } from "./caret.js";
-import { HttpEditorSession } from "./editor-session.js";
+import { attachSession } from "./session.js";
+import { tokenFor } from "./keys.js";
 import { SelectionHighlight } from "./highlight.js";
 
 export class TextareaAdapter {
@@ -102,26 +103,8 @@ export class TextareaAdapter {
       this._resizeObserver = new ResizeObserver(() => this._bound.resize());
       this._resizeObserver.observe(el);
     }
-    // `:e` needs a transport. Three ways in, and they all end up reporting through
-    // THIS adapter — otherwise a host-supplied transport updates the engine's buffer
-    // and never commits it to the field, which looks like ":e did nothing".
-    //   * opts.session        — already built, with its own callbacks (leave it alone)
-    //   * opts.sessionFactory — an extension builds the transport around the engine,
-    //                           which does not exist until this constructor runs
-    //   * opts.editorUrl      — a plain URL, fetched by the host
-    if (!opts.session && (opts.sessionFactory || opts.editorUrl)) {
-      const session = opts.sessionFactory
-        ? opts.sessionFactory(this.engine)
-        : new HttpEditorSession({
-          engine: this.engine,
-          url: opts.editorUrl,
-          token: opts.editorToken,
-          basic: opts.editorBasic,
-        });
-      session.onStatus = (msg, kind) => this.onStatus?.(msg, kind);
-      session.onApplied = () => { this._commit(); this._emitMode(); };
-      this.engine.session = session;
-    }
+    // `:e` — one transport rule for every adapter; see session.js.
+    attachSession(this, this.engine, opts);
     this.syncFromHost();
     this.engine.setText(this.el.value, this.el.selectionStart ?? 0);
     this._emitMode();
@@ -532,36 +515,9 @@ export class TextareaAdapter {
   }
 
   _token(e) {
-    if (e.ctrlKey && !e.altKey && !e.metaKey) {
-      const k = e.key.toLowerCase();
-      if (k === "c") return "C-c";
-      if (["r", "w", "u", "d", "f", "b", "e", "y", "g"].includes(k)) return `C-${k}`;
-      return null;
-    }
-    if (e.altKey || e.metaKey) return null;
-    // Caret-moving keys vi also has: the ENGINE owns them outside insert mode, so
-    // the model stays authoritative (and visual mode extends on an arrow instead
-    // of the browser painting a selection we then have to guess back). Same
-    // mapping vim uses: arrows are h/j/k/l, Home/End are 0/$, PageUp/PageDown are
-    // C-b/C-f. In insert mode they belong to the browser, and Shift+arrows select.
-    // Screen-line keys. vim maps <Up>/<Down> to the screen-line motions when
-    // 'wrap' is set, and the browser does the same with carets in insert mode -
-    // which we cannot change, because insert mode is the host's. So normal mode
-    // follows the same rule: arrows and Home/End are gj/gk/g0/g$, and 0/$/j/k stay
-    // the buffer-line motions they are in vim.
-    const caret = {
-      ArrowLeft: "h", ArrowRight: "l", ArrowUp: "gk", ArrowDown: "gj",
-      Home: "g0", End: "g$", PageUp: "C-b", PageDown: "C-f",
-    };
-    if (caret[e.key] !== undefined) {
-      if (this.engine.mode === Mode.INSERT || e.shiftKey) return null;
-      return caret[e.key];
-    }
-    const named = { Escape: "Esc", Enter: "CR", Backspace: "BS", Tab: "Tab" };
-    if (named[e.key] !== undefined) return named[e.key];
-    if (e.key.length === 1) return e.key;
-    return null;
+    return tokenFor(e, this.engine.mode);
   }
+
 }
 
 export { Mode };

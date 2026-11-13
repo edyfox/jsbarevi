@@ -105,6 +105,43 @@ A page can opt out for a subtree with `data-jsbarevi="off"`, or suspend the exte
 for itself by dispatching `jsbarevi:suspend` with `detail: true` (and `false` to
 resume).
 
+## Contenteditable: the composer case
+
+A `<textarea>` gives you `.value` and `selectionStart`. A rich composer gives you a
+DOM, a `role="textbox"`, own key handling, its own model, and chips. The adapter for
+that is `src/adapters/contenteditable.js`, and its DOM primitives are **ported from
+Input Vim** (`content/handlers/contenteditable-handler.js`, MIT) rather than
+re-derived — that project solved this across six hosts:
+
+| Rule | Why it is not obvious |
+|---|---|
+| The field is a list of BLOCKS joined by `\n`; with no block children the element is one block | `text<br>text` is a single block with an internal newline — treating `<br>` as a block boundary doubles every line |
+| A `<br>` with nothing meaningful after it is a **placeholder** | every browser leaves one to make the last line reachable; counting it turns a one-line field into two |
+| An element inside the text contributes its **text**, and offsets inside it stay inside it | a mention chip is also an element the host keeps a reference to |
+| Edits go through the **selection + `execCommand`** | it deletes a chip whole, keeps the host's undo stack coherent, and works in editors that `preventDefault` on `beforeinput` |
+
+Three things that are ours, not the reference's:
+
+- **Keydown is captured on the document**, not the element, and a consumed key calls
+  `stopImmediatePropagation`. A composer registers its own handler (Enter sends,
+  arrows walk history) — and a listener added to the element later runs *after* it.
+  Without this, `j` navigates and Enter both moves a line and sends the message.
+- **Edits are still surgical**: the engine returns a whole buffer, so we diff it and
+  apply only the changed span. A rewrite would destroy the host's document.
+- **`u` restores markup, not text.** A text diff cannot re-create an element, so a
+  snapshot of the host's HTML is kept per text state and an exact restoration puts the
+  markup back — undoing a deleted mention returns the mention, not the string
+  `@a.ts`. (Same idea as Input Vim's innerHTML undo stack, scoped to states we saw.)
+
+Two measured traps, both fixed and both pinned by `npm run test:ce`:
+
+- **`execCommand` normalizes a selection that ends inside a non-editable element**: a
+  range from the end of the text before a chip to one character *into* the chip
+  deletes the TEXT and keeps the chip. So no selection endpoint may land inside one —
+  both boundaries snap to the element's edge, which is what `x` on a mention means.
+- **A deletion may remove more than asked.** The adapter re-reads the DOM after every
+  edit and adopts what really happened instead of insisting on its own buffer.
+
 ## Settings
 
 `chrome.storage.local`, three keys — nothing else is stored anywhere:
@@ -154,7 +191,8 @@ there), and `:e` needs a `pyTextFilter` that allows the `oc://` origin.
 
 | Limitation | Why |
 |---|---|
-| No contenteditable yet | needs the rich-text adapter (next engine work); the extension simply does not claim those fields |
+| A yanked mention is put back as its text, not as a chip | one buffer character cannot describe an element; the host's own chip is restored only by `u` (markup snapshot) |
+| Framework editors that `preventDefault` on `beforeinput` (CKEditor, ProseMirror) may refuse an edit | reported through the status line as "this editor refused the edit"; Input Vim bridges into the editor's JS API, we do not (scope) |
 | Ctrl-W / Ctrl-R are consumed while a field is focused | they are vi's `C-w` / `C-r`; a field that swallowed neither would be a field where vi half-works. Esc or a click outside gives the browser back |
 | Esc never blurs the field | vi's rule; Tab leaves |
 | `:e` needs a local server | by design — it is the "hand this to a real editor" escape hatch, not a remote service |

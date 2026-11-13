@@ -2,6 +2,19 @@
 // (mode badge, one-line status, prompt line). No framework, no build step.
 
 import { TextareaAdapter } from "./adapters/textarea.js";
+import { ContenteditableAdapter } from "./adapters/contenteditable.js";
+
+/**
+ * Which adapter owns this element.
+ *
+ * A contenteditable ROOT is the element carrying the attribute; its descendants are
+ * also `isContentEditable`, and attaching to those would put a second engine inside
+ * the first one's document.
+ */
+function adapterFor(el) {
+  if (el.isContentEditable && el.hasAttribute("contenteditable")) return ContenteditableAdapter;
+  return TextareaAdapter;
+}
 
 const OVERLAY_CSS = `
 .jsbarevi-badge{position:fixed;z-index:2147483647;pointer-events:none;
@@ -116,8 +129,12 @@ export const BUILD = "0.1.0+" + STAMP;
 export function attach(el, opts = {}) {
   const ui = makeUi(el);
   // A stale page is invisible otherwise: say which build is running.
-  if (typeof console !== "undefined") console.info(`[jsbarevi] ${BUILD} attached to`, el.tagName.toLowerCase());
-  const adapter = new TextareaAdapter(el, {
+  if (typeof console !== "undefined") {
+    const what = el.hasAttribute("contenteditable") ? "contenteditable" : el.tagName.toLowerCase();
+    console.info(`[jsbarevi] ${BUILD} attached to`, what);
+  }
+  const Adapter = adapterFor(el);
+  const adapter = new Adapter(el, {
     ...opts,
     // the full stamp, not just the semver: ":version" is the in-field way to tell
     // one commit from another, which is what a stale page looks like from inside
@@ -183,3 +200,4 @@ export function attach(el, opts = {}) {
 
 export { Engine } from "./engine/engine.js";
 export { TextareaAdapter } from "./adapters/textarea.js";
+export { ContenteditableAdapter } from "./adapters/contenteditable.js";

@@ -5,7 +5,8 @@ contenteditable, and the rich composers inside VS Code, Cursor, Devin, Lark and
 OpenCode. No plugin marketplace, no framework. One small engine, one adapter
 contract, and a real editor behind `:e` when the field is not enough.
 
-> Status: **engine verified end-to-end, and packaged as a Chrome extension.**
+> Status: **engine verified end-to-end, packaged as a Chrome extension, and running in
+> rich composers (contenteditable) as well as plain fields.**
 > 294 differential cases match real `vim`, 160 engine cases, 109 unit, 180
 > end-to-end checks in real headless Chrome, and 24 more that drive the *packaged*
 > extension (content script, settings, service-worker transport) in Chrome for
@@ -17,7 +18,8 @@ contract, and a real editor behind `:e` when the field is not enough.
 ```bash
 npm test                     # undo audit · unit · transport · engine · differential
 npm run test:e2e             # real headless Chrome, real key events
-npm run test:ext             # the PACKAGED extension in Chrome for Testing (24)
+npm run test:ext             # the PACKAGED extension in Chrome for Testing (29)
+npm run test:ce              # contenteditable composer: chips, host keymap, host model
 npm run test:oracle          # the reference editors themselves
 
 npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied

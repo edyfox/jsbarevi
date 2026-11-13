@@ -66,7 +66,18 @@ export class SelectionHighlight {
    *  looks in a real vi (the line is highlighted, not just its text). */
   update(from, to, text, { linewise = false } = {}) {
     if (from >= to) { this.clear(); return; }
-    const rects = this._rects(from, to, text, linewise);
+    this.paint(this._rects(from, to, text, linewise));
+  }
+
+  /**
+   * Paint boxes that were measured somewhere else.
+   *
+   * A mirror is the right technique for a flat field, where the DOM has no elements
+   * to read. A contenteditable has real nodes, so its adapter asks the DOM for the
+   * rects (Range.getClientRects) — exact, chip-aware, and no mirror to go stale. The
+   * painting was the shared part all along.
+   */
+  paint(rects) {
     if (!rects.length) { this.clear(); return; }
     for (let i = 0; i < rects.length; i++) {
       const r = rects[i];

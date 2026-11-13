@@ -69,6 +69,10 @@ function readLocalStorage() {
 
 function isTextField(el) {
   if (!el || el.nodeType !== 1) return false;
+  // A contenteditable ROOT — the composer case. Its descendants are also
+  // `isContentEditable`, and claiming those would put a second engine inside the
+  // first one's document, so the attribute is the test.
+  if (el.isContentEditable && el.hasAttribute("contenteditable")) return true;
   const tag = el.tagName;
   if (tag === "TEXTAREA") return true;
   if (tag !== "INPUT") return false;
