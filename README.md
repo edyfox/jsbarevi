@@ -129,6 +129,11 @@ Deliberately approximated, documented in `docs/DECISIONS.md`: `.` replays an
 insert by diffing the snapshot (the host owns keystrokes, so they cannot be
 recorded), and `H M L z C-b C-d C-e C-f C-u C-y` need an adapter that reports a
 viewport — they count **screen rows**, so they stay correct on wrapped text.
+Fields that do not wrap — an `<input>`, or a `<textarea>` with `white-space: pre` and
+horizontal scrolling — take a shortcut that is not a special case but a simplification:
+one buffer line is one screen row, so rows are line numbers and columns are character
+indices, computed rather than measured.
+
 `'joinspaces'` is not implemented: vim can insert two spaces after a sentence-ending
 punctuation when joining, nvi never does, and this engine follows the `nojoinspaces`
 rule, since the option is not part of the `:set` surface in `DECISIONS.md`.

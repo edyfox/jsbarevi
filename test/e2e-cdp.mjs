@@ -788,6 +788,90 @@ async function main() {
     })()`);
     check("content coordinates start at the content box, not the border box", [origin.x, origin.y], [0, 0]);
 
+    console.log("\n\x1b[1mthe mirror lays out like a SINGLE-LINE input\x1b[0m");
+    // An <input> renders its value literally - one line, spaces preserved, never
+    // wrapped - while its computed white-space says "normal". Copying that made the
+    // mirror collapse runs of spaces and wrap long values, so the block was drawn on a
+    // line the field does not have.
+    const inputProbe = await evaluate(session, `(() => {
+      const el = document.getElementById('single');
+      const a = window.jsbarevi.single.adapter;
+      const long = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo";
+      a.engine.setText(long, 0); a._commit(); a._emitMode(); el.focus();
+      const rows = [];
+      for (const k of [0, 20, 60, 100, long.length - 1]) {
+        const p = a.caret.contentPoint(k);
+        rows.push([k, Math.round(p.y)]);
+      }
+      // and runs of spaces must not collapse
+      a.engine.setText("a  b", 0); a._commit(); a._emitMode();
+      const x0 = a.caret.contentPoint(0).x, x1 = a.caret.contentPoint(1).x, x2 = a.caret.contentPoint(2).x;
+      const x3 = a.caret.contentPoint(3).x;
+      return { rows, spaceCells: [Math.round(x1 - x0), Math.round(x2 - x1), Math.round(x3 - x2)],
+               mirrorWhiteSpace: getComputedStyle(a.caret._getMirror()).whiteSpace };
+    })()`);
+    check("every offset of a long input value is on ONE row", [...new Set(inputProbe.rows.map(([, y]) => y))].length, 1);
+    check("the mirror uses the input's real layout (pre), not its computed white-space",
+      inputProbe.mirrorWhiteSpace, "pre");
+    check("two spaces take two cells", inputProbe.spaceCells.slice(0, 2), [inputProbe.spaceCells[0], inputProbe.spaceCells[0]]);
+
+    console.log("\n\x1b[1mno wrapping means a line IS a row: exact, no measurement\x1b[0m");
+    // When the field does not wrap, screen rows and buffer lines coincide, so the
+    // engine's screen-line machinery reduces to arithmetic. That makes gj == j and the
+    // viewport commands exact, and it costs no layout work at all.
+    const NOWRAP_TEXT = "abcdef\nghijkl\nmnopqr\nstuvwx\nyzabcd\nefghij";
+    const noWrap = await evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const a = window.jsbarevi.textarea.adapter;
+      const text = ${JSON.stringify(NOWRAP_TEXT)};
+      el.style.whiteSpace = "pre";
+      el.style.overflowX = "auto";
+      a.engine.setText(text, 10);           // line 2, column 3 (0-based)
+      a._commit(); a._emitMode(); el.focus();
+      const wraps = a.wraps();
+      const m = a.metricsFor(10);
+      a.engine.feed("g"); a.engine.feed("j");   // gj
+      const afterGj = a.engine.cursor;
+      a.engine.feed("g"); a.engine.feed("$");   // g$
+      const afterG$ = a.engine.cursor;
+      a.engine.feed("$");                        // $
+      const afterDollar = a.engine.cursor;
+      const restored = { wraps, m, afterGj, afterG$, afterDollar };
+      el.style.whiteSpace = ""; el.style.overflowX = "";
+      a.engine.setText(text, 0); a._commit(); a._emitMode();
+      return restored;
+    })()`);
+    check("a nowrap textarea reports that it does not wrap", noWrap.wraps, false);
+    check("its row space is the line number and the column index", [noWrap.m.y, noWrap.m.x, noWrap.m.height], [1, 3, 1]);
+    check("gj is j: one buffer line at the same column", noWrap.afterGj, 17);
+    check("g$ is $: the end of the line", noWrap.afterG$, noWrap.afterDollar);
+    const inputMetrics = await evaluate(session, `(() => {
+      const a = window.jsbarevi.single.adapter;
+      return { wraps: a.wraps(), hasCaret: !!a.caret };
+    })()`);
+    check("an <input> never wraps either", inputMetrics.wraps, false);
+
+    console.log("\n\x1b[1mthe mirror follows a style change after attach\x1b[0m");
+    const restyle = await evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const a = window.jsbarevi.textarea.adapter;
+      const long = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen";
+      a.engine.setText(long, 0); a._commit(); a._emitMode(); el.focus();
+      const before = Math.round(a.caret.contentPoint(long.length - 1).y);
+      // the host class changes at runtime: nowrap + horizontal scrolling
+      el.style.whiteSpace = "pre";
+      el.style.overflowX = "auto";
+      a._commit(); a._emitMode();
+      const after = Math.round(a.caret.contentPoint(long.length - 1).y);
+      const mirror = getComputedStyle(a.caret._getMirror()).whiteSpace;
+      el.style.whiteSpace = ""; el.style.overflowX = "";
+      a._commit(); a._emitMode();
+      return { before, after, mirror };
+    })()`);
+    check("a wrapping field puts the last character on a later row", restyle.before > 0, true);
+    check("switching the field to nowrap moves it to row 0", restyle.after, 0);
+    check("...because the mirror re-copied the style", restyle.mirror, "pre");
+
     console.log("\n\x1b[1ma hanging space belongs to the row it hangs on\x1b[0m");
     // At a soft wrap the field HANGS the space at the end of the row: it has no cell of
     // its own. Measuring the space where it "starts" puts it on the next row, which

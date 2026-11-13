@@ -21,6 +21,7 @@
 //      clampCursorToLine for a caret the DOM allows and vi does not.
 
 import { Engine, Mode } from "../engine/engine.js";
+import * as B from "../engine/buffer.js";
 import { fromField } from "../engine/buffer.js";
 import { BlockCaret } from "./caret.js";
 import { HttpEditorSession } from "./editor-session.js";
@@ -31,9 +32,11 @@ export class TextareaAdapter {
     this.el = el;
     this.engine = new Engine({
       viewport: () => this.viewport(),
-      // Screen lines need measurement, not arithmetic: only the host knows where
-      // a soft wrap happens. Content coordinates, so scrolling cannot affect it.
-      metrics: (offset) => this.caret?.contentPoint(offset) ?? null,
+      // Screen lines need measurement only WHEN the field wraps. A field that does not
+      // wrap (an <input>, or a <textarea> with white-space:pre/nowrap and horizontal
+      // scrolling) has exactly one screen row per buffer line, so the answer is
+      // arithmetic - see metricsFor().
+      metrics: (offset) => this.metricsFor(offset),
       onStatus: (msg, kind) => this.onStatus?.(msg, kind),
       onScroll: (line) => this.scrollToLine(line),
       describeBuffer: () => opts.describeBuffer?.() ?? this.describe(),
@@ -127,6 +130,36 @@ export class TextareaAdapter {
     this.el.style.caretColor = "";
     this.caret?.destroy();
     this.highlight?.destroy();
+  }
+
+  /**
+   * Does this field wrap at all? An <input> renders one line, and a <textarea> only
+   * wraps when white-space allows it - `pre` and `nowrap` scroll horizontally instead.
+   */
+  wraps() {
+    if (this.el.tagName === "INPUT") return false;
+    const ws = getComputedStyle(this.el).whiteSpace;
+    return ws === "normal" || ws === "pre-wrap" || ws === "pre-line" || ws === "break-spaces";
+  }
+
+  /**
+   * Row/column space for the engine's screen-line questions.
+   *
+   * When the field does NOT wrap, a buffer line IS a screen row: the row is the line
+   * number, the column is the character's index in the line, and the unit height is 1.
+   * That is exact (no measurement can be wrong) and free (no mirror, no Range, no
+   * layout flush) - and with it `gj`/`gk`/`g0`/`g$`/`H`/`M`/`L`/`C-f`/`C-b` all reduce to
+   * their buffer-line equivalents by construction, which is what they should be.
+   *
+   * When it does wrap, only the host knows where the wrap lands, so the caret mirror
+   * answers in content pixels.
+   */
+  metricsFor(offset) {
+    if (this.wraps()) return this.caret?.contentPoint(offset) ?? null;
+    const t = this.engine.text;
+    const at = Math.max(0, Math.min(offset, Math.max(0, t.length - 1)));
+    const line = B.lineNumber(t, at);
+    return { x: at - B.lineStart(t, at), y: line, width: 1, height: 1 };
   }
 
   describe() {

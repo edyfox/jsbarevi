@@ -460,3 +460,37 @@ one column past the end when the line has a following line, so `v$y` yanks
 "abcdef\n" on a multi-line buffer but "abcdef" on a single-line one. Our engine always
 takes the line (the documented behaviour, and what nvi does), and nothing in the
 3000-combination sweep depends on the difference.
+
+## When the field does not wrap, a line IS a row
+
+The screen-line machinery above is only needed because a soft wrap makes one buffer
+line span several screen rows. A field that does not wrap has exactly one screen row
+per buffer line, and then the whole question is arithmetic:
+
+```
+row    = the buffer line number
+column = the character's index in that line
+```
+
+`Engine.metrics` therefore has two answers (`TextareaAdapter.metricsFor`):
+
+- **wrapping field** - the caret mirror, in content pixels, because only the host knows
+  where a wrap lands;
+- **non-wrapping field** - `{ x: column, y: line, width: 1, height: 1 }`, which is exact
+  by construction (no measurement can be wrong) and free (no mirror, no Range, no layout
+  flush). `gj`/`gk`/`g0`/`g$` then reduce to `j`/`k`/`0`/`$`, and `H`/`M`/`L`/`C-f`/`C-b`
+  become exact, because `viewport()` counts rows and here a row is a line.
+
+`wraps()` decides: an `<input>` never wraps, and a `<textarea>` wraps only when its
+`white-space` allows it (`normal`, `pre-wrap`, `pre-line`, `break-spaces`). `pre` and
+`nowrap` scroll horizontally instead - and a horizontally scrolling field is the *easy*
+case, not a hard one, precisely because the viewport stops being a factor.
+
+**The `<input>` trap.** An `<input>` renders its value literally - one line, spaces
+preserved, never wrapped - but its *computed* `white-space` says `normal`, a CSS
+inheritance artefact rather than its layout. Copying that into the mirror made it
+collapse runs of spaces and wrap long values, so the block was drawn on a line the field
+does not have and every offset past the first wrap was wrong. The mirror now forces
+`pre` for inputs, and it re-copies the whole text-affecting style on every use, because
+a field can change (a theme class, a container resize, a `<textarea>` switched to
+`nowrap`) long after attach.

@@ -171,6 +171,29 @@ export class BlockCaret {
   }
 
   /**
+   * Give the mirror the field's text layout rules. Every text-affecting property is
+   * copied, because overriding one says "lay out like I think you lay out" - the field
+   * breaks between words, inside a long word, or not at all, according to its own
+   * computed style, and a mirror that differs wraps at a different character, so its
+   * rows are simply not the rows on screen.
+   *
+   * The exception is an <input>: it renders its value LITERALLY (one line, spaces
+   * preserved, never wrapped) while its computed white-space says "normal" - a CSS
+   * inheritance artefact. Copying that makes the mirror collapse runs of spaces and
+   * wrap long values, which draws the block on a line the field does not have.
+   */
+  _styleMirror(mirror, el, cs) {
+    for (const prop of MIRROR_PROPS) mirror.style[prop] = cs[prop];
+    if (el.tagName === "INPUT") {
+      mirror.style.whiteSpace = "pre";
+      mirror.style.overflowWrap = "normal";
+      mirror.style.wordBreak = "normal";
+    }
+    mirror.style.width = `${this._contentWidth(el, cs)}px`;
+    mirror.style.height = "auto";
+  }
+
+  /**
    * A cached mirror whose WIDTH is re-read on every use: the field can be
    * resized by its container without a window resize event, and a mirror whose
    * width is stale wraps at the wrong column, which is exactly how the block
@@ -188,26 +211,20 @@ export class BlockCaret {
     return Math.max(1, el.clientWidth - pl - pr);
   }
 
-  _getMirror(keepText = false) {
-    if (this.mirror) {
-      const w = `${this._contentWidth(this.el, getComputedStyle(this.el))}px`;
-      if (this.mirror.style.width !== w) this.mirror.style.width = w;
-      void keepText;   // the text node is reused by _charRect; callers that slice set it
-      return this.mirror;
-    }
+  _getMirror() {
     const el = this.el;
     const cs = getComputedStyle(el);
+    if (this.mirror) {
+      // Re-copy on every use: a field's white-space, font or size can change after
+      // attach (a theme class, a container resize, a <textarea> switched to nowrap),
+      // and a mirror holding the OLD rules measures a layout that is not on screen.
+      this._styleMirror(this.mirror, el, cs);
+      return this.mirror;
+    }
     const mirror = document.createElement("div");
     mirror.setAttribute("aria-hidden", "true");
     mirror.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;top:0;left:-99999px;z-index:-1;";
-    // Every text-affecting property is copied, including white-space, overflow-wrap
-    // and word-break. Overriding them says "wrap like I think you wrap": the field
-    // breaks between words, or inside a long word, according to ITS computed style,
-    // and a mirror that differs wraps at a different character - the rows are then
-    // simply not the rows on screen.
-    for (const prop of MIRROR_PROPS) mirror.style[prop] = cs[prop];
-    mirror.style.width = `${this._contentWidth(el, cs)}px`;
-    mirror.style.height = "auto";
+    this._styleMirror(mirror, el, cs);
     document.body.appendChild(mirror);
     this.mirror = mirror;
     return mirror;
