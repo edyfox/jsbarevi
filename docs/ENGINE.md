@@ -246,3 +246,44 @@ A second, separate reason it survived: our differential tests compare buffers an
 whole-number positions, so a one-column drift at a boundary is invisible in them.
 That is why the boundary matrix (empty line, first/last column, empty buffer,
 single-character buffer) is worth generating rather than waiting for a report.
+
+## The second invariant: the buffer always ends in one newline
+
+Same shape of bug, found by the alignment audit on 2026-11-13, and again a rule
+the reference centralises rather than a case we forgot.
+
+busybox appends the newline a file is missing, with the reason in the comment
+(`editors/vi.c:2320`):
+
+```c
+	if (rc <= 0 || *(end - 1) != '\n') {
+		// file doesn't exist or doesn't end in a newline.
+		// insert a newline to the end
+		char_insert(end, '\n', NO_UNDO);
+	}
+```
+
+It has to. `dot_right()` bounds itself with `end - 1`, `at_eof()` tests
+`*(end - 2)`, and the tail-of-`do_cmd()` normalisation above only fires when
+`*dot == '\n'` — so without a terminating newline, the previous section's
+invariant has nothing to fire on for the last line. vim arrives at the same
+property from the other end: its buffer is a list of lines, so the newline after
+the last line exists whether or not the file ended with one. Both references
+agree on the observable behaviour; measured: `jD` on a file `abc\ndef` with no
+EOL leaves `["abc", ""]` in vim **and** in busybox.
+
+We adopted it after learning what its absence costs. Three states are simply not
+representable without it:
+
+- the empty buffer (one empty line, which `yyP`/`OZ` need);
+- an empty **last** line (deleting the last line's text must not shorten the
+  buffer by a line, or the last line's newline is taken as well);
+- insert at the very end of the buffer (`A` there has nowhere to stand, and
+  leaving insert then steps one character too far left).
+
+The audit reported those as 39 of 70 differences spread over 17 commands. They
+were one cause. `_setText()` is now the single writer for the buffer (every
+mutation in the engine and in `ex.js` goes through it), `hostText` is the view
+the field and `:e` transport get, and `lineCount()`/`lineEnd()` can keep their
+"a trailing newline terminates the last line" reading because the terminator is
+guaranteed rather than incidental.

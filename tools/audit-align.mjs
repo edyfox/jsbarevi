@@ -42,7 +42,9 @@ const COMMANDS = [
   "2J", "r<Esc>", "%",
 ];
 
-const only = process.argv[2];
+const args = process.argv.slice(2);
+const showAll = args.includes("--all");
+const only = args.find((a) => !a.startsWith("--"));
 const commands = only ? COMMANDS.filter((c) => c.includes(only)) : COMMANDS;
 
 let total = 0;
@@ -74,11 +76,14 @@ console.log(`\n${total} combinations, ${[...failures.values()].reduce((n, v) => 
 const ranked = [...failures.entries()].sort((a, b) => b[1].length - a[1].length);
 for (const [cmd, hits] of ranked) {
   console.log(`\x1b[1m${cmd}\x1b[0m  (${hits.length} of ${Object.keys(SHAPES).length * Object.keys(POSITIONS).length})`);
-  for (const h of hits.slice(0, 4)) {
+  // --all prints every differing combination: the truncated default is readable
+  // but not a worklist, and re-deriving the full list by hand is how you fix 17
+  // symptoms instead of the 2 causes behind them.
+  for (const h of showAll ? hits : hits.slice(0, 4)) {
     console.log(`   ${h.shape.padEnd(16)} at ${h.posName.padEnd(8)} keys=${JSON.stringify(h.keys)}`);
     console.log(`      input=${JSON.stringify(h.input)}`);
     for (const d of h.diffs) console.log(`      \x1b[31m${d}\x1b[0m`);
   }
-  if (hits.length > 4) console.log(`   ... ${hits.length - 4} more`);
+  if (!showAll && hits.length > 4) console.log(`   ... ${hits.length - 4} more (--all for the full list)`);
 }
 process.exit(ranked.length ? 1 : 0);

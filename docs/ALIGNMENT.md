@@ -37,6 +37,36 @@ newline (that is why `l` at end-of-line works at all — the end-of-command
 normalisation pulls it back), while `left` never crosses one. `test/cursor.mjs`
 asserts both directions, including the three historical bugs.
 
+### The buffer always ends in one newline
+
+`busybox` makes this explicit — it appends the newline a file is missing, with the
+reason in the comment (`editors/vi.c:2320`):
+
+```c
+	if (rc <= 0 || *(end - 1) != '\n') {
+		// file doesn't exist or doesn't end in a newline.
+		// insert a newline to the end
+		char_insert(end, '\n', NO_UNDO);
+	}
+```
+
+It has to: `dot_right()` bounds itself with `end - 1`, `at_eof()` tests
+`*(end - 2)`, and the end-of-command `dot--` only fires when `*dot == '\n'`. vim
+gets the same property from a different place — its buffer is a *list of lines*,
+so the newline after the last line exists whether or not the file ends with one.
+We adopt it because without it three whole families of state are unrepresentable:
+
+- **the empty buffer** — one empty line, not zero lines;
+- **an empty last line** — `jD` on a last line with no EOL leaves `["abc", ""]`,
+  and "delete the last line's text" must not shorten the buffer by a line;
+- **end-of-buffer insert** — `A` at the very end has nowhere to stand.
+
+`src/engine/engine.js` enforces it in exactly one place, `_setText()`, and
+`hostText` is the documented view the field gets (`text` minus the terminator).
+Before this landed, the audit's 70 remaining cases looked like 17 unrelated
+command bugs; they were 39 instances of this one missing invariant plus six real
+rule gaps.
+
 ## Behavioural alignment: the generated matrix
 
 Hand-written cases kept missing the gaps (empty line, column 1, last column).
@@ -62,28 +92,41 @@ Hand-written cases kept missing the gaps (empty line, column 1, last column).
 | `X` at column 1 | joined two lines | `dot_left()` | fixed |
 | `>`/`<` cursor when nothing changed | `<` on an unindented line moved the cursor | cursor untouched when the line is unchanged | fixed |
 
-Progress: **478 → 100 → 78 → 70** differing combinations out of 2,430 (85% of the
-discovered misalignment closed in one pass). Run `npm run audit:align` for the
-current figure; anything it reports belongs in `oracle/cases/` before it is fixed,
-so it cannot come back.
+Progress: **478 → 100 → 78 → 70 → 0** differing combinations out of 2,430. Run
+`npm run audit:align` for the current figure (add `-- --all` to list every case
+rather than the first four per command, or `-- <substring>` to audit one command);
+anything it reports belongs in `oracle/cases/` before it is fixed, so it cannot
+come back.
 
-### Backlog: the 70 that remain
+### The backlog that was: 70 → 0, and what it actually was
 
-| Command | Combos | What differs |
+The 70 were reported as 17 command rows, but they were **two** things:
+
+**39 combinations were one missing invariant** — the trailing buffer newline
+above. `yyP`/`OZ`/`3iZ` on the empty buffer, `D`/`dw`/`de`/`d$`/`cw`/`cc`/`A`
+on a last line without an EOL, and the `k`/`db` cases on those same shapes all
+went green from that single change.
+
+**31 combinations were six real rule gaps**, each measured against vim before
+being implemented (all pinned in `oracle/cases/alignment.json`):
+
+| Rule | Combos | What vim actually does |
 |---|---|---|
-| `db` | 7 | word-back across a blank line or from the first word of a line: vim stops at the line/blank boundary, we skip to the previous word |
-| `yyP` | 6 | pasting above on a blank/empty buffer: vim ends with one more empty line than we do |
-| `OZ<Esc>` | 6 | same, for an insert opened above |
-| `3iZ<Esc>` | 6 | count + insert on the blank/empty shapes |
-| `J` / `2J` | 10 | joining when the neighbour is a blank line |
-| `cwZ<Esc>` / `de` / `d$` | 13 | word/line-end spans on the indented shape |
-| `w` / `k` / `~` | 9 | remaining single-case differences |
-| others | 13 | see the audit output |
+| `J` against a blank neighbour | 10 | a blank line is removed outright, **no space**; and no space when the line joined *into* is blank |
+| `w` / `b` stop at an empty line | 4 | an empty line counts as a word |
+| `db` is exclusive-linewise | 7 | a charwise motion starting on a line's first non-blank and ending on a line boundary becomes **linewise**; otherwise the end steps back off the newline |
+| `de` / `d$` / `cw` on an empty line | 6 | `de` takes whole lines when it covers a line's tail, `d$` is a **no-op**, `cw` inserts **without deleting** |
+| curswant after `$` | 3 | `$` sets the vertical wish to MAXCOL, so `j`/`k` land on the last character of any line |
+| `~` on a non-letter | 3 | `~` **advances** even when the character cannot be flipped (busybox's `dot_right()` in a loop) |
 
-None of these are new classes: they are the same boundary rules applied to shapes
-the hand-written cases never used (blank line in the middle, indented first line,
-last line without a trailing newline). The audit lists the exact
-(shape, position, keys) for each, so they are cheap to turn into cases.
+Two derived lessons, both already in the working rule:
+
+- **A count is a claim until you measure it.** "17 commands differ" was a
+  description of the *symptom*; the first question that paid was "how many of
+  these share a cause?", and it collapsed 70 → 39 without touching a command.
+- **A comparison harness can hide a model bug.** The audit normalised *both*
+  sides, so an engine that could not represent an empty last line still looked
+  like it was merely "one column off" in a dozen commands.
 
 ## What this means for the plan
 
@@ -96,3 +139,7 @@ insert mode here, which makes the *capture* cheap — but the lesson stands:
 - For the Vim-only extensions (visual mode, text objects): the matrix still runs,
   but there is no busybox to lean on — those stay the highest-risk area, which is
   why they carry the densest case files.
+
+The matrix is now **clean**, which changes the meaning of a red: it is a
+regression, not a known gap. That is what makes it worth running before every
+release of the engine.
