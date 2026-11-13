@@ -9,51 +9,18 @@
 // oracle/cases/ before it is fixed.
 
 import { runVim, runOurs, compare } from "../test/lib/engine-driver.mjs";
+import { SHAPES, POSITIONS, COMMANDS, combinations, parseArgs } from "./alignment-matrix.mjs";
 
-const SHAPES = {
-  "empty": "",
-  "one-empty-line": "\n",
-  "one-line": "ab\n",
-  "two-lines": "abc\ndef\n",
-  "blank-middle": "a\n\nb\n",
-  "indented": "  ab\ncd\n",
-  "words": "one two three\nfour five\n",
-  "brackets": "f(x) y\n[z]\n",
-  "last-line-no-eol": "abc\ndef",
-};
-
-// A short path to a starting position; "" means column 1 of line 1.
-const POSITIONS = {
-  "1:1": "",
-  "1:last": "$",
-  "2:1": "j",
-  "2:last": "j$",
-  "last:1": "G",
-  "mid": "ll",
-};
-
-// Commands that touch a boundary, a count, or a cursor placement rule.
-const COMMANDS = [
-  "x", "X", "D", "dd", "yy", "p", "P", "J", "~", "rq", "2x", "3~",
-  "w", "b", "e", "dw", "de", "db", "d$", "d0",
-  "cwZ<Esc>", "ccZ<Esc>", "yyP", ">j", "<j", "u", ".",
-  "iZ<Esc>", "aZ<Esc>", "IZ<Esc>", "AZ<Esc>", "oZ<Esc>", "OZ<Esc>", "3iZ<Esc>",
-  "0", "^", "G", "gg", "h", "l", "j", "k",
-  "2J", "r<Esc>", "%",
-];
-
-const args = process.argv.slice(2);
-const showAll = args.includes("--all");
-const only = args.find((a) => !a.startsWith("--"));
-const commands = only ? COMMANDS.filter((c) => c.includes(only)) : COMMANDS;
+const args = parseArgs();
+const showAll = args.has("--all");
+const commands = args.commandFilter(COMMANDS);
 
 let total = 0;
 const failures = new Map(); // command -> [{ shape, position, diffs }]
 
-for (const [shape, input] of Object.entries(SHAPES)) {
-  for (const [posName, pos] of Object.entries(POSITIONS)) {
-    for (const cmd of commands) {
-      const keys = pos + cmd;
+for (const { shape, input, posName, cmd, keys } of combinations(commands)) {
+  {
+    {
       total++;
       let vim;
       try {

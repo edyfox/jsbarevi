@@ -393,7 +393,18 @@ export class Engine {
       case "D": return this._applyOperatorToEol("d", count());
       case "C": return this._applyOperatorToEol("c", count());
       case "Y": { const c = count(); return this._applyLinewiseOperator("y", c, true); }
-      case "s": { const c = count(); this._deleteChars(c, false); this._enterInsert("s"); return { handled: true, edit: true }; }
+      case "s": {
+        const c = count();
+        // `s` inserts where the deletion STARTED, not where a plain delete leaves
+        // the cursor: `$s` on "abc" must insert after 'b' ("abZ"), and a delete
+        // that runs to the end of the line clamps the cursor one character left,
+        // which would put the typed text there instead. Found by the extended
+        // matrix (s, S, C were not in it), measured against vim.
+        const at = this.state.cursor;
+        this._deleteChars(c, false);
+        this._enterInsert("s", 1, at);
+        return { handled: true, edit: true };
+      }
       case "S": { const c = count(); this._applyLinewiseOperator("c", c); return { handled: true, edit: true, enterInsert: true }; }
       case "~": return this._toggleCase(count());
       case "J": return this._join(count());
@@ -1238,7 +1249,7 @@ export class Engine {
   }
 
   // --- insert mode ---------------------------------------------------------
-  _enterInsert(kind, count = 1) {
+  _enterInsert(kind, count = 1, at = null) {
     const text = this.text;
     const cur = this.state.cursor;
     // vim opens the undo block where the change BEGINS, and that is also where
@@ -1246,21 +1257,19 @@ export class Engine {
     // `aX<Esc>u` returns to 1:2, `AX<Esc>u` to the last character of the line),
     // but at the pre-command cursor for o/O, whose new line is gone after the
     // undo. `s`/`c` have already opened the block at the deleted position.
-    const entry = kind === "a" ? C.right(text, cur)
-      : kind === "I" ? B.firstNonBlank(text, cur)
-        : kind === "A" ? B.lineEnd(text, cur)
-          : cur;
+    const entry = at != null ? Math.max(0, Math.min(at, Math.max(0, text.length - 1)))
+      : kind === "a" ? C.right(text, cur)
+        : kind === "I" ? B.firstNonBlank(text, cur)
+          : kind === "A" ? B.lineEnd(text, cur)
+            : cur;
     this._pushUndo({ text, cursor: entry });
     this.lineSnapshot = B.lineText(text, cur);
     this.mode = Mode.INSERT;
     this.pending = this._emptyPending();
 
     switch (kind) {
-      // appends after the cursor character; dot_right refuses to step past a
-      // newline, which is what an empty line needs
-      case "a": this.state.cursor = entry; break;
-      case "I": this.state.cursor = entry; break;
-      case "A": this.state.cursor = entry; break;
+      // i/a/I/A/s/c all insert at `entry` - the entry motion's landing point for
+      // the first four, and the start of the deletion for s/c.
       case "o": {
         const e = B.lineEnd(text, cur);
         this._setText(text.slice(0, e) + "\n" + text.slice(e));
@@ -1274,7 +1283,7 @@ export class Engine {
         break;
       }
       case "R": /* replace mode is approximated by insert; documented deviation */ break;
-      default: break;
+      default: this.state.cursor = entry; break;
     }
     // capture the baseline AFTER the entry's own edit, otherwise the newline that
     // `o`/`O` create looks like typed text
