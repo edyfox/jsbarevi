@@ -32,6 +32,9 @@ function makeUi(el) {
   const prompt = document.createElement("input");
   prompt.className = "jsbarevi-prompt";
   prompt.style.display = "none";
+  // The extension attaches to <input> elements on focus; without this marker the
+  // engine would attach to its own command line and type into two buffers.
+  for (const node of [badge, line, prompt]) node.setAttribute("data-jsbarevi-ui", "");
   document.body.append(badge, line, prompt);
 
   const place = () => {
@@ -77,6 +80,9 @@ function makeUi(el) {
     },
     hidePrompt() { prompt.style.display = "none"; el.focus(); },
     promptEl: prompt,
+    // destroy() must leave the page as it found it: the badge and the status line are
+    // ours, and a page that toggles the extension off should not keep them.
+    nodes: [badge, line, prompt],
   };
 }
 
@@ -147,7 +153,7 @@ export function attach(el, opts = {}) {
       ui.promptEl.removeEventListener("input", onPromptInput);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onResize, true);
-      ui.promptEl.remove();
+      for (const node of ui.nodes) node.remove();
     },
   };
 }

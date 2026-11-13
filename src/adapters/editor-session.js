@@ -22,6 +22,12 @@ export class HttpEditorSession {
     this.basic = opts.basic ?? null;
     this.headers = opts.headers || {};   // extension/native contexts only
     this.timeout = opts.timeout ?? 15 * 60 * 1000;
+    // The protocol is the same in every host; only the wire differs. A page fetches
+    // itself and pays for CORS; an extension routes the request through its service
+    // worker, which holds host permissions and therefore has no CORS at all. One
+    // seam, so the diagnostic messages and the compare-and-swap below stay in one
+    // place instead of being re-derived per transport.
+    this.fetch = opts.fetchImpl || ((...args) => fetch(...args));
     this.onStatus = opts.onStatus || (() => {});
     this.onApplied = opts.onApplied || (() => {});
     this.busy = false;
@@ -34,7 +40,7 @@ export class HttpEditorSession {
     if (this._probeStarted) return this.ready;
     this._probeStarted = true;
     const url = new URL(this.url, this.pageUrl);
-    const reachable = () => fetch(url.toString(), { method: "GET", mode: "no-cors", cache: "no-store" })
+    const reachable = () => this.fetch(url.toString(), { method: "GET", mode: "no-cors", cache: "no-store" })
       .then(() => true, () => false);
 
     this.ready = reachable().then(async (up) => {
@@ -54,7 +60,7 @@ export class HttpEditorSession {
   }
 
   async _probeReadable(url) {
-    return fetch(url.toString(), { method: "GET", cache: "no-store" })
+    return this.fetch(url.toString(), { method: "GET", cache: "no-store" })
       .then(async (res) => {
         const body = await res.text().catch(() => "");
         if (res.ok && !/Unsupported method/.test(body)) return { ok: true };
@@ -112,7 +118,7 @@ export class HttpEditorSession {
   }
 
   _send(url, sent, cursorBefore, headers, controller, timer) {
-    fetch(url.toString(), {
+    this.fetch(url.toString(), {
       method: "POST",
       body: sent,
       headers,

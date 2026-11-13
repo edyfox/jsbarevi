@@ -102,16 +102,25 @@ export class TextareaAdapter {
       this._resizeObserver = new ResizeObserver(() => this._bound.resize());
       this._resizeObserver.observe(el);
     }
-    // `:e` needs a transport; without one the engine reports why instead.
-    if (opts.editorUrl) {
-      this.engine.session = new HttpEditorSession({
-        engine: this.engine,
-        url: opts.editorUrl,
-        token: opts.editorToken,
-        basic: opts.editorBasic,
-        onStatus: (msg, kind) => this.onStatus?.(msg, kind),
-        onApplied: () => { this._commit(); this._emitMode(); },
-      });
+    // `:e` needs a transport. Three ways in, and they all end up reporting through
+    // THIS adapter — otherwise a host-supplied transport updates the engine's buffer
+    // and never commits it to the field, which looks like ":e did nothing".
+    //   * opts.session        — already built, with its own callbacks (leave it alone)
+    //   * opts.sessionFactory — an extension builds the transport around the engine,
+    //                           which does not exist until this constructor runs
+    //   * opts.editorUrl      — a plain URL, fetched by the host
+    if (!opts.session && (opts.sessionFactory || opts.editorUrl)) {
+      const session = opts.sessionFactory
+        ? opts.sessionFactory(this.engine)
+        : new HttpEditorSession({
+          engine: this.engine,
+          url: opts.editorUrl,
+          token: opts.editorToken,
+          basic: opts.editorBasic,
+        });
+      session.onStatus = (msg, kind) => this.onStatus?.(msg, kind);
+      session.onApplied = () => { this._commit(); this._emitMode(); };
+      this.engine.session = session;
     }
     this.syncFromHost();
     this.engine.setText(this.el.value, this.el.selectionStart ?? 0);

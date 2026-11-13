@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>jsbarevi</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header>
+  <img src="icons/icon-32.png" alt="" width="20" height="20">
+  <h1>jsbarevi</h1>
+  <code id="build" class="build">…</code>
+</header>
+
+<section class="row">
+  <label class="switch" title="Master switch">
+    <input type="checkbox" id="enabled">
+    <span class="track"><span class="knob"></span></span>
+  </label>
+  <div class="text">
+    <div class="label">Enabled</div>
+    <div class="hint">Master switch for every site.</div>
+  </div>
+</section>
+
+<section class="row" id="site-row" hidden>
+  <label class="switch">
+    <input type="checkbox" id="site">
+    <span class="track"><span class="knob"></span></span>
+  </label>
+  <div class="text">
+    <div class="label">On <b id="host">this site</b></div>
+    <div class="hint" id="site-hint">Focus a text field to start.</div>
+  </div>
+</section>
+
+<section class="row" id="unsupported" hidden>
+  <div class="text">
+    <div class="label">Not available here</div>
+    <div class="hint">Browser pages, the Web Store and other extensions' pages cannot be edited. jsbarevi works on normal web pages.</div>
+  </div>
+</section>
+
+<section class="stack">
+  <label for="editor">Real editor for <code>:e</code></label>
+  <div class="inline">
+    <input id="editor" type="text" spellcheck="false" autocomplete="off">
+    <button id="save" class="primary">Save</button>
+  </div>
+  <div class="hint">A pyTextFilter / emacs_chrome-style server. The request leaves through the background worker, so the server needs no CORS patch.</div>
+</section>
+
+<section class="keys">
+  <div class="keys-title">Normal mode</div>
+  <table>
+    <tr><td><code>i a o</code></td><td>insert</td><td><code>h j k l</code></td><td>move</td></tr>
+    <tr><td><code>d w</code></td><td>delete</td><td><code>c w</code></td><td>change</td></tr>
+    <tr><td><code>y p</code></td><td>yank / put</td><td><code>u</code></td><td>undo</td></tr>
+    <tr><td><code>/ ?</code></td><td>search</td><td><code>:</code></td><td>ex command</td></tr>
+    <tr><td><code>v V</code></td><td>visual</td><td><code>:e</code></td><td>real editor</td></tr>
+  </table>
+  <div class="hint"><code>:version</code> in the field tells you which build is running.</div>
+</section>
+
+<footer>
+  <span>MIT · barebones vi for browser text fields</span>
+</footer>
+<script src="popup.js"></script>
+</body>
+</html>
