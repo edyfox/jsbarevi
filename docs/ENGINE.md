@@ -566,3 +566,19 @@ the field's box. Three pieces fix that, and the order matters:
    end leaves the last character a few pixels into the padding, which is exactly where
    the browser draws its own caret. Clipping there hid the cursor at the end of every
    long line.
+
+Three details that made the difference between "roughly right" and right:
+
+- **the block is PAINTED inside the text box** (`clampIntoBox`), while *visibility* is
+  judged by the border box. A block drawn over the padding reads as a caret that is too
+  far right, even when the character under it really is there.
+- **the block's own border counts**: it has a 1px border, and with `content-box` its
+  painted width was two pixels wider than the width used to clamp it - which is exactly
+  the two-pixel spill into the padding that showed up at the end of a long line.
+  `box-sizing: border-box` makes the style width the painted width (and the block the same
+  size as the character it covers).
+- **the scroll is applied, not re-measured**: after `scrollLeft += dx` the browser applies
+  its own caret-reveal scroll at the next layout, so a re-measure still read the old
+  `scrollLeft` and left a couple of pixels of overhang. The rect is now shifted by the
+  delta the field actually scrolled (read back after the assignment, so clamping at the
+  ends is handled).

@@ -909,6 +909,31 @@ async function main() {
     check("...even at $, which is off screen to the right", blockInside.atDollar.inside, true);
     check("...because the field scrolled to follow the cursor", blockInside.atDollar.scrollLeft > blockInside.atG0.scrollLeft, true);
 
+    // The drawn block must stay inside the TEXT box: the block has a 1px border, so
+    // with content-box its painted box was two pixels wider than the width used to
+    // clamp it, and at the end of a long line it spilled into the padding ("a bit too
+    // far from the right edge").
+    const edgesAfterScroll = await evaluate(session, `(() => {
+      const el = document.getElementById('hscroll');
+      const a = window.jsbarevi.hscroll.adapter;
+      a.engine.setText("alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa quebec romeo sierra tango", 0);
+      a._commit(); a._emitMode(); el.focus();
+      const box = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const textLeft = box.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+      const textRight = box.right - (parseFloat(cs.borderRightWidth) || 0) - (parseFloat(cs.paddingRight) || 0);
+      const bad = [];
+      for (let k = 40; k < 90; k += 5) {
+        a.engine.cursor = k; a._commit(); a._emitMode();
+        const n = [...document.querySelectorAll('.jsbarevi-caret')].find((x) => getComputedStyle(x).display !== 'none');
+        if (!n) { bad.push({ k, why: 'hidden' }); continue; }
+        const r = n.getBoundingClientRect();
+        if (r.right > textRight + 1 || r.left < textLeft - 1) bad.push({ k, left: Math.round(r.left), right: Math.round(r.right) });
+      }
+      return { bad, textLeft: Math.round(textLeft), textRight: Math.round(textRight) };
+    })()`);
+    check("the block never spills into the field's padding", edgesAfterScroll.bad, []);
+
     console.log("\n\x1b[1mthe cursor is scrolled into view, never left outside\x1b[0m");
     const FORTY_LINES = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n");
     const vertical = await evaluate(session, `(() => {

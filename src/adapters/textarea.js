@@ -478,10 +478,18 @@ export class TextareaAdapter {
     if (rect.top < top) dy = rect.top - top;
     else if (rect.top + rect.height > bottom) dy = rect.top + rect.height - bottom;
     if (!dx && !dy) return rect;
-    if (dx) el.scrollLeft += dx;
-    if (dy) el.scrollTop += dy;
-    // the caret mirror reads scrollLeft, so the position must be measured again
-    return this.caret ? this.caret.measure(this.engine.cursor) : rect;
+    // Move the view by the delta we asked for and shift the rect by what the field
+    // ACTUALLY scrolled (it clamps at the ends). Re-measuring here looked simpler but
+    // was wrong: the browser applies its own caret-reveal scroll at the next layout, so
+    // the mirror still read the old scrollLeft and the block ended up a couple of pixels
+    // over the field's right edge.
+    const sx = el.scrollLeft;
+    const sy = el.scrollTop;
+    if (dx) el.scrollLeft = sx + dx;
+    if (dy) el.scrollTop = sy + dy;
+    const appliedX = el.scrollLeft - sx;
+    const appliedY = el.scrollTop - sy;
+    return { ...rect, left: rect.left - appliedX, top: rect.top - appliedY };
   }
 
   _commit() {

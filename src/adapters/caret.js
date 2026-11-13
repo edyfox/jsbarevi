@@ -26,7 +26,7 @@ function ensureStyle() {
   const s = document.createElement("style");
   s.id = STYLE_ID;
   s.textContent = `
-  .jsbarevi-caret{position:fixed;z-index:2147483646;pointer-events:none;
+  .jsbarevi-caret{position:fixed;z-index:2147483646;pointer-events:none;box-sizing:border-box;
     background:rgba(166,226,46,.35);border:1px solid rgba(166,226,46,.85);
     border-radius:1px;mix-blend-mode:normal}
   .jsbarevi-caret.line{border-left-width:2px;border-right-width:2px}
@@ -83,13 +83,22 @@ export class BlockCaret {
       && rect.top + rect.height > box.top - tol && rect.top < box.bottom + tol;
   }
 
-  /** Keep the block inside the field's border box when it is only partly visible. */
+  /**
+   * Keep the block inside the field's TEXT box. The border box would let it overlap the
+   * padding, which is where the last character of a long line ends up (scrollLeft is an
+   * integer while character positions are fractional, so the last cell can land a pixel
+   * or two past the content edge) - and a block painted over the padding reads as a caret
+   * that is "too far right". Clamping costs a pixel of visual precision and buys a cursor
+   * that always sits on the text.
+   */
   clampIntoBox(rect) {
-    const box = this.el.getBoundingClientRect();
-    const l = box.left;
-    const r = box.right;
-    const t = box.top;
-    const b = box.bottom;
+    const el = this.el;
+    const box = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const l = box.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+    const r = box.right - (parseFloat(cs.borderRightWidth) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const t = box.top + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
+    const b = box.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0);
     let left = rect.left;
     let top = rect.top;
     if (left < l) left = l;
