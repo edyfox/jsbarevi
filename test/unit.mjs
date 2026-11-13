@@ -462,5 +462,42 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   eq(":version reports the build, not just the semver", r.ex.message, "jsbarevi 0.1.0+abc1234");
 }
 
+{
+  // A mouse click moves the caret outside any command. The vertical WISHES must not
+  // outlive it, or gj/gk and j/k jump back to the pre-click column.
+  const text = "abcdefghij\n";
+  const e = mk(text, 0, { metrics: wrapMetrics(text, 4) });
+  e.feed("g"); e.feed("j");                    // row 2, screen column 0 ... wish = x(0) = 0
+  eq("gj moved a screen row", e.cursor, 4);
+  e.feed("l"); e.feed("l");                    // now at 6, wish still 0? no: l resets it
+  e.feed("g"); e.feed("j");
+  const beforeClick = e.cursor;
+  e.setCursorFromHost(2);                      // what a click does: x = 20
+  eq("the click moved the cursor", e.cursor, 2);
+  e.feed("g"); e.feed("j");
+  eq("gj uses the CLICKED column, not the old wish", e.cursor, 6);
+  eq("...and it did move from the clicked row", e.cursor !== beforeClick, true);
+}
+{
+  // g$ sets the end-of-row wish; a click has to clear that too.
+  const text = "abcdefghij\n";
+  const e = mk(text, 0, { metrics: wrapMetrics(text, 4) });
+  e.feed("g"); e.feed("$");                    // wish: end of row
+  e.setCursorFromHost(1);                      // click on the second character
+  e.feed("g"); e.feed("j");
+  eq("after a click gj lands on the clicked column, not the row end", e.cursor, 5);
+}
+{
+  // j/k keep their own wish, also reset by a click
+  const text = "abcdefghij\nklmnopqrst\n";
+  const e = mk(text, 0);
+  e.feed("l"); e.feed("l"); e.feed("l");       // column 3
+  e.feed("j");                                 // line 2, column 3
+  eq("j kept column 3", e.cursor, 14);
+  e.setCursorFromHost(11);                     // click on line 2, column 0
+  e.feed("k");
+  eq("k after a click uses the clicked column (0), not the old wish (3)", e.cursor, 0);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

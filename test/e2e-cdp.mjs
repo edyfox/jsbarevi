@@ -688,8 +688,13 @@ async function main() {
     // (created at 640px, then the field was set to 360px), so every wrapped offset
     // was measured in the wrong space and the block sat at the row's right edge
     // instead of on its character - the reported rendering bug.
-    check("the measuring mirror follows the field's current width",
-      await evaluate(session, "window.jsbarevi.textarea.adapter.caret._getMirror().style.width === document.getElementById('field').clientWidth + 'px'"), true);
+    check("the measuring mirror follows the field's current TEXT width",
+      await evaluate(session, `(() => {
+        const el = document.getElementById('field');
+        const cs = getComputedStyle(el);
+        const text = el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+        return window.jsbarevi.textarea.adapter.caret._getMirror().style.width === text + "px";
+      })()`), true);
     const wrapAt = await evaluate(session, `(() => {
       const c = window.jsbarevi.textarea.adapter.caret;
       const first = c.contentPoint(0);
@@ -737,6 +742,80 @@ async function main() {
     check("g$ is End without the key", await cursor(), at0);
     await typeKeys(session, "g0");
     check("g0 is Home without the key", await cursor(), 0);
+    console.log("\n\x1b[1mthe mirror measures in the field's own box\x1b[0m");
+    // Two things made wrapped text measure in the wrong space: the mirror was given
+    // clientWidth (which includes the padding) and it overrode white-space /
+    // overflow-wrap instead of copying them. Both are directly checkable.
+    const mirrorBox = await evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const a = window.jsbarevi.textarea.adapter;
+      el.style.width = "300px";
+      a.engine.setText("x".repeat(120), 0);
+      a._commit(); a._emitMode();
+      const cs = getComputedStyle(el);
+      const m = a.caret._getMirror();
+      const csM = getComputedStyle(m);
+      const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+      return {
+        mirrorWidth: m.style.width,
+        fieldTextWidth: el.clientWidth - pad,
+        wraps: {
+          whiteSpace: [cs.whiteSpace, csM.whiteSpace],
+          overflowWrap: [cs.overflowWrap, csM.overflowWrap],
+          wordBreak: [cs.wordBreak, csM.wordBreak],
+        },
+      };
+    })()`);
+    check("the mirror is as wide as the field's TEXT area, not its clientWidth",
+      mirrorBox.mirrorWidth, `${mirrorBox.fieldTextWidth}px`);
+    check("white-space is copied from the field, not assumed",
+      mirrorBox.wraps.whiteSpace[0], mirrorBox.wraps.whiteSpace[1]);
+    check("overflow-wrap is copied from the field, not assumed",
+      mirrorBox.wraps.overflowWrap[0], mirrorBox.wraps.overflowWrap[1]);
+    check("word-break is copied from the field, not assumed",
+      mirrorBox.wraps.wordBreak[0], mirrorBox.wraps.wordBreak[1]);
+    // content coordinates start at the CONTENT box: with padding, a border-box origin
+    // puts row 0 at y=paddingTop and rounding y/lineHeight calls that row 1, which
+    // shifts every screen-row index (H/M/L/C-d compare against viewport()).
+    const origin = await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      const el = document.getElementById('field');
+      el.style.padding = "10px";
+      a.engine.setText("alpha beta gamma delta epsilon", 0);
+      a._commit(); a._emitMode();
+      const p = a.caret.contentPoint(0);
+      return { x: Math.round(p.x), y: Math.round(p.y) };
+    })()`);
+    check("content coordinates start at the content box, not the border box", [origin.x, origin.y], [0, 0]);
+
+    console.log("\n\x1b[1ma click resets the vertical wish\x1b[0m");
+    await setupWrap();
+    const yOf = (off) => evaluate(session, `Math.round(window.jsbarevi.textarea.adapter.caret.contentPoint(${off}).y)`);
+    const rowOfCur = () => evaluate(session, `Math.round(window.jsbarevi.textarea.adapter.caret.contentPoint(window.jsbarevi.textarea.engine.cursor).y)`);
+    const xOf = (off) => evaluate(session, `window.jsbarevi.textarea.adapter.caret.contentPoint(${off}).x`);
+    await typeKeys(session, "gg");
+    await typeKeys(session, "gj");                 // sets the screen wish
+    await typeKeys(session, "gk");
+    await typeKeys(session, "g$");                 // and the end-of-row wish
+    await typeKeys(session, "gg");
+    const clickRowY = await yOf(0);
+    const clickPoint = await evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const c = window.jsbarevi.textarea.adapter.caret;
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const p = c.contentPoint(0);
+      return { x: Math.round(r.left + (parseFloat(cs.paddingLeft) || 0) + (c.contentPoint(8).x - p.x) + 2),
+               y: Math.round(r.top + (parseFloat(cs.paddingTop) || 0) + p.height / 2) };
+    })()`);
+    await clickAt(clickPoint.x, clickPoint.y);
+    const clickedAt = await cursor();
+    check("the click put the cursor inside the first row", clickedAt > 0 && Math.round(await rowOfCur()) === Math.round(clickRowY), true);
+    await typeKeys(session, "gj");
+    check("gj after a click keeps the CLICKED column, not the pre-click wish",
+      Math.round((await xOf(await cursor())) - (await xOf(clickedAt))), 0);
+    check("...and it moved to the next row", Math.round(await rowOfCur()) > Math.round(clickRowY), true);
+
     console.log("\n\x1b[1mviewport commands land on ROWS\x1b[0m");
     await setupWrap();
     await typeKeys(session, "gg");

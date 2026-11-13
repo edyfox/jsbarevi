@@ -97,6 +97,7 @@ export class Engine {
     const at = Math.max(0, Math.min(hostOffset, Math.max(0, t.length - 1)));
     this.state.cursor = B.clampToLineEnd(t, at, at);
     this._stayOffNewline();
+    this._resetWishes();
   }
 
   /**
@@ -113,6 +114,7 @@ export class Engine {
    * across a line break: typing past the end of the line appends, as in vim.
    */
   applyHostEdit(hostText, hostCursor) {
+    this._resetWishes();
     const session = this.replaceSession;
     if (!session) { this.setText(hostText, hostCursor); return; }
     const prev = this.hostText;
@@ -148,6 +150,7 @@ export class Engine {
       && session.at + consumed < snap.length
       && snap[session.at + consumed] !== "\n") consumed++;
     this.setText(snap.slice(0, session.at) + session.typed + snap.slice(session.at + consumed), hostCursor);
+    this._resetWishes();
   }
 
   /**
@@ -164,6 +167,7 @@ export class Engine {
     this.visual = { anchor: clamp(anchor) };
     this.state.cursor = clamp(head);
     this._stayOffNewline();
+    this._resetWishes();
   }
 
   /**
@@ -728,6 +732,19 @@ export class Engine {
   _setDesiredCol() {
     const s = B.lineStart(this.text, this.state.cursor);
     this.desiredCol = this.state.cursor - s;
+  }
+
+  /**
+   * A caret that moved WITHOUT a command (a mouse click, an IME jump, the host
+   * typing) invalidates both vertical wishes: desiredCol for j/k and desiredX for
+   * gj/gk. Otherwise the next vertical motion uses the column from before the
+   * click and the cursor "goes back" to where it was - which is what it looks like
+   * when a wish outlives the caret it described.
+   */
+  _resetWishes() {
+    this.desiredX = null;
+    this.desireRowEnd = false;
+    this._setDesiredCol();
   }
 
   _vertical(count, dir) {

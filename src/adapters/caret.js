@@ -89,8 +89,16 @@ export class BlockCaret {
     mirror.appendChild(probe);
     const pr = probe.getBoundingClientRect();
     const mr = mirror.getBoundingClientRect();
+    const mcs = getComputedStyle(mirror);
     const height = pr.height || parseFloat(getComputedStyle(el).lineHeight) || 16;
-    return { x: pr.left - mr.left, y: pr.top - mr.top, width: pr.width, height };
+    // Relative to the mirror's CONTENT box, not its border box: a field with 10px of
+    // padding would otherwise put the first row at y = 10, and rounding y/lineHeight
+    // makes that row 1 - which silently shifts every screen-row index (gj/gk are
+    // consistent with themselves, but H/M/L/C-d compare against viewport(), which
+    // counts rows from the content top).
+    const padTop = parseFloat(mcs.paddingTop) || 0;
+    const padLeft = parseFloat(mcs.paddingLeft) || 0;
+    return { x: pr.left - mr.left - padLeft, y: pr.top - mr.top - padTop, width: pr.width, height };
   }
 
   /** Position and size of the character at `offset`, in client coordinates. */
@@ -130,9 +138,21 @@ export class BlockCaret {
    * width is stale wraps at the wrong column, which is exactly how the block
    * caret ended up sitting at the right edge of a wrapped row.
    */
+  /**
+   * The width the mirror must be given: the field's CONTENT box. clientWidth
+   * includes the padding and the mirror inherits the field's box-sizing, so using
+   * clientWidth directly makes every row wider than the field's - which moves the
+   * wrap points, and with them every screen-line answer (gj/gk/g0/g$/H/M/L).
+   */
+  _contentWidth(el, cs) {
+    const pl = parseFloat(cs.paddingLeft) || 0;
+    const pr = parseFloat(cs.paddingRight) || 0;
+    return Math.max(1, el.clientWidth - pl - pr);
+  }
+
   _getMirror() {
     if (this.mirror) {
-      const w = `${this.el.clientWidth}px`;
+      const w = `${this._contentWidth(this.el, getComputedStyle(this.el))}px`;
       if (this.mirror.style.width !== w) this.mirror.style.width = w;
       return this.mirror;
     }
@@ -141,10 +161,13 @@ export class BlockCaret {
     const mirror = document.createElement("div");
     mirror.setAttribute("aria-hidden", "true");
     mirror.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;top:0;left:-99999px;z-index:-1;";
+    // Every text-affecting property is copied, including white-space, overflow-wrap
+    // and word-break. Overriding them says "wrap like I think you wrap": the field
+    // breaks between words, or inside a long word, according to ITS computed style,
+    // and a mirror that differs wraps at a different character - the rows are then
+    // simply not the rows on screen.
     for (const prop of MIRROR_PROPS) mirror.style[prop] = cs[prop];
-    mirror.style.whiteSpace = "pre-wrap";
-    mirror.style.overflowWrap = el.tagName === "TEXTAREA" ? "break-word" : "normal";
-    mirror.style.width = `${el.clientWidth}px`;
+    mirror.style.width = `${this._contentWidth(el, cs)}px`;
     mirror.style.height = "auto";
     document.body.appendChild(mirror);
     this.mirror = mirror;
