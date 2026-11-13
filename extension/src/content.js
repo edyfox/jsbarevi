@@ -190,7 +190,14 @@ function attachField(el) {
       fetchImpl: workerFetch,
     }),
     onKeyConsumed: (key) => {
+      if (key === "composing") {
+        // Diagnostic only: a key dropped for composition in NORMAL mode is the "press
+        // it twice" shape, and it is silent everywhere else.
+        trace("key ignored: isComposing while in NORMAL (would swallow exactly one key)");
+        return;
+      }
       if (key !== "Esc") return;
+      trace(`Esc consumed -> NORMAL (guard open ${ESCAPE_GUARD_MS}ms)`);
       escapeGuardUntil = Date.now() + ESCAPE_GUARD_MS;
       escapeAttempts = 0;
     },
@@ -333,7 +340,13 @@ document.addEventListener("focusin", onFocusIn, true);
  */
 function onKeydownClaim(e) {
   const el = e.composedPath?.()[0] ?? e.target;
-  if (!isEligible(el) || active.has(el)) return;
+  if (active.has(el)) return;
+  if (!isEligible(el)) {
+    // A key landing in an editable we do not own is worth a line: it is what a host
+    // re-render looks like from here, and it explains a swallowed keystroke.
+    if (el && el.isContentEditable) trace(`key ignored in ${nameOf(el)}: not eligible (mode ${el.getAttribute("contenteditable")})`);
+    return;
+  }
   settingsReady.then(() => {
     if (!shouldAttach() || active.has(el)) return;
     const handle = attachField(el);

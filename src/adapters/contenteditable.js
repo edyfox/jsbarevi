@@ -271,7 +271,12 @@ export class ContenteditableAdapter {
   _onKeydown(e) {
     const target = e.composedPath?.()[0] ?? e.target;
     if (!(target === this.el || this.el.contains(target))) return;
-    if (e.isComposing) return;                       // IME: never touch it
+    // See textarea.js: the composition guard belongs to insert mode only, otherwise a
+    // stale isComposing flag eats one keystroke after every Escape.
+    if (e.isComposing && (this.engine.mode === Mode.INSERT || this.engine.replaceSession)) {
+      this.onKeyConsumed?.("composing");
+      return;
+    }
     const key = tokenFor(e, this.engine.mode);
     if (key == null) return;
 

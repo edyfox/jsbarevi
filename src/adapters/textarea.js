@@ -408,7 +408,14 @@ export class TextareaAdapter {
   }
 
   _onKeydown(e) {
-    if (e.isComposing) return; // IME: never touch it
+    // IME: never touch it — but only while the HOST owns typing. In NORMAL/VISUAL
+    // there is no composition to protect, and a key flagged isComposing after an
+    // Escape (Chrome keeps the flag briefly) must not be dropped: that swallows
+    // exactly one keystroke, which reads as "I have to press it twice".
+    if (e.isComposing && (this.engine.mode === Mode.INSERT || this.engine.replaceSession)) {
+      this.onKeyConsumed?.("composing");
+      return;
+    }
     const key = this._token(e);
     if (key == null) return;
 

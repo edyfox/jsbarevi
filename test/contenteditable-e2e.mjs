@@ -162,6 +162,19 @@ async function main() {
     check("typed text landed at the cursor in the document", (await domText()).startsWith("Xhello"), true);
     check("and the host's own model saw it", (await host()).model.startsWith("Xhello"), true);
 
+    // ---- a stale composition flag after Escape ---------------------------
+    // Chrome can leave isComposing set on the first key after a composition is
+    // cancelled by Escape. Dropping that key is invisible everywhere except to the
+    // user, who sees "press it twice".
+    await typeKeys(page, "gg");
+    const composing = await evaluate(page, `(() => {
+      const before = window.handle.engine.cursor;
+      const ev = new KeyboardEvent("keydown", { key: "j", bubbles: true, cancelable: true, composed: true, isComposing: true });
+      document.activeElement.dispatchEvent(ev);
+      return { before, after: window.handle.engine.cursor };
+    })()`);
+    check("a key flagged isComposing in NORMAL is not dropped", composing.after !== composing.before, true);
+
     // ---- the host's keymap must not double-act ---------------------------
     const beforeKeys = (await host()).keys.length;
     await typeKeys(page, "<CR>");
