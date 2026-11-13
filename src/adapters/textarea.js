@@ -159,7 +159,11 @@ export class TextareaAdapter {
   }
 
   _commit() {
-    if (this.el.value !== this.engine.text) this.el.value = this.engine.text;
+    // hostText, not text: the engine's buffer carries a terminating newline so
+    // the last line has something to end on (buffer.js). Writing it into the
+    // field would append a phantom line on every command.
+    const host = this.engine.hostText;
+    if (this.el.value !== host) this.el.value = host;
     // The overlay paints the selection; the native selection stays collapsed so
     // the two never double-paint (and the OS highlight is too weak to rely on).
     const c = Math.min(this.engine.cursor, this.el.value.length);

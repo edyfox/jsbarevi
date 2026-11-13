@@ -55,10 +55,23 @@ export class Engine {
 
   // --- host API ------------------------------------------------------------
   setText(text, cursor = 0) {
-    this.state.text = text;
-    this.state.cursor = Math.max(0, Math.min(cursor, Math.max(0, text.length - 1)));
+    this._setText(B.ensureEol(text));
+    this.state.cursor = Math.max(0, Math.min(cursor, Math.max(0, this.state.text.length - 1)));
+  }
+  /**
+   * The single writer for the buffer. Every mutation goes through here so the
+   * trailing-terminator invariant (buffer.js) cannot be lost by one call site
+   * that happens to delete through the end of the buffer. Same shape as
+   * busybox's end-of-command `dot--`: one place enforces the model.
+   */
+  _setText(text) {
+    this.state.text = B.ensureEol(text);
+    const max = Math.max(0, this.state.text.length - 1);
+    if (this.state.cursor > max) this.state.cursor = max;
   }
   get text() { return this.state.text; }
+  /** What the host field should contain: the buffer without its terminator. */
+  get hostText() { return B.hostText(this.state.text); }
   get cursor() { return this.state.cursor; }
   set cursor(v) {
     this.state.cursor = Math.max(0, Math.min(v, Math.max(0, this.text.length - 1)));
@@ -599,7 +612,11 @@ export class Engine {
     this.pending = this._emptyPending();
     if (!motion) return { handled: true };
     this.state.cursor = Math.max(0, Math.min(motion.to, Math.max(0, this.text.length - 1)));
-    if (LINE_MOTIONS.has(name)) { /* keep desiredCol */ } else this._setDesiredCol();
+    // `$` sets vim's curswant to MAXCOL (measured: `j$k` keeps the end-of-line
+    // wish, so `k` lands on the last character however short the target line is).
+    if (name === "$") this.desiredCol = Infinity;
+    else if (LINE_MOTIONS.has(name)) { /* keep desiredCol */ }
+    else this._setDesiredCol();
     return { handled: true };
   }
 
@@ -652,6 +669,13 @@ export class Engine {
       const kind = (ch) => (ch === undefined || /\s/.test(ch) ? "space" : big || B.isWordChar(ch) ? "word" : "punct");
       const here = kind(c);
       const next = kind(B.charAt(text, B.nextChar(text, cur)));
+      if (B.isLineEmpty(text, cur) && count === 1) {
+        // measured: `cw` on an empty line deletes NOTHING and just enters insert.
+        // (`dw` there does delete the line break, and `c2w` deletes as usual, so
+        // this is the c+w special case, not a general rule.)
+        this._enterInsert("c");
+        return { handled: true, edit: true, enterInsert: true };
+      }
       if (here !== "space" && next === here) {
         // still inside the word: change to its end
         effective = big ? "E" : "e";
@@ -667,7 +691,9 @@ export class Engine {
     if ((name === "w" || name === "W") && (op === "d" || op === "y" || op === "c")) {
       const text = this.text;
       const from = B.lineNumber(text, this.state.cursor);
-      if (B.lineNumber(text, motion.to) > from) {
+      // ... but not when the cursor is on an empty line: there `dw` really does
+      // take the line break (measured: "a\n\nb" + `jdw` is "a\nb").
+      if (B.lineNumber(text, motion.to) > from && !B.isLineEmpty(text, this.state.cursor)) {
         motion = { to: B.lastCharOffset(text, this.state.cursor), charwise: true, inclusive: true };
       }
     }
@@ -689,7 +715,45 @@ export class Engine {
     }
     const from = Math.min(cur, motion.to);
     let to = Math.max(cur, motion.to);
-    if (motion.inclusive) to = Math.min(text.length, B.nextChar(text, to));
+    const crossed = B.lineNumber(text, from) !== B.lineNumber(text, to);
+    if (motion.inclusive) {
+      // An inclusive motion stops at the end of the line it landed in: `$` on an
+      // empty line is a no-op, `de` on the last word does not take the newline.
+      const extended = to < text.length && text[to] !== "\n" ? B.nextChar(text, to) : to;
+      // Exclusive-linewise, the other way round: a motion that crossed a line
+      // break and covers the whole tail of its target line takes whole lines
+      // (measured: `de` from an empty line deletes "\nword\n", not "\nword").
+      // It needs the same start condition - a `de` that begins mid-line inside a
+      // word stops at the target word's end instead ("abc\ndef" + `$de` is "ab").
+      if (crossed && from === B.firstNonBlank(text, from)
+          && extended < text.length && text[extended] === "\n") {
+        const lastLine = B.lineNumber(text, to);
+        return this._applyOperatorRange(
+          op,
+          B.lineOffset(text, B.lineNumber(text, from)),
+          B.lineEnd(text, B.lineOffset(text, lastLine)) + 1,
+          true, true, false, reg,
+        );
+      }
+      to = extended;
+      return this._applyOperatorRange(op, from, to, false, true, false, reg);
+    }
+    if (crossed && to === B.lineStart(text, to)) {
+      // Exclusive-linewise: a charwise motion that starts on the first non-blank
+      // of a line and ends on a line boundary becomes LINEWISE (vim; measured
+      // with `db` from column 1). Otherwise the end steps back off the newline
+      // so the delete does not swallow the line break.
+      if (from === B.firstNonBlank(text, from)) {
+        const lastLine = B.lineNumber(text, to) - 1;
+        return this._applyOperatorRange(
+          op,
+          B.lineOffset(text, B.lineNumber(text, from)),
+          B.lineEnd(text, B.lineOffset(text, lastLine)) + 1,
+          true, true, false, reg,
+        );
+      }
+      to = B.prevChar(text, to);
+    }
     return this._applyOperatorRange(op, from, to, false, true, false, reg);
   }
 
@@ -709,7 +773,7 @@ export class Engine {
 
     this._pushUndo(before);
     this._storeRegister(slice, linewise, reg);
-    this.state.text = text.slice(0, from) + text.slice(to);
+    this._setText(text.slice(0, from) + text.slice(to));
     this.state.cursor = Math.min(from, Math.max(0, this.state.text.length - 1));
     if (linewise) {
       const ln = B.lineNumber(this.state.text, Math.min(this.state.cursor, Math.max(0, this.state.text.length - 1)));
@@ -734,7 +798,7 @@ export class Engine {
   deleteRange(from, to, { record = true } = {}) {
     const text = this.text;
     this._pushUndo({ text, cursor: this.state.cursor });
-    this.state.text = text.slice(0, from) + text.slice(to);
+    this._setText(text.slice(0, from) + text.slice(to));
     this.state.cursor = Math.min(from, Math.max(0, this.state.text.length - 1));
     if (record) this._noteChange({ kind: "del", count: 1 });
     return { handled: true, edit: true };
@@ -875,7 +939,7 @@ export class Engine {
     const slice = text.slice(from, to);
     this._pushUndo(before);
     this._storeRegister(slice, false, this.pending.reg);
-    this.state.text = text.slice(0, from) + text.slice(to);
+    this._setText(text.slice(0, from) + text.slice(to));
     this.state.cursor = B.clampToLineEnd(this.state.text, Math.min(from, Math.max(0, this.state.text.length - 1)), from);
     this._setDesiredCol();
     this._noteChange({ kind: "del", count, backwards });
@@ -896,7 +960,7 @@ export class Engine {
     const n = [...text.slice(cur, to)].length;
     const repl = ch.repeat(Math.max(1, n));
     this._pushUndo({ text, cursor: cur });
-    this.state.text = text.slice(0, cur) + repl + text.slice(to);
+    this._setText(text.slice(0, cur) + repl + text.slice(to));
     this.state.cursor = Math.max(cur, Math.min(cur + repl.length - 1, this.state.text.length - 1));
     this._noteChange({ kind: "replace", count, ch });
     return { handled: true, edit: true };
@@ -906,14 +970,30 @@ export class Engine {
     const text = this.text;
     const cur = this.state.cursor;
     const last = B.lastCharOffset(text, cur);
-    let to = cur;
-    for (let i = 0; i < count; i++) { if (to > last) break; to = B.nextChar(text, to); }
-    const slice = text.slice(cur, to);
-    const flipped = [...slice].map((c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())).join("");
-    if (flipped === slice) return { handled: true };
+    let out = text;
+    let at = cur;
+    let flipped = 0;
+    // busybox's `~` is `dot_right()` in a loop (vi.c: `case '~'`): it advances
+    // whether or not the character changed. vim agrees - `~` on a blank moves
+    // right instead of stopping - and that advancement is what makes `2~` walk
+    // two characters rather than flip the same one twice.
+    for (let i = 0; i < count; i++) {
+      const ch = B.charAt(out, at);
+      if (ch !== undefined) {
+        const upper = ch.toUpperCase();
+        const next = ch === upper ? ch.toLowerCase() : upper;
+        if (next !== ch) {
+          out = out.slice(0, at) + next + out.slice(at + ch.length);
+          flipped++;
+        }
+      }
+      if (at >= last) break;
+      at = B.nextChar(out, at);
+    }
+    this.state.cursor = Math.min(at, Math.max(0, out.length - 1));
+    if (!flipped) return { handled: true };
     this._pushUndo({ text, cursor: cur });
-    this.state.text = text.slice(0, cur) + flipped + text.slice(to);
-    this.state.cursor = Math.min(to, Math.max(0, this.state.text.length - 1));
+    this._setText(out);
     this._noteChange({ kind: "tilde", count });
     return { handled: true, edit: true };
   }
@@ -929,19 +1009,29 @@ export class Engine {
     let joinAt = -1;
     // vim: [count]J joins [count] lines, i.e. count-1 joins
     const joins = Math.max(1, count - 1);
-    for (let i = 0; i < joins && B.lineNumber(out, B.lineOffset(out, line) + Math.max(0, joinAt)) < B.lineCount(out) - 1; i++) {
-      const target = joinAt < 0 ? B.lineOffset(out, line) : joinAt + 1;
+    let ln = line;
+    for (let i = 0; i < joins && ln < B.lineCount(out) - 1; i++) {
+      const target = B.lineOffset(out, ln);
       const e = B.lineEnd(out, target);
       const nextStart = e + 1;
       if (nextStart > out.length) break;
       const nextEnd = B.lineEnd(out, nextStart);
-      const next = out.slice(nextStart, nextEnd).replace(/^[ \t]+/, "");
-      out = out.slice(0, e) + " " + next + out.slice(nextEnd);
+      const raw = out.slice(nextStart, nextEnd);
+      if (raw.trim() === "") {
+        // measured: a blank (or whitespace-only) line is removed outright and
+        // no space is inserted - "a\n\nb" + J is "a\nb", not "a \nb".
+        out = out.slice(0, e) + out.slice(nextEnd);
+      } else {
+        const next = raw.replace(/^[ \t]+/, "");
+        // ... and no space is inserted when the line being joined INTO is blank
+        const sep = out.slice(target, e).trim() === "" ? "" : " ";
+        out = out.slice(0, e) + sep + next + out.slice(nextEnd);
+      }
       joinAt = e;
       changed++;
     }
     if (!changed) return { handled: true };
-    this.state.text = out;
+    this._setText(out);
     this.state.cursor = Math.min(joinAt, Math.max(0, out.length - 1));
     this._noteChange({ kind: "join", count });
     return { handled: true, edit: true };
@@ -969,7 +1059,7 @@ export class Engine {
       if (right) lines[n] = unit + lines[n];
       else lines[n] = lines[n].replace(new RegExp(`^(\\t| {1,${this.options.shiftwidth}})`), "");
     }
-    this.state.text = lines.join("\n");
+    this._setText(lines.join("\n"));
     this.state.cursor = B.firstNonBlank(this.state.text, B.lineOffset(this.state.text, startLine));
     this._noteChange({ kind: "shift", count: 1, right });
     return { handled: true, edit: true };
@@ -990,12 +1080,12 @@ export class Engine {
       if (insertAt > text.length) insertAt = text.length;
       if (!payload.endsWith("\n")) payload += "\n";
       const needsNewline = insertAt > 0 && text[insertAt - 1] !== "\n";
-      this.state.text = text.slice(0, insertAt) + (needsNewline ? "\n" : "") + payload.replace(/\n$/, "") + "\n" + text.slice(insertAt);
+      this._setText(text.slice(0, insertAt) + (needsNewline ? "\n" : "") + payload.replace(/\n$/, "") + "\n" + text.slice(insertAt));
       this.state.cursor = B.firstNonBlank(this.state.text, insertAt + (needsNewline ? 1 : 0));
     } else {
       insertAt = before ? cur : Math.min(text.length, B.nextChar(text, cur));
       if (B.isLineEmpty(text, cur) && text.length > 0 && cur >= text.length) insertAt = text.length;
-      this.state.text = text.slice(0, insertAt) + payload + text.slice(insertAt);
+      this._setText(text.slice(0, insertAt) + payload + text.slice(insertAt));
       this.state.cursor = Math.max(0, insertAt + payload.length - 1);
     }
     this._noteChange({ kind: "put", count, before });
@@ -1006,7 +1096,7 @@ export class Engine {
     const prev = this.undoStack.pop();
     if (!prev) { this.onStatus("already at oldest change", "error"); return { handled: true }; }
     this.redoStack.push({ text: this.text, cursor: this.state.cursor });
-    this.state.text = prev.text;
+    this._setText(prev.text);
     this.state.cursor = Math.min(prev.cursor, Math.max(0, prev.text.length - 1));
     this.onStatus("");
     return { handled: true, edit: true };
@@ -1016,7 +1106,7 @@ export class Engine {
     const next = this.redoStack.pop();
     if (!next) { this.onStatus("already at newest change", "error"); return { handled: true }; }
     this.undoStack.push({ text: this.text, cursor: this.state.cursor });
-    this.state.text = next.text;
+    this._setText(next.text);
     this.state.cursor = Math.min(next.cursor, Math.max(0, next.text.length - 1));
     return { handled: true, edit: true };
   }
@@ -1027,7 +1117,7 @@ export class Engine {
     const line = B.lineNumber(text, this.state.cursor);
     const lines = text.split("\n");
     lines[line] = this.lineSnapshot;
-    this.state.text = lines.join("\n");
+    this._setText(lines.join("\n"));
     this.state.cursor = B.firstNonBlank(this.state.text, B.lineOffset(this.state.text, line));
     return { handled: true, edit: true };
   }
@@ -1049,13 +1139,13 @@ export class Engine {
       case "A": this.state.cursor = B.lineEnd(text, cur); break;
       case "o": {
         const e = B.lineEnd(text, cur);
-        this.state.text = text.slice(0, e) + "\n" + text.slice(e);
+        this._setText(text.slice(0, e) + "\n" + text.slice(e));
         this.state.cursor = e + 1;
         break;
       }
       case "O": {
         const s = B.lineStart(text, cur);
-        this.state.text = text.slice(0, s) + "\n" + text.slice(s);
+        this._setText(text.slice(0, s) + "\n" + text.slice(s));
         this.state.cursor = s;
         break;
       }
@@ -1107,11 +1197,11 @@ export class Engine {
         const t = this.text;
         if (entry.kind === "o") {
           const at = Math.min(B.lineEnd(t, this.state.cursor) + 1, t.length);
-          this.state.text = t.slice(0, at) + inserted + "\n" + t.slice(at);
+          this._setText(t.slice(0, at) + inserted + "\n" + t.slice(at));
           this.state.cursor = at;
         } else {
           const at = B.lineStart(t, this.state.cursor);
-          this.state.text = t.slice(0, at) + inserted + "\n" + t.slice(at);
+          this._setText(t.slice(0, at) + inserted + "\n" + t.slice(at));
           this.state.cursor = at + inserted.length + 1;
         }
       }
@@ -1122,7 +1212,7 @@ export class Engine {
     const t = this.text;
     const end = Math.min(this.state.cursor, t.length);
     const payload = inserted.repeat(count - 1);
-    this.state.text = t.slice(0, end) + payload + t.slice(end);
+    this._setText(t.slice(0, end) + payload + t.slice(end));
     this.state.cursor = Math.max(0, end + payload.length - 1);
     return true;
   }
@@ -1205,7 +1295,7 @@ export class Engine {
       const slice = this.text.slice(range.from, range.to);
       const flipped = [...slice].map((c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())).join("");
       this._pushUndo({ text: this.text, cursor: this.state.cursor });
-      this.state.text = this.text.slice(0, range.from) + flipped + this.text.slice(range.to);
+      this._setText(this.text.slice(0, range.from) + flipped + this.text.slice(range.to));
       this.state.cursor = range.from;
       this.mode = Mode.NORMAL; this.visual = null;
       return { handled: true, edit: true };
@@ -1214,7 +1304,7 @@ export class Engine {
       const range = this._visualRange();
       const slice = this.text.slice(range.from, range.to).replace(/\n\s*/g, " ");
       this._pushUndo({ text: this.text, cursor: this.state.cursor });
-      this.state.text = this.text.slice(0, range.from) + slice + this.text.slice(range.to);
+      this._setText(this.text.slice(0, range.from) + slice + this.text.slice(range.to));
       this.state.cursor = range.from;
       this.mode = Mode.NORMAL; this.visual = null;
       return { handled: true, edit: true };
@@ -1299,7 +1389,7 @@ export class Engine {
       const at = Math.min(this.state.cursor, this.text.length);
       const payload = lc.inserted.repeat(count);
       const text = this.state.text;
-      this.state.text = text.slice(0, at) + payload + text.slice(at);
+      this._setText(text.slice(0, at) + payload + text.slice(at));
       this.state.cursor = at + payload.length;
       this._insertKey("Esc");          // leaves insert mode and records the change
       return { handled: true, edit: true, ...moved };

@@ -1,0 +1,538 @@
+{
+  "about": "The alignment audit's backlog, pinned. tools/audit-align.mjs generates every combination of 9 buffer shapes x 6 cursor positions x 46 commands and diffs it against real vim; these are the cases it still reported after the trailing-terminator invariant landed. Six rule classes: J against a blank neighbour, w/b stopping at an empty line, db's exclusive-linewise conversion, de/d$/cw on an empty line, curswant after $, and ~ advancing over characters it cannot flip. Expectations are vim's measured output; test/differential.mjs also runs every case against vim at run time.",
+  "cases": [
+    {
+      "name": "J joins a blank line away without inserting a space",
+      "input": "a\n\nb\n",
+      "keys": "J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "2J is one join, blank neighbour included",
+      "input": "a\n\nb\n",
+      "keys": "2J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J from the end of the first line",
+      "input": "a\n\nb\n",
+      "keys": "$J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J with the cursor on the blank line",
+      "input": "a\n\nb\n",
+      "keys": "jJ",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "2J with the cursor on the blank line",
+      "input": "a\n\nb\n",
+      "keys": "j2J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J from the end of the blank line",
+      "input": "a\n\nb\n",
+      "keys": "j$J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J after a horizontal move",
+      "input": "a\n\nb\n",
+      "keys": "llJ",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "2J after a horizontal move",
+      "input": "a\n\nb\n",
+      "keys": "ll2J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J keeps the trailing blank of the first line",
+      "input": "a \n\nb\n",
+      "keys": "J",
+      "expect": {
+        "text": "a \nb\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "J removes a whitespace-only line without a space",
+      "input": "a\n \nb\n",
+      "keys": "J",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "3J joins through a blank line",
+      "input": "a\n\nb\n",
+      "keys": "3J",
+      "expect": {
+        "text": "a b\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "w stops at an empty line",
+      "input": "a\n\nb\n",
+      "keys": "w",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "w from the end of the line stops at an empty line",
+      "input": "a\n\nb\n",
+      "keys": "$w",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "w twice crosses the empty line",
+      "input": "a\n\nb\n",
+      "keys": "ww",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 3,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "w after a horizontal move stops at an empty line",
+      "input": "a\n\nb\n",
+      "keys": "llw",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "b from the last line stops at an empty line",
+      "input": "a\n\nb\n",
+      "keys": "Gb",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from the last line takes the blank line",
+      "input": "a\n\nb\n",
+      "keys": "Gdb",
+      "expect": {
+        "text": "a\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from column 1 deletes the indented line",
+      "input": "  ab\ncd\n",
+      "keys": "jdb",
+      "expect": {
+        "text": "cd\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from the last line deletes the indented line",
+      "input": "  ab\ncd\n",
+      "keys": "Gdb",
+      "expect": {
+        "text": "cd\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from column 1 stops at the previous word",
+      "input": "one two three\nfour five\n",
+      "keys": "jdb",
+      "expect": {
+        "text": "one two \nfour five\n",
+        "line": 1,
+        "col": 8
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from the last line stops at the previous word",
+      "input": "one two three\nfour five\n",
+      "keys": "Gdb",
+      "expect": {
+        "text": "one two \nfour five\n",
+        "line": 1,
+        "col": 8
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from column 1 over punctuation",
+      "input": "f(x) y\n[z]\n",
+      "keys": "jdb",
+      "expect": {
+        "text": "f(x) \n[z]\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "db from the last line over punctuation",
+      "input": "f(x) y\n[z]\n",
+      "keys": "Gdb",
+      "expect": {
+        "text": "f(x) \n[z]\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "de from an empty line takes the next line",
+      "input": "a\n\nb\n",
+      "keys": "jde",
+      "expect": {
+        "text": "a\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "de from the end of an empty line",
+      "input": "a\n\nb\n",
+      "keys": "j$de",
+      "expect": {
+        "text": "a\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "de from an empty line stops at the end of the word",
+      "input": "a\n\nb cd\n",
+      "keys": "jde",
+      "expect": {
+        "text": "a\n cd\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d$ on an empty line changes nothing",
+      "input": "a\n\nb\n",
+      "keys": "jd$",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d$ on an empty line, from its only column",
+      "input": "a\n\nb\n",
+      "keys": "j$d$",
+      "expect": {
+        "text": "a\n\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "cw on an empty line inserts without deleting",
+      "input": "a\n\nb\n",
+      "keys": "jcwZ<Esc>",
+      "expect": {
+        "text": "a\nZ\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "cw on an empty line, from its only column",
+      "input": "a\n\nb\n",
+      "keys": "j$cwZ<Esc>",
+      "expect": {
+        "text": "a\nZ\nb\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then k keeps the end-of-line wish",
+      "input": "one two three\nfour five\n",
+      "keys": "j$k",
+      "expect": {
+        "text": "one two three\nfour five\n",
+        "line": 1,
+        "col": 13
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then k keeps the wish on an indented line",
+      "input": "  ab\ncd\n",
+      "keys": "j$k",
+      "expect": {
+        "text": "  ab\ncd\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then k clamps to the longer first line",
+      "input": "f(x) y\n[z]\n",
+      "keys": "j$k",
+      "expect": {
+        "text": "f(x) y\n[z]\n",
+        "line": 1,
+        "col": 6
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then j clamps to a shorter line",
+      "input": "one two three\nfour\n",
+      "keys": "$j",
+      "expect": {
+        "text": "one two three\nfour\n",
+        "line": 2,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then j then j stays at the end",
+      "input": "one two three\nfour five\nsix\n",
+      "keys": "$jj",
+      "expect": {
+        "text": "one two three\nfour five\nsix\n",
+        "line": 3,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "$ then w drops the wish",
+      "input": "one two three\nfour\n",
+      "keys": "$w",
+      "expect": {
+        "text": "one two three\nfour\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "~ on a blank advances",
+      "input": "  ab\ncd\n",
+      "keys": "~",
+      "expect": {
+        "text": "  ab\ncd\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "~ on punctuation advances",
+      "input": "f(x) y\n[z]\n",
+      "keys": "j~",
+      "expect": {
+        "text": "f(x) y\n[z]\n",
+        "line": 2,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "~ on the last line advances",
+      "input": "f(x) y\n[z]\n",
+      "keys": "G~",
+      "expect": {
+        "text": "f(x) y\n[z]\n",
+        "line": 2,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "2~ flips one letter and advances twice",
+      "input": "a b\n",
+      "keys": "2~",
+      "expect": {
+        "text": "A b\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "3~ stops at the end of the line",
+      "input": "ab\n",
+      "keys": "3~",
+      "expect": {
+        "text": "AB\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

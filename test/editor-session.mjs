@@ -41,13 +41,15 @@ const session = (engine, extra = {}) => new HttpEditorSession({
   onApplied: () => {}, ...extra,
 });
 
+// These assert what the FIELD holds, so they read hostText: engine.text is the
+// buffer with its terminating newline (buffer.js), which never goes to the DOM.
 console.log("\n\x1b[1m:e transport\x1b[0m");
 {
   const e = mk("hello");
   let applied = 0;
   session(e, { onApplied: () => applied++ }).open();
   await sleep(200);
-  check("round trip replaces the buffer", e.text, "EDITED(hello)");
+  check("round trip replaces the buffer", e.hostText, "EDITED(hello)");
   check("adapter is told to commit", applied, 1);
 }
 {
@@ -55,7 +57,7 @@ console.log("\n\x1b[1m:e transport\x1b[0m");
   const e = mk("keep me");
   session(e).open();
   await sleep(200);
-  check("X-File-Changed: false leaves the buffer alone", e.text, "keep me");
+  check("X-File-Changed: false leaves the buffer alone", e.hostText, "keep me");
 }
 {
   mode = "slow";
@@ -64,7 +66,7 @@ console.log("\n\x1b[1m:e transport\x1b[0m");
   s.open();
   e.setText("typed while the editor was open", 0);   // simulates an autosave
   await sleep(300);
-  check("compare-and-swap refuses to clobber a changed buffer", e.text, "typed while the editor was open");
+  check("compare-and-swap refuses to clobber a changed buffer", e.hostText, "typed while the editor was open");
 }
 {
   const e = mk("x");

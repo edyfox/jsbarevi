@@ -12,6 +12,27 @@
 export const isWordChar = (c) => c !== undefined && /[A-Za-z0-9_]/.test(c);
 export const isBlank = (c) => c === " " || c === "\t";
 
+// --- the trailing-terminator invariant -------------------------------------
+// The engine's buffer ALWAYS ends with exactly one "\n", and the host's text is
+// that buffer minus the terminator. Two references settle this, and neither one
+// works without it:
+//
+//   * busybox appends the newline a file is missing precisely so that `dot_end()`
+//     can return a real '\n' for the last line and the end-of-command `dot--`
+//     normalisation has something to step back off (vi.c);
+//   * vim's buffer is a list of lines, not a byte range, so the newline after the
+//     last line exists whether or not the file ends with one - which is the only
+//     way "delete the last line's text" can leave an EMPTY last line rather than
+//     shortening the buffer by a line.
+//
+// Without the terminator the empty-buffer, empty-last-line and
+// last-line-without-an-EOL cases are simply not representable, which is what the
+// alignment audit kept reporting as 70 unrelated-looking failures.
+export const ensureEol = (t) => (t.endsWith("\n") ? t : `${t}\n`);
+
+/** The host's view of the buffer: the documented text minus its terminator. */
+export const hostText = (t) => (t === "\n" ? "" : t.replace(/\n$/, ""));
+
 export function nextChar(text, i) {
   if (i >= text.length) return i;
   const cp = text.codePointAt(i);
@@ -132,14 +153,24 @@ export function wordForward(text, i, big = false) {
     if (c === "\n") break;
     k = nextChar(text, k);
   }
-  // then skip separators (blanks and newlines)
-  while (k < text.length && classify(charAt(text, k), big) === "space") k = nextChar(text, k);
+  // then skip separators (blanks and newlines) - but an EMPTY line is a word
+  // stop, so `w` from "a" in "a\n\nb" lands on the blank line rather than on "b"
+  // (measured against vim; motion.txt: "an empty line counts as a word").
+  while (k < text.length && classify(charAt(text, k), big) === "space") {
+    if (charAt(text, k) === "\n" && isLineEmpty(text, k + 1)) return k + 1;
+    k = nextChar(text, k);
+  }
   return k;
 }
 
 export function wordBack(text, i, big = false) {
   let k = prevChar(text, i);
-  while (k > 0 && classify(charAt(text, k), big) === "space") k = prevChar(text, k);
+  while (k > 0 && classify(charAt(text, k), big) === "space") {
+    // the mirror of `w`: an empty line is a word stop, so `b` from "b" in
+    // "a\n\nb" stops on the blank line instead of on "a".
+    if (k === lineStart(text, k) && isLineEmpty(text, k)) return k;
+    k = prevChar(text, k);
+  }
   const kind = classify(charAt(text, k), big);
   while (k > 0) {
     const p = prevChar(text, k);

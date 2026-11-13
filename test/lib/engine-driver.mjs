@@ -24,6 +24,9 @@ export const tokenize = (seq) => seq.match(/<[A-Za-z-]+>|[\s\S]/g) || [];
 export const toVimKeys = (seq) => tokenize(seq).map((t) => VIM_TOKENS[t] ?? t).join("");
 
 /** A buffer of one empty line is a newline on disk and "" here; compare the same. */
+/** vim's file always ends with the newline vim itself keeps; our buffer always
+ *  carries exactly one terminator (buffer.js), so stripping one from each side is
+ *  lossless - an empty LAST line survives as a trailing "\n" on both. */
 export const normalise = (t) => t.replace(/\n$/, "");
 
 /** Run keystrokes in real vim; returns buffer, line and column (1-based). */

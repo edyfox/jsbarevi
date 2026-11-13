@@ -76,7 +76,7 @@ export class HttpEditorSession {
   open() {
     if (this.busy) return { ok: false, message: "editor session already open" };
     this.busy = true;
-    const sent = this.engine.text;
+    const sent = this.engine.hostText;
     const cursorBefore = this.engine.cursor;
 
     const url = new URL(this.url, this.pageUrl);
@@ -135,7 +135,7 @@ export class HttpEditorSession {
           this.onStatus("editor closed without changes");
           return;
         }
-        if (this.engine.text !== sent) {
+        if (this.engine.hostText !== sent) {
           this.onStatus("field changed while editing — result discarded, :e again", "error");
           return;
         }
