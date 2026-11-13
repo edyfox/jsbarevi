@@ -135,6 +135,7 @@ function nameOf(node) {
 
 let escapeGuardUntil = 0;
 let escapeAttempts = 0;
+let escapeAttemptAt = 0;
 let pointerAt = 0;
 const ESCAPE_GUARD_MS = 1200;
 
@@ -186,6 +187,10 @@ function guardEscape(el, handle) {
       if (cur && isTextField(cur)) { trace(`focusout -> ${nameOf(cur)} (another field)`); return; }
       if (pointerRecently()) { trace(`focusout -> ${nameOf(cur)} (pointer, leaving)`); return; }
       if (Date.now() - lastTabAt < 300) { trace(`focusout -> ${nameOf(cur)} (Tab, leaving)`); return; }
+      // The cap is per incident, not per session: it exists to stop a focus LOOP, and a
+      // session that hit four steals would otherwise go permanently quiet — which is
+      // exactly the "it never intercepts Escape again until I click" report.
+      if (Date.now() - escapeAttemptAt > 2000) escapeAttempts = 0;
       if (escapeAttempts >= 4) { trace(`focusout -> ${nameOf(cur)} (attempt cap reached)`); return; }
 
       // The key may never have reached us — that is exactly what a swallowed Escape
@@ -198,12 +203,18 @@ function guardEscape(el, handle) {
       }
 
       escapeAttempts++;
+      escapeAttemptAt = Date.now();
       trace(`focus reclaimed from ${nameOf(cur)} (attempt ${escapeAttempts})`);
       el.focus({ preventScroll: true });
     });
   };
+  const onFocus = () => { escapeAttempts = 0; };
   el.addEventListener("focusout", onFocusOut);
-  return () => el.removeEventListener("focusout", onFocusOut);
+  el.addEventListener("focus", onFocus);
+  return () => {
+    el.removeEventListener("focusout", onFocusOut);
+    el.removeEventListener("focus", onFocus);
+  };
 }
 
 /** One field, one adapter, one UI. Attaching twice would mean two engines. */

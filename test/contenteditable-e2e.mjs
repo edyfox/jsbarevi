@@ -188,6 +188,15 @@ async function main() {
     check("an engine edit dispatches input", afterCommit.inputs > beforeInputs, true);
     check("and the host re-parsed exactly the engine's buffer", afterCommit.model, await text());
 
+    // ---- leaving insert at a line end ------------------------------------
+    // The insertion point sits one past the last character; in NORMAL the native beam
+    // must be gone, or what you see at the line end is a beam, not the block cursor.
+    await typeKeys(page, "A");
+    await typeKeys(page, "<Esc>");
+    check("no native beam in NORMAL", await evaluate(page, "document.getElementById('editor').style.caretColor"), "transparent");
+    check("the block cursor is drawn in NORMAL", await evaluate(page, "[...document.querySelectorAll('.jsbarevi-caret')].some((c) => getComputedStyle(c).display !== 'none')"), true);
+    check("the cursor sits ON the last character, not past it", await evaluate(page, "window.handle.engine.hostText[window.handle.engine.cursor]"), await evaluate(page, "window.handle.engine.hostText.slice(-1)"));
+
     // ---- visual line ------------------------------------------------------
     await typeKeys(page, "gg");
     const beforeVisual = await text();

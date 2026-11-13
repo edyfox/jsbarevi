@@ -453,6 +453,11 @@ export class ContenteditableAdapter {
     this.onModeChange?.(label, this.engine.pending?.count || "");
     const focused = document.activeElement === this.el;
     const beam = this.engine.mode === Mode.INSERT && !replace;
+    // The native caret has to go for the same reason as in a textarea: a beam next to a
+    // block is two cursors, and at a line end (where the insertion point sits one past
+    // the last character) the beam is the one you notice. The textarea adapter has
+    // always done this; the contenteditable one never did.
+    this.el.style.caretColor = beam || !focused ? "" : "transparent";
     if (beam || !focused) { this.caret?.hide(); this.highlight.clear(); }
     else this._updateCaret();
   }

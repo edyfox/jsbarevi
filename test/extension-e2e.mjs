@@ -288,6 +288,15 @@ async function main() {
     await evaluate(page, "document.getElementById('secret').blur()");
     check("an unmanaged field keeps native blur", await evaluate(page, "document.activeElement === document.getElementById('secret')"), false);
 
+    // ---- repeated focus theft must not exhaust the guard ------------------
+    // The cap exists to stop a focus LOOP; if it never reset, one bad session would
+    // leave the extension permanently unable to keep focus ("until I click the box").
+    for (let i = 0; i < 6; i++) {
+      await evaluate(page, "document.getElementById('elsewhere').focus()");
+      await sleep(140);
+    }
+    check("the guard still reclaims after repeated thefts", await evaluate(page, "document.activeElement.id"), "ce");
+
     // ---- per-site switch --------------------------------------------------
     await setSettings(worker, { disabledHosts: ["127.0.0.1"] });
     await sleep(200);
