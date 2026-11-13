@@ -1,0 +1,62 @@
+{
+  "about": "Marks as a MOTION: a plain jump, a jump under an operator (`d`a`, `d'a`), and a jump that extends a visual selection. Measured 2026-11-13: vim supports all three; nvi supports the operator form but not the visual one; busybox supports neither (it leaves the buffer untouched - marks exist there but not as motions), so the visual cases run vim-only and the rest vim+nvi. `'` is LINEWISE (d'a takes whole lines), ``` `` ``` is charwise and exclusive. The engine serves all three from one definition (Engine._markMotion), because the same motion has to work for a jump, an operator and a selection.",
+  "cases": [
+    {
+      "name": "a plain mark jump in normal mode",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majll`a",
+      "expect": { "text": "abcdef\nghijkl\nmnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "d`a deletes back to the mark, excluding its character",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majlld`a",
+      "expect": { "text": "ijkl\nmnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "d'a is linewise, so whole lines go",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majlld'a",
+      "expect": { "text": "mnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "d`a forwards to a later mark",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "jllmajd`a",
+      "expect": { "text": "abcdef\nghopqr\n", "line": 2, "col": 3 },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "y`a yanks to the mark and leaves the cursor at its start",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majlly`ap",
+      "noPosition": true,
+      "expect": { "text": "aabcdef\nghbcdef\nghijkl\nmnopqr\n" },
+      "engines": ["vim", "nvi"]
+    },
+    {
+      "name": "v then `a extends the selection to the mark, and d takes it",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majllv`ad",
+      "expect": { "text": "jkl\nmnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "v then 'a extends the selection to the mark's line",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majllv'ad",
+      "expect": { "text": "jkl\nmnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "V then a mark jump stays linewise",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "majllV`ad",
+      "expect": { "text": "mnopqr\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    }
+  ]
+}

@@ -412,3 +412,25 @@ adapter and by the test harness that simulates a host. Without it, a field value
 ending in a newline silently loses its empty last line — which is exactly how a
 second copy of the host-typing shim in the test suite went unnoticed until replace
 mode needed it.
+
+## A mark is a motion, not a jump
+
+Marks arrived as a cursor move in normal mode, which left two of the three things a
+motion has to do unimplemented: `d`a` moved the cursor instead of feeding the
+operator, and a mark jump in VISUAL did nothing at all. The fix is one definition —
+`_markMotion(kind, key)` returns the same motion object the other motions return, so
+the plain jump, the operator range and the visual extension all get it, including the
+exclusive-linewise rules (`'` is linewise: `d'a` takes whole lines; ``` `` ``` is
+charwise and exclusive: `d`a` stops before the mark's character).
+
+Measured across the references, and they split: vim supports all three; nvi supports
+the operator form but not the visual one; busybox supports neither, so
+`oracle/cases/marks.json` runs the visual cases vim-only.
+
+The generalisation: **a "thing you can jump to" is not a feature, it is a motion**, and
+a motion that only exists on one of the three paths is two features missing.
+
+Found while pinning the cases, not fixed: after a paste, the cursor for a CHARWISE
+register that contains a newline differs (vim leaves it at the start of the pasted text,
+we put it at the end). Separate rule, separate measurement; recorded in the session
+notes rather than guessed at.

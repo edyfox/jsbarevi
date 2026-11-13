@@ -36,6 +36,8 @@ export const COMMANDS = [
   "w", "b", "e", "dw", "de", "db", "d$", "d0",
   "cwZ<Esc>", "ccZ<Esc>", "yyP", ">j", "<j", "u", ".",
   "sZ<Esc>", "SZ<Esc>", "CZ<Esc>", "2sZ<Esc>", "RXY<Esc>",
+  // marks: a jump, a jump with an operator, a yank, and a jump in visual mode
+  "ma`a", "ma'a", "mad`a", "may`a", "mav`ad",
   "iZ<Esc>", "aZ<Esc>", "IZ<Esc>", "AZ<Esc>", "oZ<Esc>", "OZ<Esc>", "3iZ<Esc>",
   "0", "^", "G", "gg", "h", "l", "j", "k",
   "2J", "r<Esc>", "%",

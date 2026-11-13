@@ -500,6 +500,19 @@ export class Engine {
     }
   }
 
+  /**
+   * Where a mark motion lands. `'` goes to the first non-blank of the mark's line and
+   * is LINEWISE (so `d'a` takes whole lines), ``` `` ``` goes to the exact position and
+   * is charwise. One definition, because the same motion has to serve a plain jump, an
+   * operator, and a visual-mode extension.
+   */
+  _markMotion(kind, key) {
+    const off = this.marks.get(key);
+    if (off == null) return null;
+    if (kind === "'") return { to: B.firstNonBlank(this.text, off), linewise: true };
+    return { to: off, charwise: true };
+  }
+
   _consumeArgument(kind, key) {
     const p = this.pending;
     p.awaiting = null;
@@ -534,10 +547,17 @@ export class Engine {
       return { handled: true };
     }
     if (kind === "'" || kind === "`") {
-      const off = this.marks.get(key);
+      const op = p.op;
+      const reg = p.reg;
       this.pending = this._emptyPending();
-      if (off == null) { this.onStatus(`mark ${key} not set`, "error"); return { handled: true }; }
-      this.state.cursor = kind === "'" ? B.firstNonBlank(this.text, off) : off;
+      const motion = this._markMotion(kind, key);
+      if (!motion) { this.onStatus(`mark ${key} not set`, "error"); return { handled: true }; }
+      if (op) {
+        // `d`a` and friends: the mark IS a motion, so it goes through the same
+        // operator range code as `db` or `de` - including the exclusive-linewise rule.
+        return this._operatorWithMotionResult(op, motion, 1, reg);
+      }
+      this.state.cursor = motion.to;
       this._setDesiredCol();
       return { handled: true };
     }
@@ -1157,6 +1177,10 @@ export class Engine {
     if (op === "y") {
       this._storeRegister(slice, linewise, reg);
       this._noteChange({ kind: "op", op, from, to, linewise });
+      // measured (vim): after a CHARWISE yank the cursor sits at the start of the
+      // yanked text, so a backward `yb`/`y\`a` moves it back; a linewise yank leaves
+      // the cursor where it was.
+      if (!linewise) this.state.cursor = from;
       return { handled: true, edit: false };
     }
 
@@ -1682,6 +1706,11 @@ export class Engine {
     if (key === "V") { this.mode = Mode.VISUAL_LINE; return { handled: true }; }
     if (key === "o") { const a = this.visual.anchor; this.visual.anchor = this.state.cursor; this.state.cursor = a; return { handled: true }; }
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) { p.count += key; return { handled: true }; }
+    // a mark jump extends the selection here exactly as a motion would: the visual
+    // head IS the cursor, so the same motion object serves both
+    if (p.awaiting) return this._consumeArgument(p.awaiting, key);
+    if (key === "'" || key === "`") { p.awaiting = key; return { handled: true }; }
+    if (key === "m") { p.awaiting = "mark"; return { handled: true }; }
     if (key === "g") { p.gPending = true; return { handled: true }; }
     if (p.gPending) {
       p.gPending = false;
