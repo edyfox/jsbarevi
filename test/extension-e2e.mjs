@@ -55,6 +55,18 @@ zeta eta theta</textarea>
 <input id="plain" type="number" value="42">
 <div data-jsbarevi="off"><textarea id="optedout">leave me alone</textarea></div>
 <div id="ce" contenteditable="true" role="textbox" aria-label="composer">editable prose</div>
+<script>
+  // The host behaviour that broke Escape in the real composer: the app treats Escape as
+  // "leave the input" and blurs it (a programmatic blur, which preventDefault cannot
+  // stop). Two defences are asserted below: our capture listener stops the handler, and
+  // the MAIN-world blocker ignores a blur() the field did not ask for.
+  window.__escSeen = 0;
+  document.getElementById("ce").addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    window.__escSeen++;
+    document.getElementById("ce").blur();
+  });
+</script>
 </body></html>`;
 
 // A page that focuses its field BEFORE the content script exists — the autofocus
@@ -208,6 +220,26 @@ async function main() {
     // ---- the composer case, end to end through the packaged bundle ---------
     await typeKeys(page, "dw");
     check("a rich composer is editable through the extension", await evaluate(page, "document.getElementById('ce').textContent"), "prose");
+
+    // Escape must return to NORMAL and keep the field, not eject the user. The host's
+    // own handler never runs (we consumed the key), and a blur() from anywhere else is
+    // swallowed by the MAIN-world blocker.
+    await typeKeys(page, "i");
+    check("insert mode marks the field", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "INSERT");
+    await typeKeys(page, "<Esc>");
+    check("Escape returns the composer to NORMAL", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "NORMAL");
+    check("Escape does not reach the host's own Escape handler", await evaluate(page, "window.__escSeen"), 0);
+    check("and focus stays in the composer", await evaluate(page, "document.activeElement === document.getElementById('ce')"), true);
+
+    // A programmatic blur() is a function call, so no key handler can stop it: the
+    // MAIN-world patch is what keeps the field focused.
+    await evaluate(page, "document.getElementById('ce').blur()");
+    check("the host cannot blur a field we own", await evaluate(page, "document.activeElement === document.getElementById('ce')"), true);
+
+    // …but the patch is scoped by our marker: a field we do not manage keeps its Escape.
+    await evaluate(page, "document.getElementById('secret').focus()");
+    await evaluate(page, "document.getElementById('secret').blur()");
+    check("an unmanaged field keeps native blur", await evaluate(page, "document.activeElement === document.getElementById('secret')"), false);
 
     // ---- per-site switch --------------------------------------------------
     await setSettings(worker, { disabledHosts: ["127.0.0.1"] });

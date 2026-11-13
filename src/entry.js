@@ -140,7 +140,13 @@ export function attach(el, opts = {}) {
     // one commit from another, which is what a stale page looks like from inside
     version: BUILD,
     onStatus: (msg, kind) => ui.status(msg, kind),
-    onModeChange: (mode, count) => ui.setMode(mode, count),
+    onModeChange: (mode, count) => {
+      // The MAIN-world Escape blocker reads this: while the marker is present, a
+      // site's programmatic blur() is ignored, so Escape cannot eject the user from
+      // the field. One marker, set in one place, for both adapters.
+      el.setAttribute("data-jsbarevi-mode", mode || "NORMAL");
+      ui.setMode(mode, count);
+    },
     onPrompt: (kind, initial) => {
       const input = ui.prompt(kind, initial);
       input.dataset.kind = kind;
@@ -193,6 +199,7 @@ export function attach(el, opts = {}) {
       ui.promptEl.removeEventListener("input", onPromptInput);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onResize, true);
+      el.removeAttribute("data-jsbarevi-mode");
       for (const node of ui.nodes) node.remove();
     },
   };

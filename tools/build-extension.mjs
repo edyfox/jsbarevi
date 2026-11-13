@@ -70,6 +70,21 @@ async function main() {
     logLevel: "warning",
   });
 
+  // The MAIN-world Escape blocker: its own file, because a content script's world
+  // cannot patch the page's HTMLElement.prototype.
+  await esbuild.build({
+    entryPoints: [path.join(EXT, "src", "escape-blocker.js")],
+    outfile: path.join(OUT, "escape-blocker.js"),
+    bundle: true,
+    format: "iife",
+    platform: "browser",
+    target: ["chrome110"],
+    charset: "utf8",
+    legalComments: "none",
+    banner: { js: banner },
+    logLevel: "warning",
+  });
+
   await esbuild.build({
     entryPoints: [path.join(EXT, "src", "background.js")],
     outfile: path.join(OUT, "background.js"),

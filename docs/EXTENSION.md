@@ -17,6 +17,7 @@ npm run icons         # regenerate the icon set
 |---|---|
 | `manifest.json` | MV3. Version from `package.json`, `version_name` = `0.1.0+<commit>` |
 | `content.js` | **one classic script**: the engine (all of `src/`) plus `extension/src/content.js` |
+| `escape-blocker.js` | MAIN-world `document_start` patch: a site cannot `blur()` a field we own |
 | `background.js` | the service worker: the only context that may fetch cross-origin |
 | `popup.html/.css/.js` | the toolbar UI: switches, `:e` endpoint, key card |
 | `icons/` | 16/32/48/128 |
@@ -119,6 +120,21 @@ re-derived — that project solved this across six hosts:
 | A `<br>` with nothing meaningful after it is a **placeholder** | every browser leaves one to make the last line reachable; counting it turns a one-line field into two |
 | An element inside the text contributes its **text**, and offsets inside it stay inside it | a mention chip is also an element the host keeps a reference to |
 | Edits go through the **selection + `execCommand`** | it deletes a chip whole, keeps the host's undo stack coherent, and works in editors that `preventDefault` on `beforeinput` |
+
+### Escape must not leave the field
+
+A site's Escape handler usually means "leave this input", and it implements that with
+`el.blur()` — a function call, which `preventDefault()` cannot cancel. Two defences,
+both needed:
+
+1. **Capture on the document at `document_start`** (the content script runs before the
+   page's own scripts), so a consumed Escape never reaches the host's handler.
+2. **A MAIN-world prototype patch** (`extension/src/escape-blocker.js`, ported from
+   Input Vim): while an element carries `data-jsbarevi-mode`, a programmatic `blur()`
+   from page code is ignored. It has to be the page's world — a content script's
+   isolated world has its own `HTMLElement.prototype` and patching it changes nothing
+   for the site. The marker is removed on `destroy()`, so a site the user turned the
+   extension off for keeps its normal behaviour.
 
 Three things that are ours, not the reference's:
 
