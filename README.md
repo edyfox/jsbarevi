@@ -117,6 +117,30 @@ and a block caret is drawn over the character at the engine cursor, measured wit
 a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
 the block disappears and the native caret returns.
 
+**Who owns the caret** is the question that decides most of the interaction
+behaviour, and the answer has two halves:
+
+- **The engine owns the keys that move a caret and that vi also has.** Arrows are
+  `h j k l`, `Home`/`End` are `0`/`$`, `PageUp`/`PageDown` are `C-b`/`C-f`, and
+  outside insert mode they are intercepted like any other command. That keeps the
+  model authoritative (an arrow in VISUAL extends the selection instead of the
+  browser painting a selection we then have to guess back), and End never leaves
+  the cursor one column past the line, which is where the DOM would put it. In
+  INSERT they stay native, because that caret is the host's.
+- **The host owns the mouse.** A click is a caret move that is adopted and clamped
+  onto a character (a DOM caret is a position *between* characters and vi's is a
+  character); a drag is a selection that is adopted as VISUAL, with the anchor
+  where the drag began and the head where it ended, backward drags included. This
+  is [Input Vim](https://github.com/matheuskieling/vim-input)'s model
+  (`cursor-controller.js`, `getMouseSelection`, `clampCursorToLine`), which is why
+  a drag does not need its own mode: the native selection and visual mode become
+  the same thing, and whatever the host selects — a mouse drag, Shift+arrow, a
+  selection the page makes — becomes the engine's selection.
+
+The native selection is still collapsed the moment it has been adopted, so exactly
+one of the two is ever visible; see the overlay note below for why the painting is
+ours rather than the OS's.
+
 The command line behaves like vi's, measured against vim, nvi **and** busybox vi
 (all three agree): the sigil lives in the input, and deleting the typed text while
 leaving the `:` (or `/`, `?`) **keeps** you in the command line — only deleting the

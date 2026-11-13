@@ -103,7 +103,24 @@ const KEYS = {
   Escape: { key: "Escape", code: "Escape", keyCode: 27 },
   Enter: { key: "Enter", code: "Enter", keyCode: 13, text: "\r" },
   Backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
+  ArrowLeft: { key: "ArrowLeft", code: "ArrowLeft", keyCode: 37 },
+  ArrowUp: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
+  ArrowRight: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 },
+  ArrowDown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
+  Home: { key: "Home", code: "Home", keyCode: 36 },
+  End: { key: "End", code: "End", keyCode: 35 },
+  PageUp: { key: "PageUp", code: "PageUp", keyCode: 33 },
+  PageDown: { key: "PageDown", code: "PageDown", keyCode: 34 },
 };
+
+/** A named, non-printable key (arrows, Home/End, PageUp/PageDown). */
+async function sendNamedKey(session, name, modifiers = 0) {
+  const k = KEYS[name];
+  const base = { key: k.key, code: k.code, windowsVirtualKeyCode: k.keyCode, nativeVirtualKeyCode: k.keyCode, modifiers };
+  await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
+  await session.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  await sleep(15);
+}
 
 async function sendKey(session, ch) {
   const state = (await session.send("Runtime.evaluate", {
@@ -374,6 +391,141 @@ async function main() {
     await evaluate(session, "document.getElementById('single').focus()");
     await typeKeys(session, "0x");
     check("xv on a single-line input", await evaluate(session, "document.getElementById('single').value"), "ingle line input");
+
+    // ---------------------------------------------------------------------
+    // Caret keys, the mouse, and native selection vs visual mode.
+    //
+    // All three are one problem: who owns the caret. The rules (adapted from
+    // Input Vim, see src/adapters/textarea.js) are that the ENGINE owns the
+    // caret-moving keys vi also has, and the HOST owns the mouse - a click is a
+    // caret move we adopt, a drag is a selection we adopt as visual mode.
+    // ---------------------------------------------------------------------
+    const BUFFER = "alpha beta gamma\ndelta epsilon\nzeta eta theta";
+    const resetField = async () => {
+      await evaluate(session, `(() => {
+        const a = window.jsbarevi.textarea.adapter;
+        a.engine.setText(${JSON.stringify(BUFFER)}, 0);
+        a._commit();
+        a._emitMode();
+        document.getElementById('field').focus();
+      })()`);
+      await sleep(20);
+    };
+    const caretRect = () => evaluate(session, `(() => {
+      const n = document.querySelector('.jsbarevi-caret');
+      if (!n || getComputedStyle(n).display === 'none') return null;
+      const r = n.getBoundingClientRect();
+      return { x: r.left + 2, y: r.top + r.height / 2, left: r.left, top: r.top, h: r.height };
+    })()`);
+    const clickAt = async (x, y) => {
+      await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+      await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
+      await sleep(60);
+    };
+    const dragFromTo = async (from, to) => {
+      await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x: from.x, y: from.y, button: "left", buttons: 1, clickCount: 1 });
+      const steps = 6;
+      for (let i = 1; i <= steps; i++) {
+        await session.send("Input.dispatchMouseEvent", {
+          type: "mouseMoved",
+          x: from.x + ((to.x - from.x) * i) / steps,
+          y: from.y + ((to.y - from.y) * i) / steps,
+          button: "left", buttons: 1,
+        });
+        await sleep(10);
+      }
+      await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, button: "left", buttons: 0, clickCount: 1 });
+      await sleep(80);
+    };
+    const domSel = () => evaluate(session, `(() => { const el = document.getElementById('field'); return { start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection }; })()`);
+
+    console.log("\n\x1b[1mcaret keys own the model outside insert mode\x1b[0m");
+    await resetField();
+    await typeKeys(session, "gg");
+    check("gg starts at the top", await cursor(), 0);
+    await sendNamedKey(session, "ArrowRight");
+    check("ArrowRight is l", await cursor(), 1);
+    await sendNamedKey(session, "ArrowDown");
+    check("ArrowDown is j and keeps the column", await cursor(), 18);
+    await sendNamedKey(session, "ArrowUp");
+    check("ArrowUp is k", await cursor(), 1);
+    await sendNamedKey(session, "Home");
+    check("Home is 0", await cursor(), 0);
+    await sendNamedKey(session, "End");
+    check("End is $, on the last character and never past it", await cursor(), 15);
+    await sendNamedKey(session, "ArrowRight");
+    check("→ at the end of a line stays put (l never crosses the newline)", await cursor(), 15);
+    await sendNamedKey(session, "PageDown");
+    check("PageDown is C-f and lands on the last line", await cursor(), 31);
+    await sendNamedKey(session, "PageUp");
+    check("PageUp is C-b", await cursor() < 31, true);
+    const writtenBack = await domSel();
+    check("the host caret was written back for every move", [writtenBack.start, writtenBack.end], [await cursor(), await cursor()]);
+    await typeKeys(session, "x");
+    check("a caret-key move edits where the caret is, not where it was", (await field()).length, BUFFER.length - 1);
+
+    console.log("\n\x1b[1mmouse click moves the cursor\x1b[0m");
+    await resetField();
+    await typeKeys(session, "jj");                       // line 3, col 1 = 31
+    const line3 = await caretRect();
+    await typeKeys(session, "gg");                       // back to the top
+    check("the engine is at the top before the click", await cursor(), 0);
+    await clickAt(line3.x, line3.y);
+    check("a click on line 3 moves the model there", await cursor(), 31);
+    await typeKeys(session, "x");
+    check("...and the next command edits at the clicked position", await field(), "alpha beta gamma\ndelta epsilon\neta eta theta");
+
+    console.log("\n\x1b[1mmouse click in insert mode\x1b[0m");
+    await resetField();
+    await typeKeys(session, "i");
+    check("i is insert mode", await mode(), "INSERT");
+    const line2 = await (async () => { await sendKey(session, "Escape"); await typeKeys(session, "j0"); const r = await caretRect(); await typeKeys(session, "gg"); await typeKeys(session, "i"); return r; })();
+    // click far right on line 2: the DOM caret goes to the end of that line
+    await clickAt(line2.left + 560, line2.y);
+    const afterClick = await domSel();
+    check("the click moved the host caret to the end of line 2", afterClick.start, 30);
+    await typeKeys(session, "Q");
+    await sendKey(session, "Escape");
+    check("typed text landed at the CLICKED position, not the old one", await field(), "alpha beta gamma\ndelta epsilonQ\nzeta eta theta");
+    check("Esc leaves the cursor on what was typed", await cursor(), 30);
+
+    console.log("\n\x1b[1ma drag becomes visual mode\x1b[0m");
+    await resetField();
+    await typeKeys(session, "w");                        // 6: 'b' of beta
+    const betaStart = await caretRect();
+    await typeKeys(session, "l");
+    await typeKeys(session, "l");
+    await typeKeys(session, "l");
+    await typeKeys(session, "l");                        // 10: the space after beta
+    const betaEnd = await caretRect();
+    await typeKeys(session, "gg");
+    check("normal mode before the drag", await mode(), "NORMAL");
+    await dragFromTo(betaStart, betaEnd);
+    check("a drag switches the engine to VISUAL", await mode(), "VISUAL");
+    check("the anchor is where the drag began", await evaluate(session, "window.jsbarevi.textarea.engine.visual.anchor"), 6);
+    check("the head is the live end of the drag", await evaluate(session, "window.jsbarevi.textarea.engine.cursor"), 9);
+    check("the engine's selection is the dragged text", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "beta");
+    const afterDrag = await domSel();
+    check("the host selection is collapsed again, so only the overlay paints", afterDrag.start === afterDrag.end, true);
+    check("the overlay is painting the drag", await evaluate(session, `[...document.querySelectorAll('.jsbarevi-sel')].filter(n => getComputedStyle(n).display !== 'none').length > 0`), true);
+    await typeKeys(session, "d");
+    check("d deletes exactly what was dragged", await field(), "alpha  gamma\ndelta epsilon\nzeta eta theta");
+
+    console.log("\n\x1b[1mnative selection does not fight visual mode\x1b[0m");
+    await resetField();
+    await typeKeys(session, "vll");
+    check("v is visual", await mode(), "VISUAL");
+    const visualSel = await domSel();
+    check("engine-driven visual keeps the host selection collapsed", [visualSel.start === visualSel.end, visualSel.start], [true, 2]);
+    check("...and paints its own highlight instead", await evaluate(session, `[...document.querySelectorAll('.jsbarevi-sel')].filter(n => getComputedStyle(n).display !== 'none').length > 0`), true);
+    await sendNamedKey(session, "ArrowRight");
+    check("an arrow EXTENDS the visual selection", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alph");
+    await sendKey(session, "Escape");
+    check("Esc leaves visual and clears the highlight", await evaluate(session, `[...document.querySelectorAll('.jsbarevi-sel')].filter(n => getComputedStyle(n).display !== 'none').length`), 0);
+    await sendNamedKey(session, "ArrowRight", 8);        // shift+arrow: a native selection
+    check("a shift+arrow selection is adopted as visual too", await mode(), "VISUAL");
+    check("...with the host selection collapsed, not doubled", (await domSel()).start === (await domSel()).end, true);
+    await sendKey(session, "Escape");
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");

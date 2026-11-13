@@ -72,6 +72,38 @@ export class Engine {
   get text() { return this.state.text; }
   /** What the host field should contain: the buffer without its terminator. */
   get hostText() { return B.hostText(this.state.text); }
+
+  /**
+   * The host moved its own caret (a mouse click, or a key the host owns).
+   * vi's cursor is a CHARACTER, so a caret that sits past the end of a line -
+   * which the DOM allows and vim does not - is clamped back onto that line's
+   * last character; column 1 of an empty line stays legitimate. The same clamp
+   * Input Vim applies in `clampCursorToLine` (cursor-controller.js), and the
+   * reason it is needed at all is that the host's caret is an insertion point
+   * between characters while ours is a character.
+   */
+  setCursorFromHost(hostOffset) {
+    const t = this.text;
+    const at = Math.max(0, Math.min(hostOffset, Math.max(0, t.length - 1)));
+    this.state.cursor = B.clampToLineEnd(t, at, at);
+    this._stayOffNewline();
+  }
+
+  /**
+   * Adopt a selection the host created (a mouse drag) as visual mode. The
+   * anchor is where the selection started, the head (the live end of the
+   * selection) becomes the cursor - which is exactly vim's model, and the
+   * reason the host's selection and ours can be the same object.
+   */
+  enterVisualFromHost(anchor, head, linewise = false) {
+    const t = this.text;
+    const clamp = (i) => Math.max(0, Math.min(i, Math.max(0, t.length - 1)));
+    this.pending = this._emptyPending();
+    this.mode = linewise ? Mode.VISUAL_LINE : Mode.VISUAL;
+    this.visual = { anchor: clamp(anchor) };
+    this.state.cursor = clamp(head);
+    this._stayOffNewline();
+  }
   get cursor() { return this.state.cursor; }
   set cursor(v) {
     this.state.cursor = Math.max(0, Math.min(v, Math.max(0, this.text.length - 1)));

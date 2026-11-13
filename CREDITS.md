@@ -35,6 +35,10 @@ Not rewritten, because it encodes hard-won knowledge about six hosts:
 
 - key interception and the mode plumbing *around* the engine (`event-interceptor`,
   focus management, Escape fallback)
+- caret ownership: which keys belong to the engine and which to the host, the
+  mouseup → visual adoption, `getMouseSelection`'s anchor/head mapping (including
+  the backward direction) and `clampCursorToLine` (`cursor-controller.js`,
+  `handlers/input-handler.js`)
 - the mode badge / caret overlay and the prompt line
 - the `/ ?` and `:` prompt interaction shape
 - the page bridge for framework editors
