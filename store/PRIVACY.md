@@ -63,8 +63,8 @@ This disclosure applies to the whole extension, not to a subset of features.
 
 ## Contact
 
-Open an issue in the project repository, or write to the address published with
-the extension listing.
+Open an issue at https://github.com/edyfox/jsbarevi/issues, or write to the
+address published with the extension listing.
 
 ## Changes
 
