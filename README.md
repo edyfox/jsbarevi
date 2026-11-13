@@ -5,20 +5,35 @@ contenteditable, and the rich composers inside VS Code, Cursor, Devin, Lark and
 OpenCode. No plugin marketplace, no framework. One small engine, one adapter
 contract, and a real editor behind `:e` when the field is not enough.
 
-> Status: **engine implemented and verified end-to-end.** 36 cases match real
-> `vim` keystroke-for-keystroke, 21 unit tests, and 12 end-to-end checks in real
-> Chrome with real key events. Not yet wired into the six Electron hosts - that
-> needs the injection seam and one restart per host.
+> Status: **engine verified end-to-end, and packaged as a Chrome extension.**
+> 294 differential cases match real `vim`, 160 engine cases, 109 unit, 180
+> end-to-end checks in real headless Chrome, and 24 more that drive the *packaged*
+> extension (content script, settings, service-worker transport) in Chrome for
+> Testing. The unpacked extension loads today; the Web Store package and listing are
+> built by `npm run build:ext` — see `docs/EXTENSION.md`.
 
 ## What works today
 
 ```bash
-npm test                     # unit 21 · :e transport 6 · oracle cases 36 · vs vim 36
-npm run test:e2e             # real headless Chrome, real key events (19)
-npm run test:oracle          # the reference editors themselves (36)
+npm test                     # undo audit · unit · transport · engine · differential
+npm run test:e2e             # real headless Chrome, real key events
+npm run test:ext             # the PACKAGED extension in Chrome for Testing (24)
+npm run test:oracle          # the reference editors themselves
 
 npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied
+npm run build:ext            # dist/ + the Web Store zip
 ```
+
+### Installing it in a browser
+
+```bash
+npm run build:ext
+# then: chrome://extensions → Developer mode → Load unpacked → choose dist/
+```
+
+Everything about the package — why it is one bundled classic script, how `:e` gets
+around CORS without a server patch, what attaches to which field, and the store
+publishing checklist — is in [`docs/EXTENSION.md`](docs/EXTENSION.md).
 
 ### Pointing `:e` straight at pyTextFilter (`:31416`)
 
@@ -66,10 +81,12 @@ reach".
 Verified: unpatched answers `OPTIONS` with 501 and no CORS header; patched answers
 `204` with the origin echoed, and a page-origin POST is readable.
 
-**B. Run as an extension.** On a `chrome-extension://` origin with
-`host_permissions` for `http://127.0.0.1:31416/*`, there is no CORS at all — the
-fixture already switches its default to the direct endpoint when it detects that
-origin. No proxy, no server patch.
+**B. Run as the extension.** The package ships with `host_permissions` for
+`http://127.0.0.1/*` and `http://localhost/*` and routes `:e` through its service
+worker, so there is no CORS at all and no server patch: point the popup's endpoint at
+`http://127.0.0.1:31416/` and `:e` works. The page fixture also switches its default
+to the direct endpoint when it detects a `chrome-extension://` origin. See
+`docs/EXTENSION.md`.
 
 ### Trying `:e` against a real edit-server
 
@@ -291,9 +308,12 @@ place, per file.
 | `docs/TARGET-SURFACE.md` | per-command three-way matrix (nvi / busybox / us) |
 | `docs/ENGINE.md` | engine structure, buffer model, adapter contract |
 | `docs/REGEX.md` | the `:s` / `/` contract: translate, refuse, pass through |
+| `docs/EXTENSION.md` | the package: bundle, `:e` transport, settings, install, store |
 | `docs/REVIEW-2026-11-12.md` | independent adversarial review that changed the plan |
 | `oracle/` | differential harness + cases |
-| `src/` | the engine (not started) |
+| `src/` | the engine |
+| `extension/` | manifest, content glue, service worker, popup, icons |
+| `store/` | listing copy, privacy policy, screenshots, promo tile |
 | `tools/` | build/injection helpers |
 
 ## License

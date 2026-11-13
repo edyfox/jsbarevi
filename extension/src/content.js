@@ -195,6 +195,26 @@ globalThis.addEventListener?.("jsbarevi:suspend", (e) => {
 
 document.addEventListener("focusin", onFocusIn, true);
 
+/**
+ * The field that already has focus when we arrive.
+ *
+ * A page can autofocus a field (or a single-page app can restore focus) before a
+ * `document_idle` content script exists. No focus event will follow, so without this
+ * the extension sits inert until the user clicks away and back — the field looks
+ * broken even though the engine is loaded.
+ */
+function deepActiveElement() {
+  let el = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
+
+settingsReady.then(() => {
+  if (!shouldAttach()) return;
+  const el = deepActiveElement();
+  if (el && isTextField(el)) attachField(el);
+});
+
 // The popup asks the page who it is: the host to toggle, and whether an adapter is
 // live. Asking the content script avoids the "tabs" permission (and its "read your
 // browsing history" warning) entirely — the extension never needs to know a URL it

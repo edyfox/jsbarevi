@@ -16,7 +16,8 @@
     "stamp": "node tools/stamp-build.mjs",
     "audit": "python3 tools/emit-target.py && node tools/audit-surface.mjs",
     "audit:align": "node tools/audit-align.mjs",
-    "audit:undo": "node tools/audit-undo.mjs"
+    "audit:undo": "node tools/audit-undo.mjs",
+    "store:shots": "node tools/build-extension.mjs --no-zip && node tools/store-screenshots.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"
