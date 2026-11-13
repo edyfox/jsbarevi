@@ -140,6 +140,26 @@ A host has two shapes for "Escape leaves the input", and they need different ans
   set a timestamp the window respects). Attempt-capped at three, so a host with a focus
   loop cannot turn it into a fight, and a `console.info` names whatever took the focus.
 
+### The third defence: the keyup, and the focus loss itself
+
+Two more mechanisms, both **ported from Input Vim**, and both are what make this work
+next to another key-binding extension (Vimium binds Escape on the same pages):
+
+1. **Escape on `keyup`.** A competitor that eats the keydown and calls
+   `stopImmediatePropagation` also eats our chance to answer it — but nobody eats the
+   keyup. `event-interceptor.js` says it plainly: *"Escape fallback: if keydown was
+   swallowed by the page, handle Escape on keyup"*. Ours does the same, pairing the
+   events with a flag (set when our keydown consumed an Escape, cleared by its own
+   keyup) rather than a time window, which is a race.
+2. **A focus loss without a click is an Escape.** `focus-manager.js`: if the field loses
+   focus and no pointer press preceded it, leave the current mode and take the focus
+   back. Tab and "focus moved to another field" are exempt. This needs no key at all,
+   which is the point: it is the only mechanism that survives a key we never receive.
+
+Every decision in that handler runs **after focus settles** (`requestAnimationFrame`),
+because inside `focusout` `document.activeElement` is still the old node — deciding there
+stole focus from the element the user had just moved to.
+
 Both sit under the same first defence:
 
 1. **Capture on the document at `document_start`** (the content script runs before the

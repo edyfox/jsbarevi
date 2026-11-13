@@ -144,56 +144,61 @@ document.addEventListener("mousedown", () => { pointerAt = Date.now(); }, true);
 /** Was there a pointer interaction just now? A click is the user's decision to leave. */
 function pointerRecently() { return Date.now() - pointerAt < 400; }
 
+/**
+ * Set when our keydown path consumed an Escape, cleared by that Escape's own keyup.
+ *
+ * A flag rather than a timer: Input Vim pairs the events the same way (`_blocked` is
+ * cleared on the matching keyup). A time window is a race — with enough round trips
+ * between the two, a real keydown+keyup pair is mistaken for a swallowed keydown.
+ */
+let escapeKeydownPending = false;
+/** Tab is the user walking the form, not a stolen focus. */
+let lastTabAt = 0;
+
+/**
+ * Focus policy for a field the engine owns — PORTED FROM INPUT VIM
+ * (focus-manager.js). Their rule, and the reason it works regardless of who wins the
+ * key race: **a focus loss that the user did not click away from is an Escape**, so the
+ * engine goes back to NORMAL and the field takes the focus back.
+ *
+ *   * a pointer press within 300 ms before it → the user's decision, let go
+ *   * focus moving to another field we own → that field's focusin takes over
+ *   * Tab → the user is moving through the form, let go
+ *   * anything else (a key driver, another extension, a framework effect) → leave the
+ *     current mode if we are in one, then refocus on the next frame
+ *
+ * Capped at a few attempts so a host with a focus loop cannot turn this into a fight,
+ * and every decision is traced.
+ */
 function guardEscape(el, handle) {
   const onFocusOut = (e) => {
+    // EVERY decision happens after focus settles. Inside `focusout`,
+    // document.activeElement is still the old node (or body) in Chrome, so "is another
+    // field taking focus?" answered here is answered wrong — and the guard then steals
+    // focus back from the element the user actually went to. Cost me two rounds; it is
+    // now one rule: read the settled state, then decide.
     const to = e.relatedTarget;
-    // Independent of Escape and of who else is listening: while the engine owns a field
-    // and the user has not clicked anywhere, losing focus to "nowhere" is not something
-    // the user asked for. A host key driver, another extension (Vimium's Escape), or a
-    // framework effect all end the same way — focus to body. Take it back.
-    if (!pointerRecently()) {
-      const now = document.activeElement;
-      if (to == null && (now === null || now === document.body || now === document.documentElement)) {
-        requestAnimationFrame(() => {
-          if (!el.isConnected) return;
-          const cur = document.activeElement;
-          if (cur === el) return;
-          if (cur && cur.hasAttribute && cur.hasAttribute("data-jsbarevi-ui")) return;
-          if (pointerRecently()) return;
-          trace("focus kept: it was dropped to nowhere without a click");
-          el.focus({ preventScroll: true });
-        });
-        return;
-      }
-    }
-    if (Date.now() > escapeGuardUntil) {
-      trace(`focusout -> ${nameOf(to)} (guard closed)`);
-      return;
-    }
-    if (Date.now() - pointerAt < ESCAPE_GUARD_MS) {             // the user clicked away: let them
-      trace(`focusout -> ${nameOf(to)} (pointer, not reclaiming)`);
-      return;
-    }
-    if (escapeAttempts >= 3) { trace(`focusout -> ${nameOf(to)} (attempt cap reached)`); return; }
-    // Decide AFTER the focus settles. Inside focusout, document.activeElement is still
-    // the old node (or body) — Chrome has not moved it yet — so an "is the prompt taking
-    // focus?" test made here answers wrong, and the guard then stole focus back from our
-    // own command line.
     requestAnimationFrame(() => {
       if (!el.isConnected) return;
-      if (Date.now() > escapeGuardUntil) return;
-      const now = document.activeElement;
-      if (now === el) return;
-      // Our own prompt owns focus while it is open; reclaiming it would swallow every
-      // `:` the user types.
-      if (now && now.hasAttribute && now.hasAttribute("data-jsbarevi-ui")) {
-        trace("focusout -> our own command line (not reclaiming)");
-        return;
+      const cur = document.activeElement;
+      if (cur === el) return;
+      if (cur && cur.hasAttribute && cur.hasAttribute("data-jsbarevi-ui")) return;   // our command line
+      if (cur && isTextField(cur)) { trace(`focusout -> ${nameOf(cur)} (another field)`); return; }
+      if (pointerRecently()) { trace(`focusout -> ${nameOf(cur)} (pointer, leaving)`); return; }
+      if (Date.now() - lastTabAt < 300) { trace(`focusout -> ${nameOf(cur)} (Tab, leaving)`); return; }
+      if (escapeAttempts >= 4) { trace(`focusout -> ${nameOf(cur)} (attempt cap reached)`); return; }
+
+      // The key may never have reached us — that is exactly what a swallowed Escape
+      // looks like — so correct the mode here instead of waiting for a key we may
+      // never get. PORTED FROM INPUT VIM (focus-manager): a focus loss without a click
+      // is an Escape.
+      if (handle.engine && handle.engine.mode !== "NORMAL") {
+        trace(`focus lost in ${handle.engine.mode} to ${nameOf(cur)}: treating it as Escape`);
+        try { handle.escape(); } catch { /* the host may have torn the field down */ }
       }
+
       escapeAttempts++;
-      // Say who took it: if a host keeps stealing focus this line names the culprit in
-      // the console instead of leaving us guessing from symptoms.
-      trace(`focus reclaimed from ${nameOf(now)} (attempt ${escapeAttempts})`);
+      trace(`focus reclaimed from ${nameOf(cur)} (attempt ${escapeAttempts})`);
       el.focus({ preventScroll: true });
     });
   };
@@ -222,11 +227,13 @@ function attachField(el) {
         return;
       }
       if (key !== "Esc") return;
-      trace(`Esc consumed -> NORMAL (guard open ${ESCAPE_GUARD_MS}ms)`);
+      escapeKeydownPending = true;
+      trace("Esc consumed (keydown)");
       escapeGuardUntil = Date.now() + ESCAPE_GUARD_MS;
       escapeAttempts = 0;
     },
   });
+  escapeAttempts = 0;
   handle.releaseFocusGuard = guardEscape(el, handle);
   el.setAttribute("data-jsbarevi-active", "");
   active.set(el, handle);
@@ -405,12 +412,48 @@ window.addEventListener("keydown", onKeydownDispatch, true);
 // Claims an unowned field when a key lands in it first (see the comment there).
 window.addEventListener("keydown", onKeydownClaim, true);
 
+/**
+ * Escape fallback, on KEYUP.
+ *
+ * PORTED FROM INPUT VIM (event-interceptor.js): "Escape fallback: if keydown was
+ * swallowed by the page, handle Escape on keyup". Another extension (Vimium lives in the
+ * same pages and binds Escape) or a host's own key driver can consume the keydown and
+ * call stopImmediatePropagation — but the keyup still reaches us. Without this the user
+ * sees exactly what was reported: Escape leaves insert mode by way of a blur, and the
+ * engine never learns an Escape happened.
+ */
+window.addEventListener("keyup", (e) => {
+  if (e.key !== "Escape") return;
+  if (escapeKeydownPending) { escapeKeydownPending = false; return; }   // the keydown path already handled it
+  const target = e.composedPath?.()[0] ?? e.target;
+  const el = isTextField(target) ? target : deepActiveElement();
+  const handle = el ? findHandle(el) : null;
+  if (!handle) {
+    trace("Escape keyup fallback: no field to apply it to");
+    return;
+  }
+  const changed = handle.escape();
+  trace(`Esc via keyup fallback (${changed ? "mode changed" : "nothing to do"})`);
+}, true);
+
 /** Trace that an Escape reached us at all — the difference from "never arrived". */
 window.addEventListener("keydown", (e) => {
+  if (e.key === "Tab") lastTabAt = Date.now();
   if (e.key !== "Escape") return;
   const el = e.composedPath?.()[0] ?? e.target;
   if (isTextField(el)) trace(`Escape reached us (target ${nameOf(el)})`);
 }, true);
+
+/** The attach handle owning `el` (or an ancestor of it). */
+function findHandle(el) {
+  let node = el;
+  while (node && node !== document) {
+    const handle = active.get(node);
+    if (handle) return handle;
+    node = node.parentNode;
+  }
+  return null;
+}
 
 /**
  * The field that already has focus when we arrive.

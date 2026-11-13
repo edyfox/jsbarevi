@@ -193,6 +193,14 @@ export function attach(el, opts = {}) {
   return {
     adapter,
     engine: adapter.engine,
+    /**
+     * The fallback path for an Escape whose keydown was swallowed: the command line
+     * takes priority, then the engine (see the adapters' handleEscape).
+     */
+    escape() {
+      if (ui.promptEl.style.display !== "none") { cancelPrompt(); return true; }
+      return adapter.handleEscape ? adapter.handleEscape() : false;
+    },
     // The extension claims a field on focus; a key can arrive first (an SPA that
     // re-renders its composer and focuses the new node, a field that existed before
     // the content script). Hand that key to the adapter directly — a listener added

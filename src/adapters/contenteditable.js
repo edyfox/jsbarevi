@@ -317,6 +317,23 @@ export class ContenteditableAdapter {
     this._commit();
   }
 
+  /**
+   * Escape whose keydown never reached us.
+   *
+   * PORTED FROM INPUT VIM (event-interceptor.js): "if keydown was swallowed by the
+   * page, handle Escape on keyup". Another extension (Vimium) or a host's own key
+   * driver can consume the keydown and stop propagation; nobody consumes the keyup.
+   * Returns true when it changed something.
+   */
+  handleEscape() {
+    if (this.engine.mode === Mode.NORMAL && !this.engine.prompt) return false;
+    const r = this.engine.feed("Esc");
+    this._emitMode();
+    if (r.prompt) return false;
+    if (r.handled) this._commit();
+    return !!r.handled;
+  }
+
   finishPrompt(kind, value) {
     this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search" : null;
     this.engine.submitPrompt(value);

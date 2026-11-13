@@ -266,6 +266,18 @@ async function main() {
     await typeKeys(page, "x");
     check("a re-rendered composer still takes the first key", await evaluate(page, "document.getElementById('ce').textContent"), "ose");
 
+    // ---- an Escape whose KEYDOWN was swallowed (another extension, a key driver) ----
+    // Only the keyup reaches us. Input Vim's fallback: handle Escape on keyup when the
+    // keydown never arrived.
+    await evaluate(page, "document.getElementById('ce').focus()");
+    await waitFor(page, "document.getElementById('ce').hasAttribute('data-jsbarevi-active')", 3000);
+    await typeKeys(page, "i");
+    check("insert mode marks the field", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "INSERT");
+    await evaluate(page, `document.getElementById('ce').dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", bubbles: true, composed: true }))`);
+    await sleep(100);
+    check("an Escape with no keydown still leaves INSERT", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "NORMAL");
+
+
     // A programmatic blur() is a function call, so no key handler can stop it: the
     // MAIN-world patch is what keeps the field focused.
     await evaluate(page, "document.getElementById('ce').blur()");
