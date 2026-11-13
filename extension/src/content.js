@@ -21,6 +21,10 @@ const DEFAULTS = {
   enabled: true,
   disabledHosts: [],
   editorUrl: "http://127.0.0.1:31416/",
+  // "insert" | "normal" — what a freshly attached field starts in. INSERT because a
+  // browser input is supposed to accept typing the moment you click it; the vi modes
+  // are then one Escape away. (Input Vim calls the same knob startMode.)
+  startMode: "insert",
 };
 
 // <input type> values that carry text and therefore have a selection model.
@@ -221,6 +225,7 @@ function guardEscape(el, handle) {
 function attachField(el) {
   if (active.has(el) || !isEligible(el) || !document.body) return null;
   const handle = attach(el, {
+    startMode: settings.startMode === "normal" ? "normal" : "insert",
     sessionFactory: (engine) => new HttpEditorSession({
       engine,
       url: settings.editorUrl || DEFAULTS.editorUrl,

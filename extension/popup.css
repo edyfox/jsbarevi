@@ -81,6 +81,15 @@ input[type="text"] {
   padding: 5px 6px;
 }
 input[type="text"]:focus { outline: none; border-color: var(--accent); }
+select {
+  background: #0d0f12;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 4px 6px;
+  margin-top: 2px;
+}
 button {
   background: #2a2f36;
   color: var(--text);

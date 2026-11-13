@@ -38,10 +38,11 @@ English (the field UI is mode names only: `-- INSERT --`, `-- VISUAL --`).
 vi keys, in the text field you are already in.
 
 jsbarevi binds the traditional vi command set — not a Vim clone — to
-<textarea>, <input> and the composers inside web apps. Focus a field, press
-Escape, and you are in NORMAL mode: hjkl, operators with motions and text
-objects, counts, registers, marks, search, visual mode, undo, and an ex
-command line.
+<textarea>, <input> and the composers inside web apps. A field starts in INSERT
+and behaves like any other input; press Escape and you are in NORMAL mode: hjkl,
+operators with motions and text objects, counts, registers, marks, search, visual
+mode, undo, and an ex command line. (Prefer to land in NORMAL? One setting in the
+toolbar popup.)
 
 WHAT IT DOES
 • Modes: NORMAL, VISUAL, VISUAL LINE, INSERT, and real REPLACE (R)

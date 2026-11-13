@@ -198,8 +198,18 @@ Two measured traps, both fixed and both pinned by `npm run test:ce`:
 `chrome.storage.local`, three keys — nothing else is stored anywhere:
 
 ```js
-{ enabled: true, disabledHosts: [], editorUrl: "http://127.0.0.1:31416/" }
+{ enabled: true, disabledHosts: [], editorUrl: "http://127.0.0.1:31416/", startMode: "insert" }
 ```
+
+`startMode` answers "what does a field I just focused do?":
+
+- **`insert` (default)** — the field accepts typing immediately, like any browser input;
+  the vi modes are one Escape away. Any other default is a surprise for someone who
+  clicks a search box and finds that `t` jumps to the next word.
+- **`normal`** — attach straight into vi, for people who want that.
+
+The adapters' own default stays `normal` (a host that attaches them directly is opting
+into vi); the *extension* passes `insert`. Same knob Input Vim calls `startMode`.
 
 A change applies immediately to the *switches* (enabled → detach everything,
 per-host → detach). `editorUrl` applies to the next attachment, because the transport

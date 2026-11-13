@@ -2,7 +2,7 @@
 // asks the page's content script what host it is on — so the extension needs no
 // "tabs" permission and never reads a URL it is not already running on.
 
-const DEFAULTS = { enabled: true, disabledHosts: [], editorUrl: "http://127.0.0.1:31416/" };
+const DEFAULTS = { enabled: true, disabledHosts: [], editorUrl: "http://127.0.0.1:31416/", startMode: "insert" };
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,6 +44,7 @@ function render({ settings, page }) {
     unsupported.hidden = false;
   }
   $("editor").value = settings.editorUrl || DEFAULTS.editorUrl;
+  $("startMode").value = settings.startMode === "normal" ? "normal" : "insert";
 }
 
 async function save(patch) {
@@ -75,6 +76,10 @@ async function main() {
     const disabled = new Set(last.settings.disabledHosts || []);
     if (e.target.checked) disabled.delete(host); else disabled.add(host);
     last.settings = await save({ disabledHosts: [...disabled] });
+  });
+
+  $("startMode").addEventListener("change", (e) => {
+    save({ startMode: e.target.value === "normal" ? "normal" : "insert" });
   });
 
   $("save").addEventListener("click", async () => {

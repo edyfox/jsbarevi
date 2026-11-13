@@ -176,6 +176,14 @@ async function main() {
     await goto(page, port, "attach");
     check("textarea attached", await focusAndAttach(page, "field"), true);
     check("badge exists in the page", await evaluate(page, "!!document.querySelector('.jsbarevi-badge')"), true);
+
+    // A freshly focused field starts in INSERT: a browser input accepts typing the
+    // moment you click it, and the vi modes are one Escape away.
+    check("a field starts in INSERT", await evaluate(page, "document.getElementById('field').getAttribute('data-jsbarevi-mode')"), "INSERT");
+    await typeKeys(page, "Z");
+    check("typing works on arrival, with no `i`", await fieldValue(page), "Zalpha beta gamma\ndelta epsilon\nzeta eta theta");
+    await typeKeys(page, "<Esc>x");
+    check("Escape leaves that INSERT and x works at once", await fieldValue(page), "alpha beta gamma\ndelta epsilon\nzeta eta theta");
     check("caret is owned by the engine", await evaluate(page, "document.getElementById('field').style.caretColor"), "transparent");
     // The overlay CSS must actually apply: hosts with a strict style-src (Electron
     // apps, webviews) refuse an inline <style>, and the badge would then be unstyled.
@@ -217,7 +225,9 @@ async function main() {
     // ---- a field that was focused before we existed ------------------------
     await page.send("Page.navigate", { url: `http://127.0.0.1:${port}/autofocus` });
     check("an already-focused field attaches on load", !!(await waitFor(page, "document.getElementById('auto').hasAttribute('data-jsbarevi-active')", 5000)), true);
-    check("and it is live straight away", await evaluate(page, "document.getElementById('auto').style.caretColor"), "transparent");
+    check("and it is live straight away in INSERT", await evaluate(page, "document.getElementById('auto').getAttribute('data-jsbarevi-mode')"), "INSERT");
+    await typeKeys(page, "Q");
+    check("so the autofocused field accepts typing", (await evaluate(page, "document.getElementById('auto').value")).startsWith("Q"), true);
 
     // ---- eligibility rules ------------------------------------------------
     await goto(page, port, "eligibility");
@@ -235,6 +245,8 @@ async function main() {
     check("a contenteditable composer IS claimed", !!(await waitFor(page, "document.getElementById('ce').hasAttribute('data-jsbarevi-active')", 3000)), true);
 
     // ---- the composer case, end to end through the packaged bundle ---------
+    await typeKeys(page, "<Esc>");     // the field arrived in INSERT
+    await typeKeys(page, "gg0");       // deterministic start: the caret is wherever focus left it
     await typeKeys(page, "dw");
     check("a rich composer is editable through the extension", await evaluate(page, "document.getElementById('ce').textContent"), "prose");
 
@@ -263,8 +275,12 @@ async function main() {
       clone.focus();
       return true;
     })()`);
+    // The replacement field arrives in INSERT like any other fresh field, so the first
+    // proof that it is live is that Escape leaves it.
+    await typeKeys(page, "<Esc>");
+    check("a re-rendered composer is live at once", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "NORMAL");
     await typeKeys(page, "x");
-    check("a re-rendered composer still takes the first key", await evaluate(page, "document.getElementById('ce').textContent"), "ose");
+    check("and its next key acts as NORMAL", await evaluate(page, "document.getElementById('ce').textContent"), "ose");
 
     // ---- an Escape whose KEYDOWN was swallowed (another extension, a key driver) ----
     // Only the keyup reaches us. Input Vim's fallback: handle Escape on keyup when the

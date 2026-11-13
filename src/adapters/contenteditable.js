@@ -110,6 +110,12 @@ export class ContenteditableAdapter {
     attachSession(this, this.engine, opts);
 
     this.syncFromHost();
+    // See textarea.js: the extension starts a field in INSERT; a plain host does not.
+    if (opts.startMode === "insert") {
+      this.engine.mode = Mode.INSERT;
+      this.engine.insertEntry = null;
+      this._writeSelection();
+    }
     this._emitMode();
   }
 

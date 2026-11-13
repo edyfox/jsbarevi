@@ -122,6 +122,14 @@ export class TextareaAdapter {
     attachSession(this, this.engine, opts);
     this.syncFromHost();
     this.engine.setText(this.el.value, this.el.selectionStart ?? 0);
+    // PORTED FROM INPUT VIM (settings.getStartMode / activate): a field can start in
+    // INSERT, which is what a browser input normally feels like — click it and type.
+    // The default here stays NORMAL; the extension passes "insert" (see content.js).
+    if (opts.startMode === "insert") {
+      this.engine.mode = Mode.INSERT;
+      this.engine.insertEntry = null;
+      this._writeSelection();
+    }
     this._emitMode();
   }
 
