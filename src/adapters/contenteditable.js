@@ -57,6 +57,7 @@ export class ContenteditableAdapter {
     this.onStatus = opts.onStatus;
     this.onModeChange = opts.onModeChange;
     this.onPrompt = opts.onPrompt;
+    this.onKeyConsumed = opts.onKeyConsumed;
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
     this.highlight = new SelectionHighlight(el);
 
@@ -295,6 +296,7 @@ export class ContenteditableAdapter {
       return;
     }
     if (!r.handled) return;                           // insert mode: the host types
+    this.onKeyConsumed?.(key);
 
     // preventDefault AND stopImmediatePropagation: the host's own keymap must not
     // also act on a key the engine just consumed. In a plain textarea there is

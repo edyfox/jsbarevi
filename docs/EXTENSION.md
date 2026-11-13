@@ -127,6 +127,21 @@ A site's Escape handler usually means "leave this input", and it implements that
 `el.blur()` — a function call, which `preventDefault()` cannot cancel. Two defences,
 both needed:
 
+A host has two shapes for "Escape leaves the input", and they need different answers:
+
+- **`el.blur()`** — a programmatic blur; `preventDefault()` cannot cancel it, so the
+  MAIN-world prototype patch below handles it.
+- **`other.focus()`** — focus moved away. No prototype patch can stop this without
+  breaking legitimate focus moves, and it is the shape that looks like *"Escape worked,
+  but the field is dead until I press another key"*: the key that follows lands on
+  whatever the host focused, so the engine never sees it. The content script therefore
+  opens a **600 ms window** after a consumed Escape and reclaims focus from anything that
+  is not a field we own, not our own command line, and not a real click (pointer events
+  set a timestamp the window respects). Attempt-capped at three, so a host with a focus
+  loop cannot turn it into a fight, and a `console.info` names whatever took the focus.
+
+Both sit under the same first defence:
+
 1. **Capture on the document at `document_start`** (the content script runs before the
    page's own scripts), so a consumed Escape never reaches the host's handler.
 2. **A MAIN-world prototype patch** (`extension/src/escape-blocker.js`, ported from

@@ -51,6 +51,7 @@ export class TextareaAdapter {
     this.onStatus = opts.onStatus;
     this.onModeChange = opts.onModeChange;
     this.onPrompt = opts.onPrompt;
+    this.onKeyConsumed = opts.onKeyConsumed;
     // A hairline caret is invisible as a vi cursor: normal/visual get a block.
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
     this.highlight = new SelectionHighlight(el);
@@ -432,6 +433,9 @@ export class TextareaAdapter {
       return;
     }
     if (!r.handled) return; // insert mode: let the browser type
+    // Tell the host glue which key was consumed: an Escape that the page also reacts
+    // to (by moving focus) needs a follow-up, and only the adapter knows it fired.
+    this.onKeyConsumed?.(key);
     e.preventDefault();
     e.stopPropagation();
     this._commit();

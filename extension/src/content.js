@@ -101,6 +101,58 @@ function shouldAttach() {
   return !suspended && !!settings.enabled && !hostDisabled();
 }
 
+/**
+ * Escape means "leave insert mode", never "leave the field".
+ *
+ * A host can implement Escape as `blur()` — swallowed by the MAIN-world blocker — or,
+ * just as commonly, by focusing something else (`other.focus()`, which no blur patch
+ * can stop). That second shape looks exactly like "Escape worked, but the field went
+ * dead until I pressed another key", because the key that follows lands on the element
+ * the host chose.
+ *
+ * So a consumed Escape opens a short window in which focus is reclaimed if it moves to
+ * anything that is not a field we own. A real click is exempt (it sets `pointerAt`
+ * first), and the window is short and attempt-capped so a host with a focus loop can
+ * never turn into a fight.
+ */
+let escapeGuardUntil = 0;
+let escapeAttempts = 0;
+let pointerAt = 0;
+const ESCAPE_GUARD_MS = 600;
+
+document.addEventListener("pointerdown", () => { pointerAt = Date.now(); }, true);
+document.addEventListener("mousedown", () => { pointerAt = Date.now(); }, true);
+
+function guardEscape(el, handle) {
+  const onFocusOut = () => {
+    if (Date.now() > escapeGuardUntil) return;
+    if (Date.now() - pointerAt < ESCAPE_GUARD_MS) return;      // the user clicked away: let them
+    if (escapeAttempts >= 3) return;
+    // Decide AFTER the focus settles. Inside focusout, document.activeElement is still
+    // the old node (or body) — Chrome has not moved it yet — so an "is the prompt taking
+    // focus?" test made here answers wrong, and the guard then stole focus back from our
+    // own command line.
+    requestAnimationFrame(() => {
+      if (!el.isConnected) return;
+      if (Date.now() > escapeGuardUntil) return;
+      const now = document.activeElement;
+      if (now === el) return;
+      // Our own prompt owns focus while it is open; reclaiming it would swallow every
+      // `:` the user types.
+      if (now && now.hasAttribute && now.hasAttribute("data-jsbarevi-ui")) return;
+      escapeAttempts++;
+      // Say who took it: if a host keeps stealing focus this line names the culprit in
+      // the console instead of leaving us guessing from symptoms.
+      try {
+        console.info(`[jsbarevi] focus reclaimed from ${now ? (now.tagName || "?").toLowerCase() + (now.id ? "#" + now.id : "") : "nowhere"}`);
+      } catch { /* no console */ }
+      el.focus({ preventScroll: true });
+    });
+  };
+  el.addEventListener("focusout", onFocusOut);
+  return () => el.removeEventListener("focusout", onFocusOut);
+}
+
 /** One field, one adapter, one UI. Attaching twice would mean two engines. */
 function attachField(el) {
   if (active.has(el) || !isEligible(el) || !document.body) return null;
@@ -111,7 +163,13 @@ function attachField(el) {
       pageUrl: location.href,
       fetchImpl: workerFetch,
     }),
+    onKeyConsumed: (key) => {
+      if (key !== "Esc") return;
+      escapeGuardUntil = Date.now() + ESCAPE_GUARD_MS;
+      escapeAttempts = 0;
+    },
   });
+  handle.releaseFocusGuard = guardEscape(el, handle);
   el.setAttribute("data-jsbarevi-active", "");
   active.set(el, handle);
   return handle;
@@ -119,6 +177,7 @@ function attachField(el) {
 
 function detachAll() {
   for (const [el, handle] of active) {
+    try { handle.releaseFocusGuard?.(); } catch { /* already gone */ }
     try { handle.destroy(); } catch { /* the host may have removed the node */ }
     el.removeAttribute("data-jsbarevi-active");
   }

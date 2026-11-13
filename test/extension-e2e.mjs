@@ -55,16 +55,23 @@ zeta eta theta</textarea>
 <input id="plain" type="number" value="42">
 <div data-jsbarevi="off"><textarea id="optedout">leave me alone</textarea></div>
 <div id="ce" contenteditable="true" role="textbox" aria-label="composer">editable prose</div>
+<button id="elsewhere">elsewhere</button>
 <script>
-  // The host behaviour that broke Escape in the real composer: the app treats Escape as
-  // "leave the input" and blurs it (a programmatic blur, which preventDefault cannot
-  // stop). Two defences are asserted below: our capture listener stops the handler, and
-  // the MAIN-world blocker ignores a blur() the field did not ask for.
+  // Both shapes of the real bug, because they fail differently:
+  //   1. keydown -> blur(): a programmatic blur, which preventDefault cannot stop
+  //      (the MAIN-world blocker handles this one);
+  //   2. keyup -> other.focus(): focus moved away, which no blur patch can stop and
+  //      which is what makes the field look "dead until I press another key"
+  //      (the escaped-focus guard handles this one).
   window.__escSeen = 0;
   document.getElementById("ce").addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     window.__escSeen++;
     document.getElementById("ce").blur();
+  });
+  document.getElementById("ce").addEventListener("keyup", (e) => {
+    if (e.key !== "Escape") return;
+    setTimeout(() => document.getElementById("elsewhere").focus(), 0);
   });
 </script>
 </body></html>`;
@@ -229,7 +236,12 @@ async function main() {
     await typeKeys(page, "<Esc>");
     check("Escape returns the composer to NORMAL", await evaluate(page, "document.getElementById('ce').getAttribute('data-jsbarevi-mode')"), "NORMAL");
     check("Escape does not reach the host's own Escape handler", await evaluate(page, "window.__escSeen"), 0);
-    check("and focus stays in the composer", await evaluate(page, "document.activeElement === document.getElementById('ce')"), true);
+    // The host moves focus on keyup (a path we do not, and should not, intercept).
+    check("focus is reclaimed after the host moves it", !!(await waitFor(page, "document.activeElement.id === 'ce'", 3000)), true);
+    // The user-facing symptom was "the next key does nothing": the FIRST key after
+    // Escape must act as NORMAL.
+    await typeKeys(page, "x");
+    check("the first key after Escape acts as NORMAL", await evaluate(page, "document.getElementById('ce').textContent"), "rose");
 
     // A programmatic blur() is a function call, so no key handler can stop it: the
     // MAIN-world patch is what keeps the field focused.
