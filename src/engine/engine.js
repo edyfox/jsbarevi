@@ -104,6 +104,56 @@ export class Engine {
     this.state.cursor = clamp(head);
     this._stayOffNewline();
   }
+
+  /**
+   * Shift+click while selecting. vim rewrites a shifted left click into a right
+   * click (mouse.c:753-757), and a right click inside visual mode moves the
+   * ANCHOR - "If the click is before the start of visual, change the start.  If
+   * the click is after the end of visual, change the end.  If the click is
+   * inside the visual, change the closest side." (mouse.c:934-936).
+   *
+   * Which side moves is the whole rule, and it means a shift+click both grows
+   * and shrinks:
+   *   - clicked OUTSIDE the selection -> the far boundary stays and the near one
+   *     moves to the click, so the selection grows (it spans click..far end);
+   *   - clicked INSIDE -> one boundary moves to the click, so the selection
+   *     SHRINKS, keeping the far half and dropping the part the click is on.
+   * The mode is untouched, so a linewise selection stays linewise.
+   */
+  extendVisualToClick(click, anchor, head) {
+    const t = this.text;
+    const clamp = (i) => Math.max(0, Math.min(i, Math.max(0, t.length - 1)));
+    const raw = clamp(click);
+    const at = B.clampToLineEnd(t, raw, raw);
+    const from = Math.min(clamp(anchor), clamp(head));
+    const to = Math.max(clamp(anchor), clamp(head));
+    let next;
+    if (at < from) next = to;          // clicked before the selection: keep its end
+    else if (at > to) next = from;     // clicked after it: keep its start
+    else {
+      // inside: the far side stays and the nearer side moves, exactly as vim
+      // measures it (columns on one line, line distance across lines).
+      const lFrom = B.lineNumber(t, from);
+      const lTo = B.lineNumber(t, to);
+      const lAt = B.lineNumber(t, at);
+      if (lFrom === lTo) {
+        next = at - from > to - at ? from : to;
+      } else {
+        const diff = (lAt - lFrom) - (lTo - lAt);
+        if (diff > 0) next = from;
+        else if (diff < 0) next = to;
+        else {
+          const cFrom = from - B.lineStart(t, from);
+          const cTo = to - B.lineStart(t, to);
+          const cAt = at - B.lineStart(t, at);
+          next = cAt < (cFrom + cTo) / 2 ? to : from;
+        }
+      }
+    }
+    this.visual = { anchor: next };
+    this.state.cursor = at;
+    this._stayOffNewline();
+  }
   get cursor() { return this.state.cursor; }
   set cursor(v) {
     this.state.cursor = Math.max(0, Math.min(v, Math.max(0, this.text.length - 1)));

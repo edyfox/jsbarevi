@@ -526,6 +526,46 @@ async function main() {
     check("a shift+arrow selection is adopted as visual too", await mode(), "VISUAL");
     check("...with the host selection collapsed, not doubled", (await domSel()).start === (await domSel()).end, true);
     await sendKey(session, "Escape");
+    console.log("\n\x1b[1mshift+click adjusts the selection\x1b[0m");
+    const shiftClickAt = async (x, y) => {
+      await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1, modifiers: 8 });
+      await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1, modifiers: 8 });
+      await sleep(60);
+    };
+    await resetField();
+    await typeKeys(session, "gg");
+    const atZero = await caretRect();
+    await typeKeys(session, "w");                        // 6: 'b' of beta
+    const atSix = await caretRect();
+
+    // clicked OUTSIDE the selection: the far end stays, so it grows
+    await typeKeys(session, "v");
+    await typeKeys(session, "llll");                     // 6..10 = "beta "
+    check("the visual selection before the shift+click", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "beta ");
+    await shiftClickAt(atZero.x, atZero.y);              // 0, before the selection
+    check("shift+click outside the selection keeps visual mode", await mode(), "VISUAL");
+    check("...and grows it, from the click to the far end", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha beta ");
+    const grownSel = await domSel();
+    check("...host selection still collapsed", grownSel.start === grownSel.end, true);
+    await sendKey(session, "Escape");
+
+    // clicked INSIDE it: a boundary moves to the click, so it shrinks
+    await resetField();
+    await typeKeys(session, "gg");
+    await typeKeys(session, "vllllllll");                // 0..8 = "alpha bet"
+    check("the visual selection before the shift+click", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha bet");
+    await shiftClickAt(atSix.x, atSix.y);                // 6, inside, nearer the end
+    check("shift+click inside the selection SHRINKS it", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha b");
+    await sendKey(session, "Escape");
+    check("...and no text was changed by the gesture", await field(), BUFFER);
+
+    // in normal mode the same gesture starts a selection anchored at the cursor
+    await resetField();
+    await typeKeys(session, "gg");
+    await shiftClickAt(atSix.x, atSix.y);
+    check("shift+click in normal mode starts a visual selection", await mode(), "VISUAL");
+    check("...anchored at the old cursor and headed at the click", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha ");
+    await sendKey(session, "Escape");
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");

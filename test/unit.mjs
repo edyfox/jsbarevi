@@ -125,5 +125,73 @@ console.log("\n\x1b[1mcounts and pending state\x1b[0m");
   eq("operator with a count deletes that many chars", e.text, "cdef\n");
 }
 
+// Shift+click extends a visual selection by moving the ANCHOR to the far side
+// (vim mouse.c:903-963, reached because a shifted left click is rewritten into a
+// right click at mouse.c:753). The rules were measured from that code: outside
+// the selection the far end stays, inside it the nearer side moves.
+console.log("\n\x1b[1mshift+click adjusts the selection: grows outside, shrinks inside\x1b[0m");
+const textOf = (e) => e.visualText();
+{
+  // "one two three\n": select "two" (4..7), then click far left of it.
+  const e = mk("one two three\n");
+  e.enterVisualFromHost(4, 6);
+  e.extendVisualToClick(0, 4, 6);
+  // clicked left of the selection -> the far end (6) stays as the anchor, so the
+  // selection runs from the click to it: "one two" (0..6 inclusive)
+  eq("clicking before the selection keeps its end and grows left", textOf(e), "one two");
+}
+{
+  const e = mk("one two three\n");
+  e.enterVisualFromHost(4, 6);
+  e.extendVisualToClick(12, 4, 6);   // on the last character
+  eq("clicking after the selection keeps its start and grows right", textOf(e), "two three");
+}
+{
+  // Inside the selection one boundary moves to the click, so it SHRINKS - the
+  // far half is kept and the part the click is on is dropped. Not a "grow".
+  const e = mk("abcdefghij\n");
+  e.enterVisualFromHost(0, 7);       // selection "abcdefgh" (8 characters)
+  const before = textOf(e).length;
+  e.extendVisualToClick(6, 0, 7);    // near the end -> the end moves in
+  eq("clicking inside near the end shrinks it", textOf(e), "abcdefg");
+  eq("...so the selection got shorter, not longer", textOf(e).length < before, true);
+}
+{
+  const e = mk("abcdefghij\n");
+  e.enterVisualFromHost(0, 7);
+  e.extendVisualToClick(2, 0, 7);    // near the start -> the start moves in
+  eq("clicking inside near the start shrinks the other way", textOf(e), "cdefgh");
+}
+{
+  // A click exactly in the middle is a tie, and vim's test is a strict ">"
+  // (mouse.c:947), so the tie keeps the far end as the anchor.
+  const e = mk("abcdefghij\n");
+  e.enterVisualFromHost(0, 8);       // "abcdefghi" (9 characters, midpoint 4)
+  e.extendVisualToClick(4, 0, 8);
+  eq("a click exactly in the middle keeps the end side", textOf(e), "efghi");
+}
+{
+  // Across lines vim compares line distance first, columns only on a tie.
+  const e = mk("aa\nbb\ncc\ndd\n");
+  e.enterVisualFromHost(0, 9);       // lines 1..4
+  e.extendVisualToClick(4, 0, 9);    // line 2: nearer the start, so line 4 stays
+  eq("a cross-line click nearer the start keeps the end", textOf(e), "b\ncc\nd");
+}
+{
+  const e = mk("aa\nbb\ncc\ndd\n");
+  e.enterVisualFromHost(0, 9);
+  e.extendVisualToClick(7, 0, 9);    // line 3: nearer the end
+  eq("a cross-line click nearer the end keeps the start", textOf(e), "aa\nbb\ncc");
+}
+{
+  // A linewise selection stays linewise, and the click itself is clamped onto a
+  // character (a DOM caret may sit past the last character of a line).
+  const e = mk("aa\nbb\ncc\n");
+  e.feedKeys("Vj");                  // lines 1-2, linewise
+  e.extendVisualToClick(e.text.length - 1, 0, 3);
+  eq("shift+click does not leave visual line mode", e.mode, "VISUAL_LINE");
+  eq("...and keeps whole lines on the side it kept", textOf(e), "aa\nbb\ncc\n");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
