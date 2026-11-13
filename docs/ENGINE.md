@@ -508,8 +508,16 @@ hscroll() -> { from, to } | null     // null when the field wraps
 ```
 
 `TextareaAdapter.hscrollWindow()` binary-searches the caret mirror for the offsets at
-`scrollLeft` and `scrollLeft + clientWidth` (content space, the same space the mirror
-reports). With it:
+the window's edges. Two corrections matter, both measured from the field rather than
+assumed:
+
+- **`scrollLeft` counts from the PADDING edge**, while the mirror's `x` is measured from
+  the CONTENT edge, so the visible window starts at `scrollLeft - paddingLeft`. Getting
+  this wrong shifts `g0`/`g$` one to two characters to the right.
+- **the visible width is the content box** (`clientWidth - padding`), not `clientWidth`,
+  which includes the padding and made `g$` overshoot by about three characters.
+
+With it:
 
 | command | wrapping field | nowrap, scrolled field |
 |---|---|---|
@@ -525,3 +533,21 @@ a field that cannot measure still behaves predictably.
 
 The e2e fixture now has a third field, `#hscroll`, with `white-space: pre` and horizontal
 scrolling, so this path is exercised rather than assumed.
+
+## The cursor never leaves the field
+
+Vim keeps the cursor inside the window; a browser field does not, and our block caret is
+an overlay, so a caret scrolled out of view was still drawn - and kept blinking - outside
+the field's box. Three pieces fix that, and the order matters:
+
+1. `measure()` returns the RAW position. It used to clamp/hide whenever the caret was
+   vertically outside, which made "scroll it into view" impossible: the caller could not
+   learn where the caret was.
+2. `_scrollToCaret()` runs before drawing: if the raw rect is outside the visible text
+   area on either axis, the field is scrolled by the difference and the caret is measured
+   again (the scroll moves it).
+3. `update()` hides the block only when it genuinely cannot be shown, and judges
+   visibility by the field's **border box**, not its padding box: a field scrolled to its
+   end leaves the last character a few pixels into the padding, which is exactly where
+   the browser draws its own caret. Clipping there hid the cursor at the end of every
+   long line.

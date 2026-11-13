@@ -857,6 +857,80 @@ async function main() {
       return r;
     })(), 0);
 
+    // The window must be the TEXT box: clientWidth includes the padding, and using it
+    // put g$ about twenty pixels (three characters) past the right edge.
+    const edges = await evaluate(session, `(() => {
+      const el = document.getElementById('hscroll');
+      const a = window.jsbarevi.hscroll.adapter;
+      const c = a.caret;
+      el.scrollLeft = 300;
+      const cs = getComputedStyle(el);
+      const padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight);
+      const textWidth = el.clientWidth - padL - padR;
+      const win = a.hscrollWindow();
+      const x = (k) => c.contentPoint(k).x;
+      const t = a.engine.text;
+      const LF = String.fromCharCode(10);
+      const lineEnd = (() => { let i = win.to; while (i < t.length - 1 && t[i] !== LF) i++; return i; })();
+      // the window is measured from the CONTENT edge; scrollLeft counts from the
+      // padding edge, so the visible range starts at scrollLeft - paddingLeft
+      return { win, scrollLeft: el.scrollLeft - padL, textWidth,
+        firstX: Math.round(x(win.from)), lastX: Math.round(x(win.to)),
+        beforeFirstX: win.from > 0 ? Math.round(x(win.from - 1)) : null,
+        afterLastX: win.to < lineEnd ? Math.round(x(win.to + 1)) : null, lineEnd };
+    })()`);
+    check("the window's first character is at or after the left edge",
+      edges.firstX >= edges.scrollLeft - 1, true);
+    check("...and the character before it is not", edges.beforeFirstX == null || edges.beforeFirstX < edges.scrollLeft, true);
+    check("the window's last character fits inside the TEXT box",
+      edges.lastX <= edges.scrollLeft + edges.textWidth + 1, true);
+    check("...and the next character does not", edges.afterLastX == null || edges.afterLastX > edges.scrollLeft + edges.textWidth, true);
+    const blockInside = await evaluate(session, `(() => {
+      const el = document.getElementById('hscroll');
+      const a = window.jsbarevi.hscroll.adapter;
+      const box = el.getBoundingClientRect();
+      const inside = () => {
+        const n = [...document.querySelectorAll('.jsbarevi-caret')].find((x) => getComputedStyle(x).display !== 'none');
+        if (!n) return null;
+        const r = n.getBoundingClientRect();
+        return r.left >= box.left - 2 && r.left + r.width <= box.right + 2 &&
+               r.top >= box.top - 2 && r.top + r.height <= box.bottom + 2;
+      };
+      a.engine.feed("g"); a.engine.feed("0"); a._commit(); a._emitMode();
+      const atG0 = { inside: inside(), scrollLeft: Math.round(el.scrollLeft) };
+      a.engine.feed("g"); a.engine.feed("$"); a._commit(); a._emitMode();
+      const atG$ = { inside: inside(), scrollLeft: Math.round(el.scrollLeft) };
+      a.engine.feed("$"); a._commit(); a._emitMode();
+      const atDollar = { inside: inside(), scrollLeft: Math.round(el.scrollLeft) };
+      return { atG0, atG$, atDollar, len: el.value.length };
+    })()`);
+    check("the block stays inside the field at g0", blockInside.atG0.inside, true);
+    check("the block stays inside the field at g$", blockInside.atG$.inside, true);
+    check("...even at $, which is off screen to the right", blockInside.atDollar.inside, true);
+    check("...because the field scrolled to follow the cursor", blockInside.atDollar.scrollLeft > blockInside.atG0.scrollLeft, true);
+
+    console.log("\n\x1b[1mthe cursor is scrolled into view, never left outside\x1b[0m");
+    const FORTY_LINES = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n");
+    const vertical = await evaluate(session, `(() => {
+      const el = document.getElementById('field');
+      const a = window.jsbarevi.textarea.adapter;
+      const lines = ${JSON.stringify(FORTY_LINES)};
+      a.engine.setText(lines, 0); a._commit(); a._emitMode(); el.focus();
+      el.scrollTop = 0;
+      const t = a.engine.text;
+      const lastLineStart = t.lastIndexOf("line ", t.length - 2);
+      a.engine.cursor = lastLineStart; a._commit(); a._emitMode();
+      const box = el.getBoundingClientRect();
+      const n = [...document.querySelectorAll('.jsbarevi-caret')].find((x) => getComputedStyle(x).display !== 'none');
+      const r = n ? n.getBoundingClientRect() : null;
+      return { scrollTop: Math.round(el.scrollTop),
+        blockInside: r ? (r.top >= box.top - 2 && r.top + r.height <= box.bottom + 2) : false,
+        hadBlock: !!r };
+    })()`);
+    check("a cursor far below the viewport scrolls the field", vertical.scrollTop > 0, true);
+    check("...and its block is drawn inside the field, not over the page",
+      [vertical.hadBlock, vertical.blockInside], [true, true]);
+
     console.log("\n\x1b[1mno wrapping means a line IS a row: exact, no measurement\x1b[0m");
     // When the field does not wrap, screen rows and buffer lines coincide, so the
     // engine's screen-line machinery reduces to arithmetic. That makes gj == j and the

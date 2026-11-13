@@ -9,6 +9,10 @@
              padding:10px; font:13px/1.5 ui-monospace,Menlo,monospace; border-radius:4px; }
   input { width:640px; background:#252526; color:#eee; border:1px solid #444; padding:8px;
           font:13px/1.5 ui-monospace,Menlo,monospace; border-radius:4px; margin-top:12px; }
+  /* a field that does NOT wrap: white-space:pre + horizontal scrolling. One buffer
+     line is one screen row, and g0/g$/g^ are relative to the visible COLUMN window. */
+  #hscroll { display:block; width:380px; height:auto; min-height:64px; margin-top:12px;
+    white-space:pre; overflow-x:auto; overflow-y:hidden; }
   p { color:#8a8a8a; }
 </style>
 </head>
@@ -25,9 +29,6 @@ zeta eta theta</textarea>
 
 <!-- A field that does NOT wrap: white-space:pre + horizontal scrolling. One buffer
      line is one screen row, and g0/g$/g^ are relative to the visible COLUMN window. -->
-<style>
-  #hscroll { width: 380px; white-space: pre; overflow-x: auto; overflow-y: hidden; height: 60px; }
-</style>
 <textarea id="hscroll" aria-label="fixture horizontal scroll" spellcheck="false" rows="2"></textarea>
 
 <script type="module">

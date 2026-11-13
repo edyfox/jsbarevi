@@ -136,7 +136,8 @@ indices, computed rather than measured. There is a second, odder consequence tha
 shares: with `'wrap'` off, `g0`/`g$`/`g^` are relative to the **visible column window**
 rather than to the line, so after scrolling sideways `g0` goes to the first character on
 screen. `0`/`$`/`^` keep their line meaning. The fixture's `#hscroll` field is there to
-exercise exactly this.
+exercise exactly this, and the cursor is always scrolled into view rather than left
+outside the field (vim's behaviour; a browser field would happily let it sit there).
 
 `'joinspaces'` is not implemented: vim can insert two spaces after a sentence-ending
 punctuation when joining, nvi never does, and this engine follows the `nojoinspaces`

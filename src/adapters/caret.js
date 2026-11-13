@@ -55,19 +55,49 @@ export class BlockCaret {
   }
 
   /** Show the block at `offset`. `linewise` widens it for VISUAL LINE. */
-  update(offset, { linewise = false } = {}) {
+  update(offset, { linewise = false, rect = null } = {}) {
     if (!this.enabled) return;
-    const rect = this.measure(offset);
-    if (!rect) { this.hide(); return; }
+    const r = rect || this.measure(offset);
+    if (!r || !this.isVisible(r)) { this.hide(); return; }
+    const rect2 = this.clampIntoBox(r);
     this.node.classList.toggle("line", linewise);
     this.node.style.display = "block";
-    this.node.style.left = `${rect.left}px`;
-    this.node.style.top = `${rect.top}px`;
-    this.node.style.width = `${Math.max(rect.width, 2)}px`;
-    this.node.style.height = `${rect.height}px`;
+    this.node.style.left = `${rect2.left}px`;
+    this.node.style.top = `${rect2.top}px`;
+    this.node.style.width = `${Math.max(rect2.width, 2)}px`;
+    this.node.style.height = `${rect2.height}px`;
   }
 
   hide() { this.node.style.display = "none"; }
+
+  /**
+   * Is this rect inside the FIELD at all? The border box, not the padding box: a field
+   * scrolled to its end leaves the last character a few pixels into the padding, and
+   * that is exactly where the browser draws its own caret - clipping our block there
+   * would hide the cursor at the end of every long line.
+   */
+  isVisible(rect) {
+    const box = this.el.getBoundingClientRect();
+    const tol = 2;
+    return rect.left + rect.width > box.left - tol && rect.left < box.right + tol
+      && rect.top + rect.height > box.top - tol && rect.top < box.bottom + tol;
+  }
+
+  /** Keep the block inside the field's border box when it is only partly visible. */
+  clampIntoBox(rect) {
+    const box = this.el.getBoundingClientRect();
+    const l = box.left;
+    const r = box.right;
+    const t = box.top;
+    const b = box.bottom;
+    let left = rect.left;
+    let top = rect.top;
+    if (left < l) left = l;
+    if (left + rect.width > r) left = Math.max(l, r - rect.width);
+    if (top < t) top = t;
+    if (top + rect.height > b) top = Math.max(t, b - rect.height);
+    return { ...rect, left, top };
+  }
 
   /**
    * Where the character at `offset` sits in CONTENT space (the mirror's own
@@ -156,17 +186,11 @@ export class BlockCaret {
     const width = cp.width > 0.5 ? cp.width : Math.max(2, height * 0.6);
     const innerLeft = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
     const innerTop = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
+    // RAW position, possibly outside the field: the caller scrolls the field to bring
+    // the cursor back (vim never lets the cursor leave the window) and hides the block
+    // only when that is impossible, e.g. a field with overflow:hidden.
     const left = box.left + innerLeft + cp.x - el.scrollLeft;
-    let top = box.top + innerTop + cp.y - el.scrollTop;
-
-    // Keep the block inside the field's box.
-    const visibleTop = box.top + (parseFloat(cs.borderTopWidth) || 0);
-    const visibleBottom = box.bottom;
-    if (top + height < visibleTop || top > visibleBottom) {
-      this.hide();
-      return null;
-    }
-    if (top < visibleTop) top = visibleTop;
+    const top = box.top + innerTop + cp.y - el.scrollTop;
     return { left, top, width, height };
   }
 

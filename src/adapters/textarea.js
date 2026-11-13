@@ -164,10 +164,20 @@ export class TextareaAdapter {
     const end = B.lastCharOffset(t, cur);
     if (end <= start) return null;
     const xAt = (off) => this.caret.contentPoint(off).x;
-    // a window is measured from the content origin, and scrollLeft is in the same
-    // space, so the visible slice is [scrollLeft, scrollLeft + clientWidth]
-    const left = this._offsetAtX(start, end, el.scrollLeft, xAt, false);
-    const right = this._offsetAtX(start, end, el.scrollLeft + el.clientWidth, xAt, true);
+    // scrollLeft is in the same space as the mirror's x, and the visible slice is
+    // [scrollLeft, scrollLeft + the CONTENT width] - clientWidth includes the padding,
+    // which made g$ land about 20px (three characters) past the right edge.
+    const cs = getComputedStyle(el);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    const visibleWidth = Math.max(1, el.clientWidth - padL - padR);
+    // scrollLeft counts from the PADDING edge, while the mirror's x is measured from the
+    // CONTENT edge - so the visible content window is [scrollLeft - padL, + width].
+    // Without the padL shift the window sits one to two characters too far right
+    // (reported from the field: g0 was +1, g$ was +2).
+    const leftEdge = el.scrollLeft - padL;
+    const left = this._offsetAtX(start, end, leftEdge, xAt, false);
+    const right = this._offsetAtX(start, end, leftEdge + visibleWidth, xAt, true);
     return { from: left, to: Math.max(left, right) };
   }
 
@@ -394,7 +404,11 @@ export class TextareaAdapter {
     // replace mode keeps the block: it is how the mode tells you what it will eat
     if (this.engine.mode === Mode.INSERT && !this.engine.replaceSession) { this.caret?.hide(); this.highlight.clear(); return; }
     const linewise = this.engine.mode === Mode.VISUAL_LINE;
-    this.caret?.update(this.engine.cursor, { linewise });
+    // Scroll the field so the cursor is visible BEFORE drawing it: vim never lets the
+    // cursor sit outside the window, and without this the block was drawn (and kept
+    // blinking) outside the field whenever the caret was scrolled away.
+    const rect = this.caret ? this._scrollToCaret(this.caret.measure(this.engine.cursor)) : null;
+    this.caret?.update(this.engine.cursor, { linewise, rect });
     const sel = this.engine.visualSelection();
     if (sel) this.highlight.update(sel.from, sel.to, this.engine.text, { linewise: sel.linewise });
     else this.highlight.clear();
@@ -442,6 +456,32 @@ export class TextareaAdapter {
   cancelPrompt() {
     this.engine.prompt = null;
     this._emitMode();
+  }
+
+  /**
+   * Bring the cursor into view. Returns the (re-measured) rect, because scrolling
+   * changes where the cursor is - the caller must draw at the new position, not the old.
+   */
+  _scrollToCaret(rect) {
+    if (!rect) return null;
+    const el = this.el;
+    const box = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const l = box.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+    const r = box.right - (parseFloat(cs.borderRightWidth) || 0) - (parseFloat(cs.paddingRight) || 0);
+    const top = box.top + (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
+    const bottom = box.bottom - (parseFloat(cs.borderBottomWidth) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    let dx = 0;
+    let dy = 0;
+    if (rect.left < l) dx = rect.left - l;
+    else if (rect.left + rect.width > r) dx = rect.left + rect.width - r;
+    if (rect.top < top) dy = rect.top - top;
+    else if (rect.top + rect.height > bottom) dy = rect.top + rect.height - bottom;
+    if (!dx && !dy) return rect;
+    if (dx) el.scrollLeft += dx;
+    if (dy) el.scrollTop += dy;
+    // the caret mirror reads scrollLeft, so the position must be measured again
+    return this.caret ? this.caret.measure(this.engine.cursor) : rect;
   }
 
   _commit() {
