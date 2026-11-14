@@ -413,6 +413,7 @@ export class ContenteditableAdapter {
         if (!this._applyEdit(from, to, insert)) {
           // The host refused. Do not rewrite its document to force the point: re-read
           // what is really there and say so.
+          globalThis.__jsbareviReport?.("edit-refused", JSON.stringify({ from, to, insert, prev, next }).slice(0, 900));
           this._lastText = getFlatText(this.el);
           this.engine.setText(fromField(this._lastText), Math.min(this.engine.cursor, this._lastText.length));
           this.onStatus?.("this editor refused the edit", "error");
@@ -424,6 +425,11 @@ export class ContenteditableAdapter {
           // the whole element. Adopt what really happened instead of insisting.
           this.engine.setText(fromField(actual), Math.min(from, Math.max(0, actual.length - 1)));
           this.onStatus?.("the host removed more than the command asked for (an unbreakable element)", "error");
+          // A host we cannot step through (Lark) can still tell us what it produced: the
+          // payload exposes `__jsbareviReport`, a beacon/log sink. A no-op anywhere else.
+          globalThis.__jsbareviReport?.("edit-mismatch", JSON.stringify({
+            from, to, insert, prev, next, actual,
+          }).slice(0, 900));
         }
         this._lastText = this.engine.hostText;
         this._dispatchInput();

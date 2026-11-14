@@ -73,6 +73,7 @@ const PAGE = `<!doctype html>
   });
 
   const { attach } = await import("/src/entry.js");
+  window.attach = attach;
   window.handle = attach(editor, { editorUrl: "" });
   window.hostLog.model = parse();
   window.ready = true;

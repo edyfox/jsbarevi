@@ -148,6 +148,10 @@ function main() {
     } catch (e) {}
   };
   report("lark-page", document.title || "");
+  // Diagnostics for the ENGINE: when an edit goes wrong in this host we cannot step
+  // through, the adapter reports through this sink and it lands in Lark's own log and on
+  // the beacon server. Absent anywhere else, so the adapter's call is a no-op there.
+  globalThis.__jsbareviReport = report;
 
   // Runtime config lives on the beacon server: changing the gate needs no re-patch.
   globalThis.__larkVimCfg = ${JSON.stringify(cfg)};
