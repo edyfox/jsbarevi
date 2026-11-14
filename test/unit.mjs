@@ -127,6 +127,25 @@ console.log("\n\x1b[1mregisters: what is stored, and where\x1b[0m");
   eq('a visual selection yanks into a named register', e.registers.read("a").text, "abcdef\ng");
 }
 {
+  // `"+yy` and `"+yaw` look like the same command and were not: the text-object path
+  // threw the register away (a second, unreachable copy of that rule was the live one).
+  const e = mk("alpha beta gamma\n");
+  e.feedKeys('"ayaw');
+  eq('"ayaw stores the object in a', e.registers.read("a").text, "alpha ");
+  e.feedKeys('"adiw');
+  eq('"adiw is the same command with a different object', e.registers.read("a").text, "alpha");
+  e.feedKeys('"ayip');
+  eq("a linewise text object stays linewise", e.registers.read("a").linewise, true);
+}
+{
+  let clip = "OLD";
+  const e = mk("alpha beta\ngamma\n", 0, { clipboard: { read: () => clip, write: (t) => { clip = t; } } });
+  e.feedKeys('"+yaw');
+  eq('"+yaw reaches the system clipboard', clip, "alpha ");
+  e.feedKeys('"+daw');
+  eq('"+daw does too', clip, "alpha ");
+}
+{
   const e = mk("keep me\n");
   e.feedKeys('"1dd');
   eq("an unsupported register aborts the command, buffer intact", e.hostText, "keep me");

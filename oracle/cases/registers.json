@@ -156,6 +156,58 @@
       "engines": [
         "vim"
       ]
+    },
+    {
+      "name": "a named yank of a text object (aw) goes to that register",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayaw$\"ap",
+      "expect": {
+        "text": "alpha betaalpha \ngamma",
+        "line": 1,
+        "col": 16
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "...and iw is the same command with a different object",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayiw$\"ap",
+      "expect": {
+        "text": "alpha betaalpha\ngamma",
+        "line": 1,
+        "col": 15
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "...and a linewise paragraph object stays linewise",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayip\"ap",
+      "expect": {
+        "text": "alpha beta\nalpha beta\ngamma\ngamma",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a named delete of a text object (daw) goes to that register",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"adaw\"ap",
+      "expect": {
+        "text": "balpha eta\ngamma",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
     }
   ]
 }

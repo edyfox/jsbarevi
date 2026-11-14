@@ -353,13 +353,21 @@ export class Engine {
       return { handled: true };
     }
 
-    // an operator already waiting for a text-object target: take it verbatim
+    // An operator already waiting for a text-object target: take it verbatim.
+    //
+    // This is the path `"ayaw` actually takes, and it used to pass `null` for the
+    // register: `"+yaw` yanked into the unnamed register and never reached the system
+    // clipboard, while `"+yy` worked — the two look like the same command and are not.
+    // There was a second, unreachable copy of this block further down (inside `if (p.op)`,
+    // which can never see a textObj set in an earlier keystroke); it is gone, because two
+    // copies of a rule is how one of them gets forgotten.
     if (p.op && p.textObj) {
       const range = this._textObject(p.textObj, key);
       const op = p.op;
+      const reg = p.reg;
       this.pending = this._emptyPending();
       if (!range) { this.onStatus("no text object", "error"); return { handled: true }; }
-      this._applyOperatorRange(op, range.from, range.to, !!range.linewise, true, false, null, range.inclusive);
+      this._applyOperatorRange(op, range.from, range.to, !!range.linewise, true, false, reg, range.inclusive);
       return { handled: true, edit: op !== "y" };
     }
 
@@ -424,17 +432,8 @@ export class Engine {
       return this._enterInsert(key, this._takeCount(1));
     }
 
-    // a pending operator followed by a motion or text object
+    // a pending operator followed by a motion
     if (p.op) {
-      if (p.textObj) {
-        const range = this._textObject(p.textObj, key);
-        if (!range) { this.pending = this._emptyPending(); this.onStatus("no text object", "error"); return { handled: true }; }
-        const op = p.op;
-        const reg = p.reg;
-        this.pending = this._emptyPending();
-        this._applyOperatorRange(op, range.from, range.to, false, true, false, reg, range.inclusive);
-        return { handled: true, edit: op !== "y" };
-      }
       const motion = this._resolveMotionKey(key);
       if (!motion) { this.pending = this._emptyPending(); this.onStatus("not a motion", "error"); return { handled: true }; }
       let count;
