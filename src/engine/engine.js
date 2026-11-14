@@ -360,7 +360,9 @@ export class Engine {
       this._closeUndo();
       if (result.message) this.onStatus(result.message, result.ok ? "info" : "error");
       if (result.ok && !result.message) this.onStatus("");
-      return { handled: true, ex: result };
+      // `:q` on a field with no editor session: the adapter tells the host to let go of
+      // this element until it is focused again.
+      return { handled: true, ex: result, quit: !!result.quit };
     }
     return { handled: true };
   }

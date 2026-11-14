@@ -27,6 +27,7 @@ A command may only be excluded for one of three reasons:
 | Motions, paragraphs/sentences | `{ } ( )` |
 | Jumps and search | `f F t T ; , % / ? n N * # G gg` |
 | Increment/decrement | `^A` `^X` — with counts, and `.` repeats |
+| Turn off in one field | `:q` — hand the field back to the browser until it is refocused (see README) |
 | Marks | `m ' `` ` `` |
 | Viewport | `H M L z ^B ^D ^E ^F ^U ^Y ^G` |
 | Insert entry | `i a I A o O R` |

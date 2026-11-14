@@ -55,6 +55,8 @@ export class TextareaAdapter {
     this.onModeChange = opts.onModeChange;
     this.clipboard = opts.clipboard ?? null;
     this.onPrompt = opts.onPrompt;
+    // `:q` (see finishPrompt): the host detaches this field until it is focused again.
+    this.onQuit = opts.onQuit;
     this.onKeyConsumed = opts.onKeyConsumed;
     this._keysDispatchedByHost = !!opts.keysDispatchedByHost;
     // A hairline caret is invisible as a vi cursor: normal/visual get a block.
@@ -525,7 +527,13 @@ export class TextareaAdapter {
 
   finishPrompt(kind, value) {
     this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search" : null;
-    this.engine.submitPrompt(value);
+    const r = this.engine.submitPrompt(value);
+    if (r.quit) {
+      // `:q` — the host lets go of this field; nothing to commit, and no mode to emit.
+      // The engine has no listeners to remove, so this is the host's call, not ours.
+      this.onQuit?.();
+      return;
+    }
     this._commit();
     this._emitMode();
   }

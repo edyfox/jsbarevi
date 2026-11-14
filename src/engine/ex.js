@@ -276,9 +276,16 @@ export function runEx(engine, line) {
     return r;
   }
   if (cmd === "q" || cmd === "quit") {
-    if (!session) return { ok: true, message: "" };
-    session.close(bang);
-    return { ok: true, message: "" };
+    // A transport is configured on EVERY field (that is what makes `:e` possible), but
+    // only an OPEN session owns the field. Closing one that is idle would swallow the
+    // real meaning of `:q`: let the HOST stop simulating vi here until the field loses
+    // and regains focus. A session that cannot say whether it is open is treated as open
+    // (the pre-existing behaviour, and what `:e`-style transports assume).
+    if (session && (session.isOpen ? session.isOpen() : true)) {
+      session.close(bang);
+      return { ok: true, message: "" };
+    }
+    return { ok: true, message: "", quit: true };
   }
   if (cmd === "read" || cmd === "r" || cmd === "n" || cmd === "next" || cmd === "prev" || cmd === "rewind") {
     return { ok: false, message: `:${cmd} has no meaning in a page field` };

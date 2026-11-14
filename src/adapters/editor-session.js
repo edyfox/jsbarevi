@@ -154,6 +154,9 @@ export class HttpEditorSession {
       });
   }
 
+  /** Is a human editing right now? `:q` means different things either way. */
+  isOpen() { return !!this.busy; }
+
   write() { return { ok: true, message: "the editor writes when it exits" }; }
   close() { /* the request owns the session's lifetime */ }
 

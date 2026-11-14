@@ -732,8 +732,9 @@ console.log("\n\x1b[1mthe :e / :w / :q session commands\x1b[0m");
   eq(":w writes", calls, ["open", "write"]);
   e.feed(":"); e.submitPrompt("wq");
   eq(":wq writes then closes", calls.slice(-2), ["write", "close:false"]);
-  e.feed(":"); e.submitPrompt("q");
-  eq(":q closes", calls.slice(-1), ["close:false"]);
+  e.feed(":"); const q = e.submitPrompt("q");
+  eq(":q with a session closes it", calls.slice(-1), ["close:false"]);
+  eq("...and does NOT ask the host to detach the field", q.quit, false);
   e.feed(":"); e.submitPrompt("q!");
   eq(":q! closes with bang", calls.slice(-1), ["close:true"]);
 }
@@ -743,7 +744,17 @@ console.log("\n\x1b[1mthe :e / :w / :q session commands\x1b[0m");
   e.feed(":"); eq(":e with a filename is refused", /no file/.test(e.submitPrompt("e foo.txt").ex.message), true);
   e.feed(":"); eq(":e without a transport says so", /no editor transport/.test(e.submitPrompt("e").ex.message), true);
   e.feed(":"); eq(":w without a transport says so", /no editor transport/.test(e.submitPrompt("w").ex.message), true);
-  e.feed(":"); eq(":q without a transport is harmless", e.submitPrompt("q").ex.ok, true);
+  e.feed(":");
+  // A transport exists on every field (that is what makes :e possible) but an IDLE one
+  // must not swallow :q — that is the field-detach case, not a close.
+  const idle = mk("x\n", 0, { session: { isOpen: () => false, close: () => { calls.push("closed-idle"); } } });
+  idle.feed(":");
+  eq("an idle session does not swallow :q", idle.submitPrompt("q").quit, true);
+  const quit = e.submitPrompt("q");
+  eq(":q with no session asks the HOST to leave this field alone", quit.quit, true);
+  eq("...and is not an error", quit.ex.ok, true);
+  e.feed(":"); const bang = e.submitPrompt("q!");
+  eq(":q! does the same", bang.quit, true);
 }
 
 console.log("\n\x1b[1mthe host-facing engine API (a coverage sweep found these unrun)\x1b[0m");

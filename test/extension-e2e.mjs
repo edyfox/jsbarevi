@@ -127,6 +127,21 @@ function serve() {
 
 const fieldValue = (session, id = "field") => evaluate(session, `document.getElementById('${id}').value`);
 
+/**
+ * Send one character the way a user's keyboard does, WITHOUT consulting our own badge.
+ *
+ * `sendKey` decides whether to emit a text event by looking for the INSERT badge — which
+ * is right when driving the engine and wrong when the point is that there is no engine any
+ * more (`:q`). This is the plain "a keyboard typed this" path.
+ */
+async function typeRaw(session, ch) {
+  const vk = ch.toUpperCase().charCodeAt(0);
+  const base = { key: ch, code: `Key${ch.toUpperCase()}`, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk };
+  await session.send("Input.dispatchKeyEvent", { type: "keyDown", ...base, text: ch });
+  await session.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  await sleep(30);
+}
+
 async function setSettings(worker, patch) {
   await evaluate(worker, `chrome.storage.local.set(${JSON.stringify(patch)})`);
   await sleep(250); // storage.onChanged -> content script re-reads
@@ -221,6 +236,32 @@ async function main() {
     if (!afterEdit) {
       console.log(`       status line: ${JSON.stringify(await evaluate(page, "document.querySelector('.jsbarevi-line').textContent"))}`);
     }
+
+    // ---- :q hands THIS field back to the browser, until it is refocused ----
+    //
+    // The escape hatch, and its exact contract: `:q` is typed from NORMAL mode, and what
+    // comes back must be a NORMAL text box — focused, native caret visible at the same
+    // place, no overlay, no hooks, typing goes straight in. A keystroke must not re-arm
+    // it (only a blur does), or `:q` would undo itself on the next key.
+    await goto(page, port, "quit");
+    await focusAndAttach(page, "field");
+    await typeKeys(page, "<Esc>");                    // NORMAL: how :q is actually typed
+    check("the caret is the engine's before :q", await evaluate(page, "document.getElementById('field').style.caretColor"), "transparent");
+    await typeKeys(page, ":q<CR>");
+    check(":q removes the badge", await evaluate(page, "!!document.querySelector('.jsbarevi-badge')"), false);
+    check(":q drops the active marker", await evaluate(page, "document.getElementById('field').hasAttribute('data-jsbarevi-active')"), false);
+    check(":q drops the mode marker", await evaluate(page, "document.getElementById('field').hasAttribute('data-jsbarevi-mode')"), false);
+    check("the native caret comes back", await evaluate(page, "document.getElementById('field').style.caretColor"), "");
+    check("the box is left focused", await evaluate(page, "document.activeElement === document.getElementById('field')"), true);
+    const beforeQuit = await fieldValue(page);
+    await typeRaw(page, "Q");
+    check("typing goes straight in, in insert mode", (await fieldValue(page)).length, beforeQuit.length + 1);
+    check("...and a keystroke does not re-arm it", await evaluate(page, "!!document.querySelector('.jsbarevi-badge')"), false);
+    await evaluate(page, "document.getElementById('field').blur()");
+    await sleep(80);
+    check("leaving and coming back re-arms it", await focusAndAttach(page, "field"), true);
+    check("...with a badge again", await evaluate(page, "!!document.querySelector('.jsbarevi-badge')"), true);
+    check("...in INSERT, like any freshly focused field", await evaluate(page, "document.getElementById('field').getAttribute('data-jsbarevi-mode')"), "INSERT");
 
     // ---- a field that was focused before we existed ------------------------
     await page.send("Page.navigate", { url: `http://127.0.0.1:${port}/autofocus` });

@@ -148,6 +148,30 @@ clipboard API is not. So the clipboard is a **host capability** passed into the 
 Ctrl-C in visual mode goes through the same capability, so `v`…`y`-style copy followed
 by `"+p` sees what the copy put there.
 
+## `:q` — handing one field back to the browser
+
+The engine has no listeners to remove, so `:q` is a **host** feature: the ex layer reports
+`quit: true`, the adapter calls its `onQuit`, and the content script restores the field and
+remembers it.
+
+- **Restore, not just detach.** The native caret comes back at the vi cursor's position
+  (`setSelectionRange` for a flat field; a rich composer already has the collapsed
+  selection the adapter left), the overlay nodes and both markers go, the adapter's
+  listeners are removed, and the box is left **focused** — `:q` is typed from NORMAL mode
+  and the next thing the user does is type.
+- **The latch is one-way.** `quitFields` remembers the element and `attachField` refuses
+  it; a `focusout` clears the entry **unless** focus moved to our own command line (that is
+  the tail of `:q` itself: the prompt closes and focus comes back). Re-arming is what
+  `blur` does, so a keystroke in the still-focused field cannot undo the command.
+- **An idle transport is not an open editor.** Every field carries a session object so
+  `:e` works, so `:q` asks `session.isOpen()` before deciding to close it. Treating "a
+  transport exists" as "the editor is open" made `:q` a silent no-op on every field.
+
+`npm run test:ext` asserts the whole contract in Chrome for Testing: badge, `data-jsbarevi-active`
+and `data-jsbarevi-mode` gone, `caretColor` restored, `document.activeElement` still the
+field, a raw keystroke landing as text, no badge after that keystroke, and the badge back
+after blur + refocus.
+
 ## What attaches, and when
 
 - **On focus**, one adapter per element, never two (a second engine would double

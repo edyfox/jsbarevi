@@ -39,6 +39,24 @@ Everything about the package — why it is one bundled classic script, how `:e` 
 around CORS without a server patch, what attaches to which field, and the store
 publishing checklist — is in [`docs/EXTENSION.md`](docs/EXTENSION.md).
 
+### Turning it off in one field: `:q`
+
+A host's editor can be more trouble than it is worth (a composer that eats keys, a field
+whose model fights every edit). `:q` in NORMAL mode hands **that field** back to the
+browser, without uninstalling anything:
+
+- focus stays in the box, the native caret comes back where the vi cursor was, and typing
+  goes straight in — it is a modeless text box again;
+- every hook goes with it: the key handling, the focus guard, the `data-jsbarevi-mode`
+  marker that the MAIN-world blur patch reads, the badge and the overlay;
+- vi returns **when the field loses focus and is focused again** — not on the next
+  keystroke, or `:q` would undo itself as soon as you typed.
+
+`:q!` does the same. `:q` with an **open** `:e` session still closes that session (the
+transcript is the editor's); an idle transport is not "open", so `:q` means what the user
+means. In the extension this lives in the content script, so it applies in every host the
+bundle runs in — Chrome pages and an Electron page world alike.
+
 ### Pointing `:e` straight at pyTextFilter (`:31416`)
 
 [pyTextFilter](https://github.com/edyfox/pytextfilter) is this project's author's

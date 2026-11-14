@@ -238,10 +238,60 @@ function guardEscape(el, handle) {
   };
 }
 
+/**
+ * Fields that ran `:q`: vi stays off there until the user leaves and comes back.
+ *
+ * The rule is the one the user asked for — "until the input box loses focus and regains
+ * it" — and it is a one-way latch, not a toggle: the focus that returns when the command
+ * line closes must not re-arm it, or `:q` would undo itself immediately. Leaving the
+ * field is the only re-arm signal.
+ */
+const quitFields = new Set();
+
+/**
+ * `:q` in a field: hand it back to the browser, focused and usable, until it is blurred.
+ *
+ * `:q` is normally typed from NORMAL mode, and the user's next action is to keep typing —
+ * so this does not merely stop listening, it RESTORES the field: the native caret comes
+ * back at the place the vi cursor was, the overlay and the mode marker go, every hook the
+ * adapter installed is removed, and the box is left focused. What it must not do is let a
+ * later keystroke re-arm it: only a blur does that (see `quitFields`).
+ */
+function releaseField(el, handle) {
+  quitFields.add(el);
+  active.delete(el);
+  // Where the vi cursor was, before the engine that knows it is destroyed.
+  const at = handle?.engine?.cursor ?? null;
+  try { handle.destroy(); } catch { /* the host may have torn the node down */ }
+  el.removeAttribute("data-jsbarevi-active");
+  el.removeAttribute("data-jsbarevi-mode");
+  // A flat field takes a range; a rich composer already has the collapsed native
+  // selection the adapter left behind.
+  if (at != null && typeof el.setSelectionRange === "function") {
+    try {
+      const to = Math.max(0, Math.min(at, el.value.length));
+      el.setSelectionRange(to, to);
+    } catch { /* an input type without a selection */ }
+  }
+  try { el.focus({ preventScroll: true }); } catch { /* the page may be tearing down */ }
+  trace(`:q — vi is off in ${nameOf(el)} until it loses focus; field restored to the browser`);
+}
+
+document.addEventListener("focusout", (e) => {
+  const el = e.composedPath?.()[0] ?? e.target;
+  if (!quitFields.has(el)) return;
+  // Moving focus to our own command line is not "leaving the field": that is the tail of
+  // `:q` itself (the prompt closes and focus comes back). Re-arming there would undo it.
+  if (e.relatedTarget && e.relatedTarget.hasAttribute?.("data-jsbarevi-ui")) return;
+  quitFields.delete(el);
+  trace(`${nameOf(el)} blurred — vi is armed again`);
+}, true);
+
 /** One field, one adapter, one UI. Attaching twice would mean two engines. */
 function attachField(el) {
-  if (active.has(el) || !isEligible(el) || !document.body) return null;
-  const handle = attach(el, {
+  if (active.has(el) || quitFields.has(el) || !isEligible(el) || !document.body) return null;
+  let handle = null;
+  handle = attach(el, {
     startMode: settings.startMode === "normal" ? "normal" : "insert",
     sessionFactory: (engine) => new HttpEditorSession({
       engine,
@@ -252,6 +302,8 @@ function attachField(el) {
     // The extension owns the key listener (document_start, before any page script) and
     // routes keys here; the adapter must not also register its own.
     keysDispatchedByHost: true,
+    // `:q`: the engine has no listeners to remove, so the host does the detaching.
+    onQuit: () => releaseField(el, handle),
     onKeyConsumed: (key) => {
       if (key === "composing") {
         // Diagnostic only: a key dropped for composition in NORMAL mode is the "press
