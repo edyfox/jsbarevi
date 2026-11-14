@@ -104,21 +104,18 @@ console.log("\n\x1b[1munpatched pyTextFilter: why :e needs a proxy\x1b[0m");
     check("the proxy reaches pyTextFilter and returns its edit", viaProxy.text, "HELLO world");
     check("status is 200", viaProxy.status, 200);
 
-    // The host's own file may already carry the patch, in which case the
-    // meaningful baseline is the HALF-DONE state that bit us: do_OPTIONS answers
-    // 204, but with cors off there is still no Access-Control-Allow-Origin, so a
-    // browser blocks the real request and JS reports "cannot reach".
+    // The host's own file may already carry the patch. The guarantee the patch
+    // makes is that INSTALLING it changes nothing until `cors` is configured: with
+    // the flag off, OPTIONS must still answer 501 and send no CORS header, exactly
+    // like the stock server. (An earlier generation answered 204 here, which meant
+    // the preflight "passed" and the real request was then blocked — a half-done
+    // state that reads as "cannot reach" in the page.)
     const sourcePatched = fs.readFileSync(path.join(PTF, "pytextfilter.py"), "utf8").includes("def do_OPTIONS");
     const options = await http({ host: "127.0.0.1", port: p1, path: "/", method: "OPTIONS",
       headers: { Origin: "http://127.0.0.1:8080", "Access-Control-Request-Method": "POST" } });
-    if (sourcePatched) {
-      check("patched source with cors off still answers OPTIONS (204)", options.status, 204);
-      check("...but sends NO CORS header — the half-done state", options.headers["access-control-allow-origin"], undefined);
-      console.log("       (source already patched; the 501 baseline is covered by test/editor-session.mjs)");
-    } else {
-      check("an unpatched server answers OPTIONS with 501 — hence the proxy", options.status, 501);
-      check("...and sends no CORS header", options.headers["access-control-allow-origin"], undefined);
-    }
+    check("an unconfigured server answers OPTIONS with 501 — hence the proxy", options.status, 501);
+    check("...and sends no CORS header", options.headers["access-control-allow-origin"], undefined);
+    console.log(`       (source ${sourcePatched ? "already carries the patch" : "is unpatched"}; cors is off in both)`);
   } finally {
     proxy.kill("SIGKILL");
     srv.child.kill("SIGKILL");
@@ -137,6 +134,9 @@ console.log("\n\x1b[1mCORS-patched pyTextFilter: a page can talk to it directly\
     check("OPTIONS answers 204 instead of 501", pre.status, 204);
     check("the preflight echoes the page origin", pre.headers["access-control-allow-origin"], "http://127.0.0.1:8080");
     check("the preflight allows the headers we may send", /content-type/i.test(pre.headers["access-control-allow-headers"] || ""), true);
+    // The transport sends X-Edit-Token when a session carries one, so the
+    // preflight has to list it or the request is refused before it is sent.
+    check("...including the edit token the transport may send", /x-edit-token/i.test(pre.headers["access-control-allow-headers"] || ""), true);
 
     const direct = await http(
       { host: "127.0.0.1", port: p2, path: "/", method: "POST",

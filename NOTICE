@@ -56,17 +56,20 @@ behavioural questions where busybox and Vim disagree.
 
 ## pyTextFilter — Apache License 2.0 (protocol reference)
 
-**pyTextFilter** (Lifu Tang, `~/workspace/pytextfilter`) is licensed under the
-**Apache License, Version 2.0** (`LICENSE.txt`; upstream has no `NOTICE` file).
-It defines the wire protocol the `:e` escape hatch implements: raw body in,
-edited body out, `x-url`/`x-id` metadata, `X-File-Changed`.
+**pyTextFilter** — <https://github.com/edyfox/pytextfilter> — is the earlier tool of
+this project's own author, licensed under the **Apache License, Version 2.0**
+(`LICENSE.txt`; upstream has no `NOTICE` file). It defines the wire protocol the
+`:e` escape hatch implements: raw body in, edited body out, `x-url`/`x-id`
+metadata, `X-File-Changed`.
 
 **No pyTextFilter code is present in this repository.** The transport is a fresh
 implementation of the observable protocol, so the Apache-2.0 obligations that
 would follow from reuse (licence text, notice of modification, `NOTICE`
-propagation) do not apply; the credit is given as a matter of respect, not
-obligation. Apache-2.0 is compatible with this project's MIT licence, so even a
-future snippet could be adopted without relicensing the rest.
+propagation) do not apply. The entry is here to state the relationship, not to
+settle an obligation: the two tools are the same family, and the older one is the
+reason the newer one has a wire protocol to be compatible with. Apache-2.0 is
+compatible with this project's MIT licence, so even a future snippet could be
+adopted without relicensing the rest.
 
 ## TextEditAid — lineage
 

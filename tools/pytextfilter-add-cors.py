@@ -16,16 +16,30 @@ Config forms accepted for `config["server"]["cors"]`:
 
     python3 tools/pytextfilter-add-cors.py ~/workspace/pytextfilter/pytextfilter.py
 
-Re-running upgrades an existing patch in place. Commit the file afterwards; this
-never touches your config, so the feature stays off until you enable it.
+Re-running upgrades an existing patch in place, and re-running it is a no-op. The
+same change is upstream in pyTextFilter itself, so a current checkout needs
+nothing; this tool exists for an older copy and as the canonical definition of
+what the patch is. Commit the file afterwards; this never touches your config, so
+the feature stays off until you enable it.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
 BEGIN = "  # --- jsbarevi CORS begin ---"
 END = "  # --- jsbarevi CORS end ---"
+
+# The markers are matched as WHOLE LINES, not as substrings. Searching for BEGIN as a
+# plain substring finds it two characters into its own line whenever the line carries an
+# extra indent (which a hand-edit, or a previous run of this very tool, can leave), and
+# the replacement then keeps the stray indent and adds a new one: re-running "upgrades"
+# the block by two spaces per run. A line-anchored regex is idempotent by construction.
+BLOCK_RE = re.compile(
+    r"^[ ]*# --- jsbarevi CORS begin ---$\n.*?^[ ]*# --- jsbarevi CORS end ---$",
+    re.MULTILINE | re.DOTALL,
+)
 
 BLOCK = BEGIN + '''
   def __allowed_origins(self):
@@ -56,13 +70,23 @@ BLOCK = BEGIN + '''
       self.send_header("Vary", "Origin")
       return
     self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    # Every request header the transport can send, or the preflight rejects it: the
+    # token is real (X-Edit-Token) and only appears when a session configures one.
     self.send_header("Access-Control-Allow-Headers",
-                     "content-type, x-url, x-id, authorization")
+                     "content-type, x-url, x-id, authorization, x-edit-token")
     self.send_header("Access-Control-Max-Age", "600")
     self.send_header("Vary", "Origin")
 
   def do_OPTIONS(self):
-    """Answer the CORS preflight instead of 501 Unsupported method."""
+    """Answer the CORS preflight — when CORS is enabled, that is.
+
+    With `cors` unset this answers exactly what the stock server answers (501), so
+    installing the patch on a server nobody configured is a true no-op rather than a
+    subtle behaviour change.
+    """
+    if not self.__allowed_origins():
+      self.send_error(501, "Unsupported method (%r)" % self.command)
+      return
     self.send_response(204)
     self.__cors()
     self.send_header("Content-length", "0")
@@ -83,7 +107,17 @@ POST_ANCHOR = '''      self.send_response(200)
 POST_WITH_CORS = '''      self.send_response(200)
       self.send_header("Content-type", "text/plain")
       self.__cors()
-      self.send_header("Content-length", len(content))''' 
+      self.send_header("Content-length", len(content))'''
+# A 500 from a cross-origin request is otherwise indistinguishable from a dead server:
+# the browser blocks the body that says "Invalid request". The error path is exactly
+# where a diagnostic is worth most, so it carries the headers too.
+ERROR_ANCHOR = '''      self.send_response(500)
+      self.send_header("Content-length", len(content))
+      self.send_header("Content-type", "text/plain")'''
+ERROR_WITH_CORS = '''      self.send_response(500)
+      self.send_header("Content-length", len(content))
+      self.send_header("Content-type", "text/plain")
+      self.__cors()'''
 
 
 def main() -> int:
@@ -93,10 +127,8 @@ def main() -> int:
     path = Path(sys.argv[1]).expanduser()
     src = path.read_text()
 
-    if BEGIN in src and END in src:
-        start = src.index(BEGIN)
-        end = src.index(END) + len(END)
-        src = src[:start] + BLOCK + src[end:]
+    if BLOCK_RE.search(src):
+        src = BLOCK_RE.sub(lambda _m: BLOCK, src, count=1)
         action = "upgraded"
     elif "def do_OPTIONS" in src:
         # legacy first-generation patch (no markers): replace from its header
@@ -129,6 +161,11 @@ def main() -> int:
         src = src.replace(POST_ANCHOR, POST_WITH_CORS, 1)
     elif "self.__cors()\n      self.send_header(\"Content-length\", len(content))" not in src:
         print("  note: POST response block not found; edited text stays unreadable cross-origin", file=sys.stderr)
+
+    if ERROR_ANCHOR in src and ERROR_WITH_CORS not in src:
+        src = src.replace(ERROR_ANCHOR, ERROR_WITH_CORS, 1)
+    elif "self.send_header(\"Content-type\", \"text/plain\")\n      self.__cors()" not in src:
+        print("  note: 500 error block not found; a failure stays unreadable cross-origin", file=sys.stderr)
 
     path.write_text(src)
     print(f"{path}: {action}. Enable it with config[\"server\"][\"cors\"] and restart.")

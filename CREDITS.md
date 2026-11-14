@@ -1,16 +1,17 @@
 # Credits and inheritance boundary
 
-Three projects inspired this, one is a specification, one we inherit code from.
-The distinction is legal, not decorative: **busybox is GPLv2-only**, so any code
-copied from it would relicense this whole project. We therefore take behaviour
-from busybox and nvi, never source.
+Three projects inspired this, one is a specification, one we inherit code from —
+and one is **ours**: pyTextFilter, the earlier tool by this project's author whose
+wire protocol `:e` speaks. The distinction is legal, not decorative: **busybox is
+GPLv2-only**, so any code copied from it would relicense this whole project. We
+therefore take behaviour from busybox and nvi, never source.
 
 | Project | License (verified from the file) | How we use it |
 |---|---|---|
 | [**busybox**](https://git.busybox.net/busybox) — `editors/vi.c` | **GPLv2 only** — `LICENSE`: *"distributed under version 2 of the General Public License … Version 2 is the only version of this license which [applies]"* | **Specification only.** No code copied, no line-by-line translation. Read to learn *what* each command does and which cases matter, then implemented in JavaScript from the behaviour. |
 | [**nvi** / nvi2](https://github.com/lichray/nvi2) — Berkeley vi | **BSD-3-clause** — `LICENSE`: Regents of the University of California / Bostic / Verdoolaege / Yuan, 3 clauses, no advertising clause | **Reference only.** Settles what traditional vi does where busybox and Vim disagree (`#`, `S`, `C`/`D`/`Y` aliasing, marks, `:s` scope). No code copied. |
 | [**Input Vim**](https://github.com/matheuskieling/vim-input) — Matheus Kieling | **MIT** — declared in `README.md` under `## License`; upstream ships **no** `LICENSE` file | **Code inherited.** The extension harness and the text↔host adapters derive from this project, and `src/adapters/contenteditable-dom.js` is a port of its `content/handlers/contenteditable-handler.js` (flat-text model, offset ⇄ DOM-position maps, execCommand edits — see that file's header for what was adopted and what was deliberately left out). The MIT notice is preserved in `NOTICE`. |
-| **pyTextFilter** ([`~/workspace/pytextfilter`] — Lifu Tang) | **Apache-2.0** — `LICENSE.txt`: *"Apache License, Version 2.0, January 2004"*, 202 lines, **no `NOTICE` file** | **Protocol reference.** The `:e` escape hatch speaks *its* wire shape (raw body in, edited body out, `x-url`/`x-id`, `X-File-Changed`), so an existing pyTextFilter server works unchanged. **No code copied.** |
+| [**pyTextFilter**](https://github.com/edyfox/pytextfilter) — Lifu Tang, **this project's author** | **Apache-2.0** — `LICENSE.txt`: *"Apache License, Version 2.0, January 2004"*, 202 lines, **no `NOTICE` file** | **Protocol reference, and our own ancestor.** The `:e` escape hatch speaks *its* wire shape (raw body in, edited body out, `x-url`/`x-id`, `X-File-Changed`), so an existing pyTextFilter server works unchanged. **No code copied** — but we maintain the other end too: `tools/pytextfilter-add-cors.py` adds the CORS support `:e` needs, and that change is upstream in pyTextFilter itself, so a stock checkout works without the patch. |
 | [**TextEditAid**](https://github.com/WayneD/TextEditAid) — Wayne Davison | No SPDX identifier — `COPYING.md`: *"The source code here can be freely used however you wish."* (GitHub reports `NOASSERTION`) | **Lineage only.** The original browser→local-editor idea this family descends from. No code copied. |
 
 ### Why the licences do not constrain the design
@@ -88,6 +89,8 @@ harness we inherit is a real piece of engineering.
 To **Wayne Davison** for TextEditAid, which proved twenty years early that the
 right way to edit a browser field is to hand it to a real editor and take it back.
 
-And to **pyTextFilter**, the descendant that is actually still alive: the `:e`
-transport is wire-compatible with it, which is why a server that has been editing
-remote files over SSH for years also serves a browser field with no changes.
+And the one that already existed: [**pyTextFilter**](https://github.com/edyfox/pytextfilter),
+this project's author's own earlier tool — the descendant of TextEditAid that is
+actually still alive. The `:e` transport is wire-compatible with it, which is why a
+server that has been editing remote files over SSH for years also serves a browser
+field with no changes.

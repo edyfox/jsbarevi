@@ -39,15 +39,21 @@ publishing checklist — is in [`docs/EXTENSION.md`](docs/EXTENSION.md).
 
 ### Pointing `:e` straight at pyTextFilter (`:31416`)
 
+[pyTextFilter](https://github.com/edyfox/pytextfilter) is this project's author's
+earlier tool, and `:e` speaks its wire protocol, so a server that has been editing
+remote files over SSH for years serves a browser field with no changes.
+
 The default is `/edit` — the proxy — because a **page cannot** reach
-`127.0.0.1:31416` directly: the response is cross-origin and unreadable without
-`Access-Control-Allow-*`, and pyTextFilter answers the preflight `OPTIONS` with
-`501 Unsupported method ('OPTIONS')`. That is a browser rule, not a setting.
+`127.0.0.1:31416` directly unless the server opts in: the response is cross-origin
+and unreadable without `Access-Control-Allow-*`, and an unconfigured pyTextFilter
+answers the preflight `OPTIONS` with `501 Unsupported method ('OPTIONS')`. That is
+a browser rule, not a setting — the two ways to satisfy it are below.
 
 Two ways to get the direct path:
 
 **A. Patch the server (opt-in, one command).** Adds `do_OPTIONS` and CORS headers,
-gated on `config["server"]["cors"]`, so default behaviour is unchanged:
+gated on `config["server"]["cors"]`, so default behaviour is unchanged. A current
+pyTextFilter checkout already has it; the tool upgrades an older copy:
 
 ```bash
 # 1. add do_OPTIONS + CORS headers to the server (idempotent; re-running upgrades)
@@ -74,11 +80,12 @@ Accepted values for `config["server"]["cors"]`: `False` (default, patch inert),
 `Access-Control-Allow-Origin`, everyone else gets nothing. Revert by deleting the
 key; the patch then does nothing.
 
-**The classic half-done state** (hit for real): the patch is in the file, `OPTIONS`
-answers `204`, and it still fails — because `cors` is missing from the config, so
-no `Access-Control-Allow-Origin` is sent. The preflight "passes" and the real
-request is then blocked. `:e` now names that case instead of reporting "cannot
-reach".
+**Installing the patch without configuring it is a true no-op**: with `cors`
+unset, `OPTIONS` still answers `501` and no CORS header is sent, exactly like the
+stock server. The failure that *does* bite is patched **and** configured with the
+wrong origin: `OPTIONS` answers `204`, but no `Access-Control-Allow-Origin` comes
+back for that origin, so the preflight "passes" and the real request is then
+blocked. `:e` names that case instead of reporting "cannot reach".
 
 Verified: unpatched answers `OPTIONS` with 501 and no CORS header; patched answers
 `204` with the origin echoed, and a page-origin POST is readable.
