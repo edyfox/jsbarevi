@@ -156,6 +156,17 @@ const KEYS = {
  * behaviour would be wrong too, so it is a fair proxy.
  */
 export async function sendKey(session, ch) {
+  // `C-r`, `C-w`, … : a Ctrl chord. Vi owns Ctrl, and `<C-r>` in insert mode is a
+  // command, so the harness has to be able to press one.
+  const ctrl = /^C-([a-z])$/.exec(ch);
+  if (ctrl) {
+    const code = ctrl[1];
+    const vk = code.toUpperCase().charCodeAt(0);
+    await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: code, code: `Key${code.toUpperCase()}`, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 2 });
+    await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: code, code: `Key${code.toUpperCase()}`, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 2 });
+    await sleep(18);
+    return;
+  }
   const state = await evaluate(session, `(() => {
     const badge = document.querySelector('.jsbarevi-badge');
     const prompt = document.querySelector('.jsbarevi-prompt');

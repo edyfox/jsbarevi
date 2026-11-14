@@ -246,6 +246,23 @@ export class TextareaAdapter {
     return `${tag}: ${String(hint).slice(0, 40)}`;
   }
 
+  /**
+   * Insert text into the FIELD at its own caret, then let the normal sync adopt it.
+   *
+   * `<C-r>{register}` lands here: insert mode belongs to the host, so the engine decides
+   * WHICH text and the adapter decides HOW. For a flat field that is `setRangeText` plus
+   * an `input` event — the event is not decoration, it is how a controlled field (React
+   * and friends) learns that its value changed.
+   */
+  _insertFromRegister(text) {
+    const el = this.el;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? start;
+    el.setRangeText(text, start, end, "end");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    this._updateCaret();
+  }
+
   syncFromHost() {
     // applyHostEdit, not setText: in replace mode the engine has to drop what the
     // browser overwrote, so the field can differ from what the host typed.
@@ -471,6 +488,14 @@ export class TextareaAdapter {
       this.onPrompt?.(r.prompt.kind, r.prompt.initial ?? "");
       return;
     }
+    if (r.insertText != null) {
+      // `<C-r>{register}`: the engine chose the text, the host inserts it. Consumed,
+      // because an unconsumed Ctrl-R is a page reload.
+      e.preventDefault();
+      e.stopPropagation();
+      this._insertFromRegister(r.insertText);
+      return;
+    }
     if (!r.handled) return; // insert mode: let the browser type
     // Tell the host glue which key was consumed: an Escape that the page also reacts
     // to (by moving focus) needs a follow-up, and only the adapter knows it fired.
@@ -499,8 +524,7 @@ export class TextareaAdapter {
   }
 
   finishPrompt(kind, value) {
-    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search"
-      : kind === "expression" ? "expression" : null;
+    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search" : null;
     this.engine.submitPrompt(value);
     this._commit();
     this._emitMode();

@@ -34,7 +34,7 @@ A command may only be excluded for one of three reasons:
 | Repeat/undo | `.` `u` `U` |
 | Join/case/indent | `J ~ < >` |
 | Visual | `v` `V` (no block visual) |
-| Registers | `"` `_` `+` `*` `=` (and `"a`-`"z`, `"A`-`"Z`) |
+| Registers | `"` `_` `+` `*` (and `"a`-`"z`, `"A`-`"Z`) |
 | Ex mode | `:` |
 
 Explicitly **out**: `[ ]` (C sections — no referent), `^V` (block visual),
@@ -58,16 +58,18 @@ clipboard. So the unnamed register stays in-engine, and `"+` is the explicit doo
 | `"A`-`"Z` | the append form. Not useful, but leaving it out is a **silent wrong**: `"Ayy` would quietly create a second register named `A` rather than appending. One rule covers it (linewise if either side is) |
 | `"_` | the black hole. Writes go nowhere, including to `""` — that is the whole point |
 | `"+` `"*` | the system clipboard. One clipboard, two spellings: `*` is vim's X11 primary selection, which a browser does not have, so aliasing is the only honest option |
-| `"=` | an expression. Vim evaluates Vimscript; this evaluates **JavaScript**, the same way `:s` translates vim regex to JS rather than emulating POSIX |
+| `<C-r>{register}` | insert-mode insertion. Vim's fastest route from the clipboard into a field, and the one case where a Ctrl key is fatal to leave unconsumed: browser Ctrl-R reloads the page. The engine decides the text; the adapter inserts it, because insert mode belongs to the host |
 
 | Out | Why not |
 |---|---|
 | `"0`, `"1`-`"9`, `"-` | Not one rule but three that interact: they rotate on a linewise or multi-line delete, hold *small* deletes back in `"-` instead, and rotate anyway when that small delete was given a named register (`"adw` fills `"a` and leaves `"-` alone, while `dd` fills `"1` and leaves `"-`). Measured against vim 9.2 and written into `docs/ENGINE.md`; the rotation exists so you can walk back through a session's deletes, which is not what this editor is for, and the small/big split needs a per-operation classification nothing else in the engine has |
 | `.` (last insert) | A whole second recording surface for one case: "repeat the text I typed, not the command". `.` already replays the *command* by diffing a snapshot (`docs/DECISIONS.md` above), and this register would not improve that — it would only add a second, subtly different answer |
 | `q`/`@` (macros) | A replay loop, plus key recording that has to capture insert-mode typing — which belongs to the host, so the recording would be a reconstruction, not a recording. Every failure in this area is a silently wrong buffer |
+| `"=` (expression) | It needs `eval`. In the hosts that matter — a page world like Lark's, an Electron `oc://` page — the **page's CSP refuses it**, so the feature would work in Chrome and fail silently in the others. The same code in every host, or it is not in. (Measured, not assumed: the failure appears in the field's own status line.) |
 
 Scope rule this follows: a register goes in when it is one rule; it stays out when it is
-a state machine (numbered), a second recording surface (`.`), or a replay engine (`@`).
+a state machine (numbered), a second recording surface (`.`), a replay engine (`@`), or a
+capability the host may refuse (`=`).
 
 
 ### Notable inclusions, and why

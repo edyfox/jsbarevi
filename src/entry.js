@@ -135,7 +135,7 @@ function makeUi(el) {
       prompt.style.display = "block";
       // The sigil lives in the input, as it does in vi: ":" for ex, "/" or "?"
       // for search. That is what makes "delete the sigil to leave" expressible.
-      prompt.value = initial || (kind === "ex" ? ":" : kind === "expression" ? "=" : "/");
+      prompt.value = initial || (kind === "ex" ? ":" : "/");
       prompt.dataset.sigil = prompt.value[0];
       prompt.focus();
       prompt.setSelectionRange(prompt.value.length, prompt.value.length);
@@ -192,7 +192,7 @@ export function attach(el, opts = {}) {
     const kind = ui.promptEl.dataset.kind;
     if (e.key === "Enter") {
       e.preventDefault();
-      const value = ui.promptEl.value.replace(/^[:/?=]/, "");
+      const value = ui.promptEl.value.replace(/^[:/?]/, "");
       ui.hidePrompt();
       adapter.finishPrompt(kind, value);
     } else if (e.key === "Escape") {

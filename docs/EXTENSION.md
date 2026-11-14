@@ -131,9 +131,12 @@ The engine never touches `navigator.clipboard`; it is synchronous by contract, a
 clipboard API is not. So the clipboard is a **host capability** passed into the engine
 (`{read: () => string|null, write: (text) => void}`), the same shape as `viewport`:
 
-- `src/adapters/clipboard.js` keeps one cache per page, fed by a `paste` event (the only
-  synchronous source that always works), by our own writes, and by a `readText()` on
-  focus that is attempted but never waited on;
+- the read order is deliberate: `document.execCommand("paste")` first, because it is the
+  only **synchronous** read and the `clipboardRead` permission makes it work without a
+  per-page prompt; then a `paste` event (always available, and the only source in a page
+  world with no extension), then our own writes, then a `readText()` on focus that is
+  attempted but never waited on. `navigator.clipboard.readText()` from a content script
+  is gated by the PAGE's permission — a prompt per site — which is why it is last;
 - a write tries `navigator.clipboard.writeText` and falls back to `execCommand("copy")`
   — which needs the keypress gesture we are already inside, and restores the focus and
   selection it borrows, because in a rich composer that selection is the host's model;
@@ -357,5 +360,5 @@ fall back to `localStorage` (`chrome.storage` is not there), and `:e` needs a
 | Ctrl-W / Ctrl-R are consumed while a field is focused | they are vi's `C-w` / `C-r`; a field that swallowed neither would be a field where vi half-works. Esc or a click outside gives the browser back |
 | Esc never blurs the field | vi's rule; Tab leaves |
 | `:e` needs a local server | by design — it is the "hand this to a real editor" escape hatch, not a remote service |
-| `"+p` can be empty right after a copy made in another app | the engine is synchronous and the browser's clipboard API is not. The host caches what it has been *told* — a `paste` event, our own `"+y`, or a `readText()` on focus — and the status line says "system clipboard unavailable" rather than pretending the clipboard is empty. Adding the `clipboardRead` permission would remove the guess; it is a store-listing change, so it is not in 0.1.0 |
+| `"+p` is empty where `execCommand("paste")` is refused | the extension holds `clipboardRead`, so Chrome is fine; a PAGE world (Lark's custom scheme, an Electron `oc://` window) has no extension permission, so `"+p` falls back to what a `paste` event taught the cache. The status line says "system clipboard unavailable in this host" rather than pretending the clipboard is empty |
 | A page that stops `focusin` in capture on `document` ahead of us | discovery rides that one event; there is no per-field fallback, so such a page would never attach |

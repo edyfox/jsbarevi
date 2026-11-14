@@ -563,7 +563,7 @@ worth documenting is which parts were *measured and then refused*.
 | `"A`-`"Z` | appends to the lowercase name | — |
 | `"_` | nowhere, including `""` | nothing (`register empty`) |
 | `"+` / `"*` | the system clipboard, via the host cache | the host cache |
-| `"=` | set by the expression prompt | re-read on every use |
+| `<C-r>{reg}` | — | inserts that register's text in INSERT mode (the adapter inserts it) |
 
 Measured against vim 9.2 (2026-11-14) and pinned in `oracle/cases/registers.json`,
 where the differential harness re-runs vim at test time:
@@ -597,9 +597,34 @@ you have it: `.` must rotate again, and a small delete must not. That is a state
 wearing a register's clothes.
 
 Also refused: `.` (last inserted text — a second recording surface for one case, while
-`.` already replays the command by diffing) and `q`/`@` (macros — a replay loop whose
-recording would have to reconstruct host-owned typing). `docs/DECISIONS.md` carries the
-same table as a decision record; this file carries the evidence.
+`.` already replays the command by diffing), `q`/`@` (macros — a replay loop whose
+recording would have to reconstruct host-owned typing), and **`=`** (see below).
+`docs/DECISIONS.md` carries the same table as a decision record; this file carries the
+evidence.
+
+### `<C-r>{register}`: the one insert-mode edit the engine performs indirectly
+
+`<C-r>` in INSERT mode is not a convenience, it is a hazard: an unconsumed Ctrl-R is a
+page reload, which loses whatever the user had typed. So the FIRST `<C-r>` is always
+consumed, even when the register can never be read, and the pending state is cleared by
+Esc. The engine then answers the next key with `{insertText}`, and the **adapter** inserts
+it — `setRangeText` plus an `input` event for a textarea, `execCommand("insertText")` for
+a contenteditable, which keeps the host's undo entry and cannot delete a chip the text
+ends inside. Insert mode belongs to the host; this is that rule applied, not broken.
+
+A linewise register inserts its lines without the trailing newline: the newline in the
+register says "this is whole line(s)", it is not a character to type. Measured against
+vim 9.2 (`oracle/cases/registers.json`).
+
+### The `=` register was measured, then removed
+
+It evaluated JavaScript with `new Function`. That works in Chrome's page world and is
+refused by the page's own CSP in the hosts that matter most — Lark serves its UI from a
+custom scheme, and an Electron `oc://` page carries its own policy. A feature that works
+in one home and silently fails in the other two contradicts the only rule this project
+has about hosts: the same code everywhere. A JS-subset interpreter would have been the
+"proper" fix and is a new subsystem, which is exactly what the scope cap exists to
+refuse.
 
 ### The clipboard is a capability, not a register
 
@@ -611,22 +636,30 @@ text and a cursor; it never awaits). So the same shape as `viewport` and `metric
 new Engine({ clipboard: { read: () => string|null, write: (text) => void } })
 ```
 
-`src/adapters/clipboard.js` supplies the browser implementation: a **cache** fed by
+`src/adapters/clipboard.js` supplies the browser implementation, and the order of its
+sources is the whole design:
 
-1. a `paste` event — synchronous, always available, and the only one that reveals text
-   copied in another application before the page asks for it;
-2. our own writes (`"+y`, and Ctrl-C in visual mode);
-3. `readText()` on focus, attempted but never waited on.
+1. **`document.execCommand("paste")`** — the only SYNCHRONOUS read. It works in a content
+   script that declares the extension's `clipboardRead` permission, with no per-page
+   prompt. `navigator.clipboard.readText()` from a content script is gated by the PAGE's
+   permission — a prompt per site — which is why the async API is the last resort.
+   execCommand pastes into the focused element, so a hidden field borrows the focus for
+   one synchronous call and gives it straight back; that is acceptable when the user
+   pressed `"+p` and not on any background refresh.
+2. a `paste` event — synchronous, always available, and the only source in a page world
+   where no extension permission exists (Lark, Electron's `oc://`).
+3. our own writes (`"+y`, and Ctrl-C in visual mode).
+4. `readText()` on focus, attempted and never waited on.
 
-Three consequences that are documented rather than hidden:
+Consequences, documented rather than hidden:
 
-- `"+p` can be empty right after a copy made outside the page — the host says
-  **"system clipboard unavailable"** instead of pretending the clipboard is empty;
+- where every source is unavailable the status line says **"system clipboard unavailable
+  in this host"** instead of pretending the clipboard is empty;
 - a write is best-effort: `navigator.clipboard.writeText` first, `execCommand("copy")`
   as the fallback (it needs the keypress gesture we are inside, and it restores the
   focus and selection it borrows);
-- a page with no clipboard API at all (`native-resource://` in Lark, an Electron page
-  world) makes `"+` report its absence, and the rest of the editor is unaffected.
+- the extension needs `clipboardRead` for source 1; without the permission (a page world)
+  `"+p` degrades to what a `paste` event taught the cache.
 
 The `=` register evaluates **JavaScript**, not Vimscript — the same choice `:s` makes
 when it translates vim's regex instead of emulating POSIX. It runs what the user just

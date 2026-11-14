@@ -73,6 +73,13 @@ export function hostType(engine, key) {
   if (key.length === 1) hostEdit(engine, t.slice(0, c) + key + t.slice(c), c + key.length);
 }
 
+/** The host inserting a register's text at its caret (`<C-r>{register}`). */
+export function hostInsert(engine, text) {
+  const t = engine.hostText;
+  const c = Math.min(engine.cursor, t.length);
+  hostEdit(engine, t.slice(0, c) + text + t.slice(c), c + text.length);
+}
+
 /** Run the same keystrokes in our engine with a minimal host for insert mode. */
 export function runOurs(input, keys, options = {}) {
   const engine = new Engine({ options });
@@ -80,6 +87,9 @@ export function runOurs(input, keys, options = {}) {
   for (const tok of tokenize(keys)) {
     const key = TOKENS[tok] ?? tok;
     const r = engine.feed(key);
+    // `<C-r>{register}`: the engine says which text, the HOST inserts it (so the harness
+    // has to do it too — otherwise the differential would only be testing our half).
+    if (r.insertText != null) { hostInsert(engine, r.insertText); continue; }
     if (!r.handled && engine.mode === Mode.INSERT) hostType(engine, key);
   }
   const before = engine.text.slice(0, engine.cursor);

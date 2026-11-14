@@ -144,36 +144,56 @@ console.log("\n\x1b[1mregisters: what is stored, and where\x1b[0m");
   eq("...which holds the last yank (b), not a", e.registers.read().text, "ccc ");
 }
 
-console.log("\n\x1b[1mthe = register evaluates an expression\x1b[0m");
+console.log("\n\x1b[1mthe = register is refused, not approximated\x1b[0m");
 {
+  // `=` needs eval, and a page world refuses eval under its own CSP (Lark, Electron's
+  // oc://). A feature that works in one host and silently fails in the others is worse
+  // than no feature, so the prefix is rejected outright.
   const e = mk("x\n");
   e.feed('"'); e.feed("=");
-  eq("the prefix opens a prompt", e.prompt, "expression");
-  e.submitPrompt('="a"+"b"');
-  e.feedKeys("p");
-  eq('"=expr then p pastes the value', e.hostText, "xab");
+  eq("the = prefix is an unsupported register", /unsupported register: =/.test(e.status.slice(-1)[0] || ""), true);
+  eq("...no prompt opens", e.prompt, null);
+  eq("...and the next command is swallowed", (() => { e.feedKeys("dd"); return e.hostText; })(), "x");
+}
+
+console.log("\n\x1b[1minsert mode: <C-r>{register}\x1b[0m");
+{
+  const e = mk("alpha beta\ngamma\n");
+  e.feedKeys('"ayw');
+  e.feedKeys("i");
+  eq("<C-r> is consumed (unconsumed, it reloads the page)", e.feed("C-r").handled, true);
+  eq("...the next key picks the register", e.feed("a").insertText, "alpha ");
+}
+{
+  const e = mk("alpha beta\n");
+  e.feedKeys('"ayw');
+  e.feed("i"); e.feed("C-r");
+  eq('i<C-r>" inserts the unnamed register', e.feed('"').insertText, "alpha ");
+}
+{
+  let clip = "from the OS\n";
+  const e = mk("x\n", 0, { clipboard: { read: () => clip, write: () => {} } });
+  e.feed("i"); e.feed("C-r");
+  // A linewise register inserts its lines without the trailing newline: the newline in
+  // the register says "this is whole line(s)", it is not a character to type.
+  eq("<C-r>+ hands the clipboard text to the host", e.feed("+").insertText, "from the OS");
 }
 {
   const e = mk("x\n");
-  e.feed('"'); e.feed("="); e.submitPrompt("=1+2");
-  e.feedKeys("p");
-  eq("an arithmetic expression", e.text, "x3\n");
+  e.feed("i"); e.feed("C-r"); e.feed("Esc");
+  eq("Esc clears a pending <C-r>", e._insertRegPending, false);
+  eq("...so the next key is an ordinary command", e.feed("a").insertText, undefined);
 }
 {
   const e = mk("x\n");
-  e.feed('"'); e.feed("="); e.submitPrompt("=");
-  eq("an empty expression is an empty register", e.registers.read("="), { text: "", linewise: false });
+  e.feed("i"); e.feed("C-r");
+  eq("an unsupported register inside <C-r> reports and inserts nothing",
+    [e.feed("1").insertText, /unsupported register: 1/.test(e.status.slice(-1)[0] || "")], [undefined, true]);
 }
 {
   const e = mk("x\n");
-  e.feed('"'); e.feed("="); e.submitPrompt("=((");
-  eq("a broken expression reports instead of throwing", /Unexpected/.test(e.status.slice(-1)[0] || ""), true);
-  eq("...and leaves the buffer alone", e.hostText, "x");
-}
-{
-  const e = mk("x\n", 0, { options: { expressionRegister: false } });
-  e.feed('"'); e.feed("="); e.submitPrompt("=1+1");
-  eq("a host can turn the = register off", /disabled in this host/.test(e.status.slice(-1)[0] || ""), true);
+  e.feed("i"); e.feed("C-r");
+  eq("an empty register inserts nothing", e.feed("a").insertText, undefined);
 }
 
 console.log("\n\x1b[1mthe system clipboard is a host capability\x1b[0m");

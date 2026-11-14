@@ -123,6 +123,15 @@ async function sendNamedKey(session, name, modifiers = 0) {
 }
 
 async function sendKey(session, ch) {
+  const ctrl = /^C-([a-z])$/.exec(ch);
+  if (ctrl) {
+    const k = ctrl[1];
+    const vk = k.toUpperCase().charCodeAt(0);
+    await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: k, code: `Key${k.toUpperCase()}`, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 2 });
+    await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code: `Key${k.toUpperCase()}`, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers: 2 });
+    await sleep(18);
+    return;
+  }
   const state = (await session.send("Runtime.evaluate", {
     expression: `(() => {
       const el = document.activeElement;
@@ -1176,6 +1185,19 @@ async function main() {
     await typeKeys(session, '"+p');
     check('"+p pastes what the page was told about the clipboard',
       (await field()).includes("piped in"), true);
+
+    // `<C-r>{register}` in insert mode: the most-used route from the clipboard into a
+    // field, and the one where an unconsumed Ctrl-R would reload the page instead.
+    await resetField();
+    await typeKeys(session, '"ayw');
+    await typeKeys(session, "i");
+    await sendKey(session, "C-r");      // the tokenizer has no <C-x> spelling
+    await sendKey(session, "a");
+    check("<C-r>{register} inserts through the host", (await field()).startsWith("alpha alpha beta gamma"), true);
+    check("...the page did not reload", await evaluate(session, "!!window.jsbarevi"), true);
+    check("...and insert mode is still on", await mode(), "INSERT");
+    await sendKey(session, "Escape");
+    check("...and Escape leaves insert mode afterwards", await mode(), "NORMAL");
 
     await resetField();
     await typeKeys(session, '"+yy');

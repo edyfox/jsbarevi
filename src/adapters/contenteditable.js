@@ -151,6 +151,16 @@ export class ContenteditableAdapter {
   // host → engine
   // -------------------------------------------------------------------------
 
+  /** Insert a register's text at the host's own insertion point (`<C-r>{register}`). */
+  _insertFromRegister(text) {
+    let ok = false;
+    try { ok = document.execCommand("insertText", false, text); } catch { ok = false; }
+    if (!ok) { this.onStatus?.("this editor refused the insert", "error"); return; }
+    // The execCommand fires `input`; read the result anyway so a host that suppresses
+    // that event still ends up in sync with what its document now says.
+    this.syncFromHost();
+  }
+
   syncFromHost() {
     const text = getFlatText(this.el);
     const offset = flatOffsetFromSelection(this.el);
@@ -312,6 +322,14 @@ export class ContenteditableAdapter {
 
     const r = this.engine.feed(key);
     this._emitMode();
+    if (r.insertText != null) {
+      // `<C-r>{register}`. execCommand rather than a text-node rewrite: it is the
+      // host's own undo entry, and it cannot delete a chip the register ends inside.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this._insertFromRegister(r.insertText);
+      return;
+    }
 
     if (r.prompt) {
       e.preventDefault();
@@ -349,8 +367,7 @@ export class ContenteditableAdapter {
   }
 
   finishPrompt(kind, value) {
-    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search"
-      : kind === "expression" ? "expression" : null;
+    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search" : null;
     this.engine.submitPrompt(value);
     this._commit();
     this._emitMode();

@@ -8,7 +8,12 @@
 //         inventing a second one it cannot fill.
 //   _     the BLACK HOLE: writes go nowhere and reads get nothing, so `"_dd` deletes
 //         without disturbing the unnamed register (or the clipboard)
-//   =     an expression, evaluated when the register is read
+//
+// NOT here: `=` (the expression register). It needs `eval`/`new Function`, and in the
+// hosts that matter most — a page world like Lark's, an Electron `oc://` page — the
+// page's own CSP refuses it. A feature that works in Chrome and silently fails in the
+// other two homes is worse than no feature: it is the same code in every host, or it is
+// not in.
 //
 // Deliberately NOT here: `"1`–`"9`, `"0` and `"-`. Vim's numbered registers are not one
 // rule but three that interact — they rotate on a linewise or multi-line delete, hold
@@ -42,11 +47,7 @@ export class Registers {
   constructor(opts = {}) {
     this.store = new Map();          // "a".."z" (and the unnamed `"` marker)
     this.clipboard = opts.clipboard || null;
-    this.expression = null;
   }
-
-  /** The `=` register's value, set by the expression prompt. */
-  setExpression(text) { this.expression = text; }
 
   /**
    * Read a register. `name` is null for the unnamed one.
@@ -55,10 +56,6 @@ export class Registers {
   read(name = null) {
     if (name === "_") return null;              // nothing ever goes in, so nothing comes out
     if (isClipboard(name)) return this._readClipboard();
-    if (name === "=") {
-      if (this.expression == null) return null;
-      return { text: this.expression, linewise: false };
-    }
     return this.store.get(name || '"') || null;
   }
 
@@ -79,7 +76,6 @@ export class Registers {
       this._writeClipboard(text, linewise);
       return { ok: true };
     }
-    if (name === "=") return { ok: false, error: "cannot write to the expression register" };
     if (name !== null && !isNamed(name)) return { ok: false, error: `unsupported register: ${name}` };
     if (name === null) { this.store.set('"', entry); return { ok: true }; }
 
@@ -116,7 +112,6 @@ export class Registers {
   names() {
     const out = ["\""];
     for (const key of this.store.keys()) if (key !== '"') out.push(key);
-    if (this.expression != null) out.push("=");
     if (this.clipboard) out.push("+");
     return out;
   }

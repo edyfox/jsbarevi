@@ -6,72 +6,156 @@
       "input": "alpha beta\ngamma\n",
       "keys": "\"aywj\"ap",
       "noPosition": true,
-      "expect": { "text": "alpha beta\ngalpha amma" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "alpha beta\ngalpha amma"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "a linewise yank appended to itself pastes as two lines",
       "input": "alpha beta\ngamma\n",
       "keys": "\"ayy\"Ayy\"ap",
       "noPosition": true,
-      "expect": { "text": "alpha beta\nalpha beta\nalpha beta\ngamma" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "alpha beta\nalpha beta\nalpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "append: charwise onto charwise concatenates inline",
       "input": "alpha beta\ngamma\n",
       "keys": "\"ayw\"Ayw\"ap",
       "noPosition": true,
-      "expect": { "text": "aalpha alpha lpha beta\ngamma" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "aalpha alpha lpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "append: linewise plus charwise puts the new text on its own line",
       "input": "alpha beta\ngamma\n",
       "keys": "\"ayy\"Ayw\"ap",
       "noPosition": true,
-      "expect": { "text": "alpha beta\nalpha beta\nalpha \ngamma" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "alpha beta\nalpha beta\nalpha \ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "append: charwise plus linewise becomes linewise",
       "input": "alpha beta\ngamma\n",
       "keys": "\"ayw\"Ayy\"ap",
       "noPosition": true,
-      "expect": { "text": "alpha beta\nalpha \nalpha beta\ngamma" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "alpha beta\nalpha \nalpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "the black hole leaves the unnamed register alone",
       "input": "one\ntwo\n",
       "keys": "\"ayy\"_ddp",
       "noPosition": true,
-      "expect": { "text": "two\none" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "two\none"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "a register prefix applies to one command only",
       "input": "aaa bbb\nccc ddd\n",
       "keys": "\"aywj\"bywk\"app",
       "noPosition": true,
-      "expect": { "text": "aaaa ccc aa bbb\nccc ddd" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "aaaa ccc aa bbb\nccc ddd"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "an uppercase delete appends to a named register",
       "input": "one\ntwo\nthree\n",
       "keys": "\"add\"Add\"ap",
       "noPosition": true,
-      "expect": { "text": "three\none\ntwo" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "three\none\ntwo"
+      },
+      "engines": [
+        "vim"
+      ]
     },
     {
       "name": "a visual selection yanks into a named register",
       "input": "abcdef\nghijkl\nmnopqr\n",
       "keys": "vj\"ayG\"ap",
       "noPosition": true,
-      "expect": { "text": "abcdef\nghijkl\nmabcdef\ngnopqr" },
-      "engines": ["vim"]
+      "expect": {
+        "text": "abcdef\nghijkl\nmabcdef\ngnopqr"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "insert mode <C-r>{register} inserts the text (named)",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"aywi<C-r>a<Esc>",
+      "noPosition": true,
+      "expect": {
+        "text": "alpha alpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "insert mode <C-r>\" inserts the unnamed register",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"aywi<C-r>\"<Esc>",
+      "noPosition": true,
+      "expect": {
+        "text": "alpha alpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "<C-r> with an empty register inserts nothing",
+      "input": "alpha beta\ngamma\n",
+      "keys": "i<C-r>a<Esc>",
+      "noPosition": true,
+      "expect": {
+        "text": "alpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "<C-r>\" after a linewise yank pastes it in insert mode",
+      "input": "alpha beta\ngamma\n",
+      "keys": "yypi<C-r>\"<Esc>",
+      "noPosition": true,
+      "expect": {
+        "text": "alpha beta\nalpha beta\nalpha beta\ngamma"
+      },
+      "engines": [
+        "vim"
+      ]
     }
   ]
 }

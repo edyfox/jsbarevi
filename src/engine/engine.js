@@ -34,10 +34,6 @@ export class Engine {
       flash: true,
       tabstop: 4,
       shiftwidth: 4,
-      // The `=` register evaluates a JavaScript expression in the page. On unless a
-      // host says otherwise: a page whose CSP refuses `new Function` reports that
-      // instead of failing silently (see _expressionValue).
-      expressionRegister: true,
       ...opts.options,
     };
     this.registers = new Registers({ clipboard: opts.clipboard || null });
@@ -339,42 +335,7 @@ export class Engine {
       if (result.ok && !result.message) this.onStatus("");
       return { handled: true, ex: result };
     }
-    if (kind === "expression") {
-      const text = this._expressionValue(value);
-      if (text === null) { this.pending.reg = null; return { handled: true }; }
-      this.registers.setExpression(text);
-      return { handled: true, expression: text };
-    }
     return { handled: true };
-  }
-
-  /**
-   * Evaluate the `=` register's expression.
-   *
-   * The body is JAVASCRIPT, not Vimscript: the `:s` regex contract already translates
-   * from vim's syntax to the engine we actually have, and pretending to speak Vimscript
-   * would be a worse lie than the one we are avoiding. What runs is what the user just
-   * typed, in the page — the same authority as their devtools console, which is the
-   * only thing that makes `"=` useful.
-   *
-   * Returns the string, "" for an empty expression, or null when it failed (the status
-   * line has already said why: a CSP that forbids `new Function` is the interesting one).
-   */
-  _expressionValue(source) {
-    if (this.options.expressionRegister === false) {
-      this.onStatus("the = register is disabled in this host", "error");
-      return null;
-    }
-    const expr = String(source == null ? "" : source).replace(/^=/, "").trim();
-    if (!expr) return "";
-    try {
-      const fn = new Function(`"use strict";return (${expr});`);
-      const value = fn();
-      return value == null ? "" : String(value);
-    } catch (err) {
-      this.onStatus(`= ${(err && err.message) || "expression failed"}`, "error");
-      return null;
-    }
   }
 
   // --- normal mode ---------------------------------------------------------
@@ -579,17 +540,11 @@ export class Engine {
     const count = this._takeCount(1);
 
     if (kind === "register") {
-      // Supported: a-z, "+" (the system clipboard), "=" (an expression), and `""`
-      // for the unnamed register. Anything else is REFUSED here, before the command
-      // runs: vim's "1-"9 and "-" are deliberately not implemented (registers.js says
-      // why), and a half-executed `"1dd` that deleted the line and stored it nowhere
-      // would be worse than an error.
-      if (key === "=") {
-        // Vim prompts for the expression here; the register applies to the next command.
-        p.reg = "=";
-        this.prompt = "expression";
-        return { handled: true, prompt: { kind: "expression", initial: "=" } };
-      }
+      // Supported: a-z, "+"/"*" (the system clipboard) and `""` for the unnamed
+      // register. Anything else is REFUSED here, before the command runs: vim's
+      // "1-"9, "-" and "=" are deliberately not implemented (registers.js says why),
+      // and a half-executed `"1dd` that deleted the line and stored it nowhere would
+      // be worse than an error.
       if (!isClipboard(key) && key !== '"' && key !== "_" && !isNamed(key)) {
         // Vim rejects the whole command (E354) rather than falling back to the unnamed
         // register, so the next key is swallowed: `"1dd` must not delete the line.
@@ -1645,7 +1600,7 @@ export class Engine {
     if (!reg || reg.text === "") {
       this.onStatus(isClipboard(asked)
         ? "system clipboard unavailable in this host"
-        : asked === "=" ? "empty expression register" : "register empty", "error");
+        : "register empty", "error");
       return { handled: true };
     }
     const text = this.text;
@@ -1754,8 +1709,22 @@ export class Engine {
   }
 
   _insertKey(key) {
+    // `<C-r>{register}` inserts a register's text — the fast way to bring the system
+    // clipboard into a field without leaving insert mode. Two rules matter more than
+    // the feature: the FIRST Ctrl-R must be consumed even when the register can never
+    // work (an unconsumed Ctrl-R is a page reload, which loses the user's work), and
+    // the pending state must not survive Esc.
+    if (this._insertRegPending) {
+      this._insertRegPending = false;
+      return this._insertRegister(key);
+    }
+    if (key === "C-r") {
+      this._insertRegPending = true;
+      return { handled: true };
+    }
     if (key === "Esc") {
       const entry = this.insertEntry;
+      this._insertRegPending = false;
       this.insertEntry = null;
       this.replaceSession = null;
       this.mode = Mode.NORMAL;
@@ -1777,6 +1746,26 @@ export class Engine {
     }
     // insert mode belongs to the host
     return { handled: false };
+  }
+
+  /**
+   * The value for `<C-r>{register}`: the engine decides WHAT, the adapter does the
+   * inserting (insert mode belongs to the host, and a textarea and a rich composer
+   * insert text in two different ways).
+   */
+  _insertRegister(name) {
+    const asked = name === '"' ? null : name;
+    // null is the unnamed register, which is a legitimate target: `i<C-r>"`.
+    if (asked !== null && !isClipboard(asked) && asked !== "_" && !isNamed(asked)) {
+      this.onStatus(`unsupported register: ${name}`, "error");
+      return { handled: true };
+    }
+    const reg = this.registers.read(asked);
+    if (!reg || reg.text === "") {
+      this.onStatus(isClipboard(asked) ? "system clipboard unavailable in this host" : "register empty", "error");
+      return { handled: true };
+    }
+    return { handled: true, insertText: reg.text };
   }
 
   /**
@@ -1867,8 +1856,11 @@ export class Engine {
     // The register prefix works on a visual yank/delete too (`vj"ay`). It used to be
     // collected only in normal mode, so the prefix was silently ignored here and the
     // yank went to the unnamed register — the same "wrong beats missing" trap.
-    if (p.awaiting === "register") return this._consumeArgument("register", key);
-    if (key === '"') { p.awaiting = "register"; return { handled: true }; }
+    //
+    // `"` is ALSO a text-object target (`va"`, `vi"`), so a pending i/a prefix owns the
+    // key: collecting it as a register first broke `va"d`, which the differential caught.
+    if (!p.textObj && p.awaiting === "register") return this._consumeArgument("register", key);
+    if (!p.textObj && key === '"') { p.awaiting = "register"; return { handled: true }; }
     if (key === "V" && this.mode === Mode.VISUAL_LINE) { this.mode = Mode.NORMAL; this.visual = null; return { handled: true }; }
     if (key === "v") { this.mode = Mode.VISUAL; return { handled: true }; }
     if (key === "V") { this.mode = Mode.VISUAL_LINE; return { handled: true }; }

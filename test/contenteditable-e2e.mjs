@@ -17,7 +17,7 @@ import { createServer } from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { launchChrome, openPage, evaluate, waitFor, typeKeys, sleep } from "./lib/cdp.mjs";
+import { launchChrome, openPage, evaluate, waitFor, typeKeys, sendKey, sleep } from "./lib/cdp.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json" };
@@ -221,6 +221,32 @@ async function main() {
     // ---- :version reports the build --------------------------------------
     await typeKeys(page, ":version<CR>");
     check("status line carries the build", (await evaluate(page, "document.querySelector('.jsbarevi-line').textContent")).startsWith("jsbarevi 0.1.0+"), true);
+    // ---------------------------------------------------------------------
+    // `<C-r>{register}` in a rich composer.
+    //
+    // Insert mode belongs to the host, so the engine hands the adapter the text and
+    // the adapter inserts it with execCommand at the host's own caret — the one way
+    // that keeps the host's undo entry and cannot delete a chip the text ends inside.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1m<C-r>{register} in a rich composer\x1b[0m");
+    // Earlier cases have edited this fixture, so start from a known document.
+    await evaluate(page, `(() => {
+      const el = document.getElementById('editor');
+      el.textContent = "hello world";
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      return true;
+    })()`);
+    await sleep(60);
+    await focus();
+    await typeKeys(page, '"ayw');
+    await typeKeys(page, "i");
+    await sendKey(page, "C-r");
+    await sendKey(page, "a");
+    check("the register text landed in the DOM", (await domText()).startsWith("hello hello world"), true);
+    check("...and the engine agrees", (await text()).startsWith("hello hello world"), true);
+    await typeKeys(page, "<Esc>");
+    check("...and NORMAL still works after Esc", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
+
   } finally {
     try { page?.close(); } catch { /* ignore */ }
     child.kill("SIGKILL");

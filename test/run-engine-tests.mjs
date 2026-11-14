@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { Engine, Mode } from "../src/engine/engine.js";
 // ONE definition of "the host types", shared with the differential driver: a second
 // copy silently kept typing like plain insert after replace mode existed.
-import { hostType, normalise } from "./lib/engine-driver.mjs";
+import { hostType, hostInsert, normalise } from "./lib/engine-driver.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -28,6 +28,8 @@ export function drive(engine, keys) {
   for (const tok of keys.match(/<[A-Za-z-]+>|[\s\S]/g) || []) {
     const key = norm(tok);
     const r = engine.feed(key);
+    // `<C-r>{register}`: the host inserts what the engine chose.
+    if (r.insertText != null) { hostInsert(engine, r.insertText); continue; }
     if (!r.handled && engine.mode === Mode.INSERT) hostType(engine, key);
     if (r.prompt) return { prompt: r.prompt };
   }
