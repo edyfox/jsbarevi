@@ -715,6 +715,105 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   eq("...and g^ the first non-blank of the line", noWindow.cursor, 0);
 }
 
+console.log("\n\x1b[1mthe :e / :w / :q session commands\x1b[0m");
+{
+  // The ex layer drives the editor transport. Nothing had ever run these three together,
+  // so the session API's write/close were dead as far as the suite was concerned.
+  const calls = [];
+  const session = {
+    open: () => { calls.push("open"); return { ok: true, message: "" }; },
+    write: () => { calls.push("write"); return { ok: true, message: "" }; },
+    close: (bang) => { calls.push(`close:${!!bang}`); },
+  };
+  const e = mk("x\n", 0, { session });
+  e.feed(":"); e.submitPrompt("e");
+  eq(":e opens the transport", calls, ["open"]);
+  e.feed(":"); e.submitPrompt("w");
+  eq(":w writes", calls, ["open", "write"]);
+  e.feed(":"); e.submitPrompt("wq");
+  eq(":wq writes then closes", calls.slice(-2), ["write", "close:false"]);
+  e.feed(":"); e.submitPrompt("q");
+  eq(":q closes", calls.slice(-1), ["close:false"]);
+  e.feed(":"); e.submitPrompt("q!");
+  eq(":q! closes with bang", calls.slice(-1), ["close:true"]);
+}
+{
+  // A field is not a file: :e with an argument and :w with no transport must say so.
+  const e = mk("x\n");
+  e.feed(":"); eq(":e with a filename is refused", /no file/.test(e.submitPrompt("e foo.txt").ex.message), true);
+  e.feed(":"); eq(":e without a transport says so", /no editor transport/.test(e.submitPrompt("e").ex.message), true);
+  e.feed(":"); eq(":w without a transport says so", /no editor transport/.test(e.submitPrompt("w").ex.message), true);
+  e.feed(":"); eq(":q without a transport is harmless", e.submitPrompt("q").ex.ok, true);
+}
+
+console.log("\n\x1b[1mthe host-facing engine API (a coverage sweep found these unrun)\x1b[0m");
+{
+  // A DOM caret is a position BETWEEN characters; vi's cursor is a character, and a
+  // caret sitting on a newline has to clamp back onto the line.
+  const e = mk("abc\ndef\n");
+  e.setCursorFromHost(5);
+  eq("setCursorFromHost adopts the host caret", e.cursor, 5);
+  e.setCursorFromHost(3);
+  eq("...and clamps a caret sitting on the newline", e.cursor, 2);
+  // A caret move with no text change is its own host event (arrow keys, a click, an IME
+  // caret jump): adopt the caret and change nothing. Nothing had ever run this path.
+  e.feedKeys("i");
+  e.applyHostEdit(e.hostText, 4);
+  eq("a caret-only host edit moves the cursor and keeps the text", [e.cursor, e.hostText], [4, "abc\ndef"]);
+}
+{
+  // The mouse path: a drag becomes VISUAL, a click inside an existing selection trims it.
+  const e = mk("abcdef\nghij\n", 0);
+  e.enterVisualFromHost(1, 4);
+  eq("a drag opens VISUAL", e.mode, "VISUAL");
+  eq("...with the dragged text selected", e.visualText(), "bcde");
+  e.extendVisualToClick(2, 1, 4);
+  eq("a click inside the selection moves the near boundary", e.visualText(), "cde");
+  e.extendVisualToClick(4, 1, 4);
+  eq("a click after the selection keeps its start", e.visualText(), "bcde");
+}
+{
+  // reset() is what an adapter calls when it lets go of a field.
+  const e = mk("abc\n");
+  e.feed(":"); e.mode = "VISUAL";
+  e.reset();
+  eq("reset returns to NORMAL", e.mode, "NORMAL");
+  eq("...and drops the prompt", e.prompt, null);
+  eq("...and the visual anchor", e.visual, null);
+}
+{
+  const scrolled = [];
+  const host = { viewport: () => ({ top: 0, height: 3 }), onScroll: (line) => scrolled.push(line) };
+  const e = mk("l1\nl2\nl3\nl4\nl5\n", 0, host);
+  e.feed("C-e");
+  eq("C-e asks the host to scroll one line down", scrolled, [1]);
+  eq("...and leaves the cursor alone", e.cursor, 0);
+  e.feed("C-y");
+  eq("C-y asks for one line up", scrolled, [1, 0]);
+  // The cursor is the host's to move once the window moves: we can only ask for the
+  // scroll, and every adapter re-reads the viewport afterwards.
+  const bare = mk("a\nb\n");
+  bare.feed("C-e");
+  eq("C-e without a viewport reports it", /no viewport on this host/.test(bare.status.slice(-1)[0] || ""), true);
+  // A host may set a viewport and no scroll callback at all: the default sink must exist
+  // (it is the one never-entered function left in engine.js after the sweep).
+  const quiet = mk("a\nb\n", 0, { viewport: () => ({ top: 0, height: 2 }) });
+  quiet.feed("C-e");
+  eq("a viewport with no onScroll is harmless", quiet.status.length, 0);
+}
+{
+  const e = mk("hello world\nsecond\n", 0);
+  e.feed("C-g");
+  eq("^G reports line, column and character count",
+    /line 1 of 2 · col 1 · 19 chars/.test(e.status.slice(-1)[0] || ""), true);
+}
+{
+  const e = mk("x\n");
+  e.feed(":");
+  const r = e.submitPrompt("set");
+  eq(":set with no arguments lists the options", /autoindent/.test(r.ex.message), true);
+}
+
 console.log("\n\x1b[1mtheme detection (adapters/theme.js)\x1b[0m");
 {
   // Which palette a page needs is a contrast question, not a taste question: text goes

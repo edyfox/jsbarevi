@@ -108,14 +108,6 @@ export class Registers {
     return { text: prev.text + entry.text, linewise: false };
   }
 
-  /** Everything a diagnostic wants to know, without leaking page content into logs. */
-  names() {
-    const out = ["\""];
-    for (const key of this.store.keys()) if (key !== '"') out.push(key);
-    if (this.clipboard) out.push("+");
-    return out;
-  }
-
   _readClipboard() {
     if (!this.clipboard) return null;
     let value = null;

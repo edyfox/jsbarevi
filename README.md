@@ -21,6 +21,7 @@ npm run test:e2e             # real headless Chrome, real key events
 npm run test:ext             # the PACKAGED extension in Chrome for Testing (29)
 npm run test:ce              # contenteditable composer: chips, host keymap, host model
 npm run test:matrix          # registers x every command form that writes one
+npm run coverage             # V8 block coverage: functions that never ran
 npm run test:oracle          # the reference editors themselves
 
 npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied
@@ -411,6 +412,12 @@ reproduces **vim's** buffer, `+` mirrors it, `_` writes nothing, `A` appends, an
 unsupported name aborts the command. Two pre-existing motion bugs fell out of it
 (`t` under an operator, and where `{` lands); both are fixed and pinned in
 `oracle/cases/motions.json`.
+
+`npm run coverage` answers a different question — *did this code ever run at all?* — and
+it has already retired a whole class of "works until you try it": `*` and `#` were broken
+for everyone (`\<`/`\>` are vim syntax, literal `<` to JavaScript), `U` only worked after
+insert mode, and one switch arm was unreachable. Engine function coverage is now 98/98,
+with the method and the findings written up in `docs/ENGINE.md`.
 
 `tools/audit-undo.mjs` adds the sequence axis, and it needs no reference editor
 because it is an invariant rather than a comparison:

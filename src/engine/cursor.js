@@ -57,8 +57,3 @@ export function prevLine(text, i) {
 export function skipBlank(text, i) {
   return B.firstNonBlank(text, i);
 }
-
-/** Last character of the buffer. */
-export function lastChar(text) {
-  return Math.max(0, B.lastCharOffset(text, Math.max(0, text.length - 1)));
-}

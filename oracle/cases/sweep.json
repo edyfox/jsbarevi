@@ -1,0 +1,282 @@
+{
+  "about": "Pinned by the coverage sweep (tools/coverage.mjs) on 2026-11-14: features that DECISIONS.md claims and that no test had ever executed. `*` and `#` were BROKEN (the pattern was built with vim's `\\<`/`\\>`, which JavaScript reads as a literal '<', so the search matched nothing and the cursor never moved), `U` did nothing after any non-insert change, and the search did not wrap. Sentence motions and the shift commands were correct but never run. U's cursor column is approximate — vim records it at the moment of the first change and we cannot reproduce that — so those cases compare the BUFFER only (docs/DECISIONS.md, 'Deliberately approximated').",
+  "cases": [
+    {
+      "name": "* jumps to the next occurrence of the word under the cursor",
+      "input": "alpha beta alpha gamma\ndelta alpha\n",
+      "keys": "*",
+      "expect": {
+        "text": "alpha beta alpha gamma\ndelta alpha\n",
+        "line": 1,
+        "col": 12
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "# jumps backwards",
+      "input": "alpha beta alpha gamma\ndelta alpha\n",
+      "keys": "6l#",
+      "expect": {
+        "text": "alpha beta alpha gamma\ndelta alpha\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "* twice reaches the next line",
+      "input": "alpha beta alpha gamma\ndelta alpha\n",
+      "keys": "**",
+      "expect": {
+        "text": "alpha beta alpha gamma\ndelta alpha\n",
+        "line": 2,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "* then n continues in the same direction",
+      "input": "alpha beta alpha gamma\ndelta alpha\n",
+      "keys": "*n",
+      "expect": {
+        "text": "alpha beta alpha gamma\ndelta alpha\n",
+        "line": 2,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "search wraps around the end of the buffer",
+      "input": "alpha beta gamma\ndelta epsilon\n",
+      "keys": "4l*",
+      "expect": {
+        "text": "alpha beta gamma\ndelta epsilon\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": ") moves to the next sentence",
+      "input": "One. Two. Three.\n",
+      "keys": ")",
+      "expect": {
+        "text": "One. Two. Three.\n",
+        "line": 1,
+        "col": 6
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "( moves to the previous sentence",
+      "input": "One. Two. Three.\n",
+      "keys": "G$(",
+      "expect": {
+        "text": "One. Two. Three.\n",
+        "line": 1,
+        "col": 11
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": ">> shifts the line right by shiftwidth",
+      "input": "a\nb\nc\n",
+      "keys": ">>",
+      "options": {
+        "shiftwidth": 4,
+        "expandtab": true
+      },
+      "expect": {
+        "text": "    a\nb\nc\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "<< leaves an unindented line alone",
+      "input": "        a\nb\nc\n",
+      "keys": "j<<",
+      "options": {
+        "shiftwidth": 4,
+        "expandtab": true
+      },
+      "expect": {
+        "text": "        a\nb\nc\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "2>> shifts two lines",
+      "input": "a\nb\nc\nd\n",
+      "keys": "2>>",
+      "options": {
+        "shiftwidth": 4,
+        "expandtab": true
+      },
+      "expect": {
+        "text": "    a\n    b\nc\nd\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": ">j shifts over a motion",
+      "input": "a\nb\nc\n",
+      "keys": ">j",
+      "options": {
+        "shiftwidth": 4,
+        "expandtab": true
+      },
+      "expect": {
+        "text": "    a\n    b\nc\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U restores the line after a delete-before-cursor",
+      "input": "abcdef\nsecond\n",
+      "keys": "llXU",
+      "noPosition": true,
+      "expect": {
+        "text": "abcdef\nsecond\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U restores the whole line after two deletes",
+      "input": "abcdef\nsecond\n",
+      "keys": "xxU",
+      "noPosition": true,
+      "expect": {
+        "text": "abcdef\nsecond\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U survives moving to another line and back",
+      "input": "abc\ndef\n",
+      "keys": "lXjllkU",
+      "noPosition": true,
+      "expect": {
+        "text": "abc\ndef\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U on another line still restores the changed line",
+      "input": "abcdef\nsecond\n",
+      "keys": "xjU",
+      "noPosition": true,
+      "expect": {
+        "text": "abcdef\nsecond\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U restores text typed in insert mode",
+      "input": "abcdef\nsecond\n",
+      "keys": "iXYZ<Esc>U",
+      "noPosition": true,
+      "expect": {
+        "text": "abcdef\nsecond\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U is itself undoable",
+      "input": "abcdef\n",
+      "keys": "xUu",
+      "noPosition": true,
+      "expect": {
+        "text": "bcdef\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "U does nothing after a linewise delete removed the line",
+      "input": "a\nb\nc\n",
+      "keys": "ddU",
+      "noPosition": true,
+      "expect": {
+        "text": "b\nc\n"
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": ". repeats a shift (the only path that uses Engine._shift)",
+      "input": "a\nb\nc\n",
+      "keys": ">>.",
+      "options": {
+        "shiftwidth": 4,
+        "expandtab": true
+      },
+      "expect": {
+        "text": "        a\nb\nc\n",
+        "line": 1,
+        "col": 9
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": ". repeats a shift over a motion",
+      "input": "a\nb\nc\n",
+      "keys": ">>j.",
+      "options": {
+        "shiftwidth": 4,
+        "expandtab": true
+      },
+      "expect": {
+        "text": "    a\n    b\nc\n",
+        "line": 2,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

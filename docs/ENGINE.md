@@ -689,6 +689,42 @@ to registers — pasting a register is simply what made them visible as text):
   the range is `[start(a), start(b))`. `d}` from a normal line is correct now; the
   empty-line case above is the residue.
 
+## The coverage sweep, and what it found
+
+`npm run coverage` (`tools/coverage.mjs`) runs every Node-hosted suite under
+`NODE_V8_COVERAGE`, merges the block coverage, and reports **functions never entered**
+plus the multi-line spans that never executed. It exists because of the register matrix:
+a rule that lives in one branch and is forgotten in a sibling is a coverage question, and
+"the user found it" is not a test strategy.
+
+Three details make the report trustworthy rather than decorative:
+
+- **Function coverage, not line painting.** V8 emits a zero-count range for a function's
+  parameter list, so a naive per-line rule marks `submitPrompt(value) {` as dead while it
+  ran 18 times. The first version of this tool reported 921 "dead blocks", almost all of
+  them that artefact. A function counts as entered when the MAX count over its ranges is
+  positive, and a zero-count range only matters when it sits *inside* a function that ran.
+- **`--no-opt` for the children.** TurboFan inlining hides a small function's own counter,
+  which is how `_shift` reported as never entered while `>>` demonstrably shifted lines.
+- **Browser-only modules are excluded from the claim.** `theme.js` and
+  `editor-session.js` are DOM/HTTP code: their coverage comes from the browser suites'
+  own assertions, not from this sweep. Saying "97 %" about them would be a lie in the
+  safe direction, which is still a lie.
+
+First run, engine at 86/97 functions, found:
+
+| Finding | Verdict |
+|---|---|
+| `*` and `#` **never moved the cursor** | The pattern was built with vim's `\<` / `\>`, which JavaScript reads as a literal `<`. Nothing had ever run that line. Fixed to `\b`, and the search now **wraps** like `'wrapscan'` |
+| `U` did nothing except after insert mode | It only had a snapshot from `_enterInsert`. Now a change to the current line records the line as it was *before* that first change, `U` restores it as an undoable change, the snapshot survives moving away and back, and a change in line COUNT drops it (so `ddU` restores nothing, like vim) |
+| `case "<": case ">":` in the key switch | **Unreachable** — `>>` is caught by the operator branch first. Deleted; `_shift` survives only for `.` repeat, which is now pinned by a test |
+| `buffer.charCount`, `cursor.lastChar`, `HttpEditorSession.describe`, `registers.names` | **Dead** — no caller in `src/`, `test/` or `tools/`. Deleted |
+| sentence motions `( )`, shift `>> << >j`, `:e/:w/:q`, `C-e/C-y`, `^G`, `:set` | Correct but **never executed**. Pinned in `oracle/cases/sweep.json` (20 cases against vim) and `test/unit.mjs` |
+
+After: **engine 98/98 functions, buffer 28/28, cursor 8/8, ex 16/16, registers 9/9**.
+The sweep is part of the record, not a one-off: `npm run coverage` prints the table and
+writes `.coverage/summary.md`.
+
 ## The cursor never leaves the field
 
 Vim keeps the cursor inside the window; a browser field does not, and our block caret is

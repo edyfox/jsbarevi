@@ -139,11 +139,6 @@ export function clampToLineEnd(text, reference, offset) {
   return offset;
 }
 
-/** Total number of lines whose text is non-empty (used by `%` status). */
-export function charCount(text) {
-  return [...text].length;
-}
-
 // --- words -----------------------------------------------------------------
 // Traditional vi: a "word" is a run of [A-Za-z0-9_]; a run of other non-blank
 // characters is also a word (punctuation counts as a word of its own); runs of

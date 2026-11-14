@@ -71,6 +71,16 @@ Scope rule this follows: a register goes in when it is one rule; it stays out wh
 a state machine (numbered), a second recording surface (`.`), a replay engine (`@`), or a
 capability the host may refuse (`=`).
 
+### Where we are approximate, and say so
+
+- **`U`'s cursor column.** The line is restored exactly (pinned against vim in
+  `oracle/cases/sweep.json`), but vim records the column at the moment of the first change
+  and we cannot reproduce it from our state; we keep the current column, clamped. The
+  differential compares the buffer only for `U`.
+- **`C-e` / `C-y` cannot move the cursor.** Vim moves the cursor down when scrolling would
+  push it out of the window. The window belongs to the host, so the engine can only *ask*
+  for a scroll (`onScroll`) and the adapter re-reads the viewport afterwards.
+
 
 ### Notable inclusions, and why
 

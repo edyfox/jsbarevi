@@ -4,3 +4,4 @@ oracle/out/
 .venv/
 node_modules/
 dist/
+.coverage/

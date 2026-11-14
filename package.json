@@ -22,7 +22,8 @@
     "test:all": "node tools/stamp-build.mjs && node test/audit-undo.mjs && node test/dev-server.mjs && node test/cursor.mjs && node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs && node test/registers-matrix.mjs && node test/e2e-cdp.mjs && node test/contenteditable-e2e.mjs && node tools/build-extension.mjs --no-zip && node test/extension-e2e.mjs && node test/lark-payload.mjs",
     "lark:payload": "node tools/lark-payload.mjs --print-install",
     "test:lark": "node test/lark-payload.mjs",
-    "test:matrix": "node test/registers-matrix.mjs"
+    "test:matrix": "node test/registers-matrix.mjs",
+    "coverage": "node tools/coverage.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

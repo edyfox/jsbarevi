@@ -74,10 +74,6 @@ export class HttpEditorSession {
       });
   }
 
-  describe() {
-    return `[editor] ${this.url}`;
-  }
-
   /** Returns immediately: `:e` is asynchronous by nature (a human is editing). */
   open() {
     if (this.busy) return { ok: false, message: "editor session already open" };

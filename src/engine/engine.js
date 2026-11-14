@@ -261,6 +261,8 @@ export class Engine {
       this.pending = this._emptyPending();
       return { handled: true };
     }
+    const before = this.state.text;
+    const preCursor = this.state.cursor;
     let res;
     if (this.mode === Mode.INSERT) {
       res = this._insertKey(key);
@@ -273,6 +275,15 @@ export class Engine {
     // One undo block per change command; insert mode keeps the block open until
     // Esc, so the command that opened insert and the typing undo together.
     if (this.mode === Mode.NORMAL) this._closeUndo();
+    // `U`'s snapshot, taken before the first change to this line (see _restoreLine).
+    if (this.state.text !== before) {
+      const line = before === this.state.text ? 0 : B.lineNumber(before, Math.min(preCursor, Math.max(0, before.length - 1)));
+      if (!this.lineSnapshot || this.lineSnapshot.line !== line) {
+        this.lineSnapshot = { line, text: B.lineText(before, B.lineOffset(before, line)) };
+      }
+      if (B.lineCount(this.state.text) !== B.lineCount(before)) this.lineSnapshot = null;
+      void preCursor;
+    }
     return res;
   }
 
@@ -501,7 +512,6 @@ export class Engine {
       case "S": { const c = count(); this._applyLinewiseOperator("c", c); return { handled: true, edit: true, enterInsert: true }; }
       case "~": return this._toggleCase(count());
       case "J": return this._join(count());
-      case "<": case ">": return this._shift(count(), key === ">");
       case "p": case "P": return this._put(count(), key === "P");
       case "u": return this._undo();
       case "U": return this._restoreLine();
@@ -952,7 +962,10 @@ export class Engine {
       case "*": case "#": {
         const word = this._wordUnderCursor();
         if (!word) return null;
-        this.lastSearch = `\\<${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\>`;
+        // `\\b`, not vim's `\\<` / `\\>`: those are VIM syntax and JS reads them as a
+        // literal "<", so `*` searched for "<alpha>" and never moved (found by the
+        // coverage sweep — nothing had ever run this line).
+        this.lastSearch = `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`;
         this.lastSearchForward = name === "*";
         return this._searchMotion(this.lastSearch, name === "*", count);
       }
@@ -1033,6 +1046,21 @@ export class Engine {
     return text.slice(a, b);
   }
 
+  /** The same pattern from the other end of the buffer — `'wrapscan'` is on by default. */
+  _searchWrap(text, re, pos, forward) {
+    re.lastIndex = 0;
+    if (forward) {
+      const m = re.exec(text);
+      return m && m.index <= pos ? m.index : null;
+    }
+    let best = -1, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index >= pos) best = m.index;
+      if (m[0] === "") re.lastIndex++;
+    }
+    return best >= 0 ? best : null;
+  }
+
   _searchMotion(pattern, forward, count) {
     let re;
     try {
@@ -1066,8 +1094,13 @@ export class Engine {
         found = best;
       }
       if (found < 0) {
-        this.onStatus(pattern + (forward ? ": not found" : ": not found backwards"), "error");
-        break;
+        // vim wraps by default ('wrapscan'): search from the other end before giving up.
+        const wrapped = this._searchWrap(text, re, pos, forward);
+        if (wrapped == null) {
+          this.onStatus(pattern + (forward ? ": not found" : ": not found backwards"), "error");
+          break;
+        }
+        found = wrapped;
       }
       pos = found;
     }
@@ -1592,6 +1625,7 @@ export class Engine {
     return { handled: true, edit: true };
   }
 
+  /** Shift the cursor's line(s) — the `.` repeat path for `>>`/`<<` (see _repeat). */
   _shift(count, right) {
     const startLine = B.lineNumber(this.text, this.state.cursor);
     return this._shiftLines(
@@ -1677,14 +1711,32 @@ export class Engine {
     return { handled: true, edit: true };
   }
 
+  /**
+   * `U`: undo every change to THIS line, back to how it looked before its first change.
+   *
+   * Measured against vim 9.2: `XU` and `xxU` restore the whole line, the snapshot
+   * survives moving away and coming back, `U` is itself undoable (`xUu` gives the
+   * deleted text back), a line with no changes is a no-op, and a linewise delete
+   * clears it (`ddU` restores nothing) — so the snapshot is dropped whenever the buffer
+   * gains or loses lines, because the line mapping is no longer trustworthy.
+   */
   _restoreLine() {
-    if (this.lineSnapshot == null) { this.onStatus("no line change to restore", "error"); return { handled: true }; }
+    const snap = this.lineSnapshot;
     const text = this.text;
-    const line = B.lineNumber(text, this.state.cursor);
+    if (!snap || snap.line >= B.lineCount(text)) { this.onStatus("no line change to restore", "error"); return { handled: true }; }
+    const col = this.state.cursor - B.lineStart(text, this.state.cursor);
+    this._pushUndo({ text, cursor: this.state.cursor });
     const lines = text.split("\n");
-    lines[line] = this.lineSnapshot;
+    lines[snap.line] = snap.text;
     this._setText(lines.join("\n"));
-    this.state.cursor = B.firstNonBlank(this.state.text, B.lineOffset(this.state.text, line));
+    // The cursor goes to the line that changed, keeping its column where it was
+    // (clamped) — measured: `xxU` lands on 1:1 and `llXU` on 1:2. Vim's own column is
+    // recorded at the moment of the first change and is not reproducible from ours; the
+    // differential pins the BUFFER and skips the position for `U` (docs/DECISIONS.md).
+    const at = B.lineOffset(this.state.text, snap.line);
+    this.state.cursor = B.clampToLineEnd(this.state.text, at, at + Math.max(0, col));
+    this.lineSnapshot = null;
+    this._closeUndo();
     return { handled: true, edit: true };
   }
 
@@ -1703,7 +1755,8 @@ export class Engine {
           : kind === "A" ? B.lineEnd(text, cur)
             : cur;
     this._pushUndo({ text, cursor: entry });
-    this.lineSnapshot = B.lineText(text, cur);
+    // U restores the line to how it looked before its FIRST change (see feed()).
+    this.lineSnapshot = { line: B.lineNumber(text, entry), text: B.lineText(text, entry) };
     this.mode = Mode.INSERT;
     this.pending = this._emptyPending();
 
