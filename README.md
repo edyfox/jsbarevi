@@ -146,8 +146,17 @@ search via `/ ? n N * #`, the `:` line
 (`s d y = list set version features file e w q x`) with ranges and the
 translate/refuse regex contract, and the viewport capability.
 
-Undo is vim's: **one `u` per change command**, so `s`, `cw`, `cc` and whatever
-you typed after them are undone together (a command that changed nothing is not
+Registers: the unnamed `""`, one-character names `"a`-`"z` with the Vim append form
+`"A`-`"Z`, the black hole `"_`, the expression register `"=` (evaluated as
+**JavaScript**, in the page), and the system clipboard as `"+` — with `"*` aliased to
+it, because a browser has one clipboard and inventing a second one we cannot fill would
+be a lie. Vim's numbered family (`"0`, `"1`-`"9`, `"-`) is deliberately **not**
+implemented: measured against vim 9.2, it is three interacting rules (rotation,
+small-vs-big classification, and an exception when the small delete was named) whose
+only product is "walk back through this session's deletes". `docs/ENGINE.md` has the
+measurements; `docs/DECISIONS.md` has the decision.
+
+Undo is vim's: **one `u` per change command**, so `s`, `cw`, `cc` and whatever you typed after them are undone together (a command that changed nothing is not
 an undo step, so `i<Esc>u` does not consume one). Measured against vim and nvi;
 busybox's per-operation undo disagrees, which is recorded in `docs/ENGINE.md`.
 

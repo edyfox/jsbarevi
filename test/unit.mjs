@@ -95,6 +95,151 @@ console.log("\n\x1b[1mregisters and marks\x1b[0m");
   eq("mark and jump to its line", e.cursor, 0);
 }
 
+// The shape of this block is the shape of the decision (docs/DECISIONS.md): the unnamed
+// register, one-character names, `_`, and the clipboard. What is NOT here on purpose is
+// the numbered family — "1-"9 and "-" — whose rotation/small-big rules were measured
+// against vim and then rejected as scope (docs/ENGINE.md).
+console.log("\n\x1b[1mregisters: what is stored, and where\x1b[0m");
+{
+  const e = mk("alpha beta\ngamma\n");
+  e.feedKeys("dd");
+  eq("a plain delete fills the unnamed register", e.registers.read().text, "alpha beta\n");
+  e.feedKeys("p");
+  eq("...and p pastes it", e.text, "gamma\nalpha beta\n");
+}
+{
+  const e = mk("alpha beta\ngamma\n");
+  e.feedKeys('"ayw');
+  eq("a named yank stores by name", e.registers.read("a").text, "alpha ");
+  eq("...and ALSO fills the unnamed register (measured: vim does)",
+    e.registers.read().text, "alpha ");
+}
+{
+  const e = mk("one\ntwo\n");
+  e.feedKeys('"ayy');
+  e.feedKeys('"_dd');
+  eq("the black hole stores nothing", e.registers.read(), { text: "one\n", linewise: true });
+  eq("...and its own name has nothing", e.registers.read("_"), null);
+}
+{
+  const e = mk("abcdef\nghijkl\n");
+  e.feedKeys('vj"ay');
+  eq('a visual selection yanks into a named register', e.registers.read("a").text, "abcdef\ng");
+}
+{
+  const e = mk("keep me\n");
+  e.feedKeys('"1dd');
+  eq("an unsupported register aborts the command, buffer intact", e.hostText, "keep me");
+  eq("...and says why", /unsupported register: 1/.test(e.status.slice(-1)[0] || ""), true);
+}
+{
+  // One register prefix, one command. This leaked for real: `"ap` used to poison every
+  // later `p` with register a, because the prefix stayed in `pending`.
+  const e = mk("aaa bbb\nccc ddd\n");
+  e.feedKeys('"ayw'); e.feedKeys("j"); e.feedKeys('"byw'); e.feedKeys("k");
+  e.feedKeys('"ap');          // pastes "aaa " from a
+  e.feedKeys("p");            // must paste "ccc " (the unnamed), not "aaa " again
+  eq("the prefix applies once, then the unnamed register is used",
+    e.hostText, "aaaa ccc aa bbb\nccc ddd");
+  eq("...which holds the last yank (b), not a", e.registers.read().text, "ccc ");
+}
+
+console.log("\n\x1b[1mthe = register evaluates an expression\x1b[0m");
+{
+  const e = mk("x\n");
+  e.feed('"'); e.feed("=");
+  eq("the prefix opens a prompt", e.prompt, "expression");
+  e.submitPrompt('="a"+"b"');
+  e.feedKeys("p");
+  eq('"=expr then p pastes the value', e.hostText, "xab");
+}
+{
+  const e = mk("x\n");
+  e.feed('"'); e.feed("="); e.submitPrompt("=1+2");
+  e.feedKeys("p");
+  eq("an arithmetic expression", e.text, "x3\n");
+}
+{
+  const e = mk("x\n");
+  e.feed('"'); e.feed("="); e.submitPrompt("=");
+  eq("an empty expression is an empty register", e.registers.read("="), { text: "", linewise: false });
+}
+{
+  const e = mk("x\n");
+  e.feed('"'); e.feed("="); e.submitPrompt("=((");
+  eq("a broken expression reports instead of throwing", /Unexpected/.test(e.status.slice(-1)[0] || ""), true);
+  eq("...and leaves the buffer alone", e.hostText, "x");
+}
+{
+  const e = mk("x\n", 0, { options: { expressionRegister: false } });
+  e.feed('"'); e.feed("="); e.submitPrompt("=1+1");
+  eq("a host can turn the = register off", /disabled in this host/.test(e.status.slice(-1)[0] || ""), true);
+}
+
+console.log("\n\x1b[1mthe system clipboard is a host capability\x1b[0m");
+{
+  let clip = "";
+  const e = mk("alpha beta\ngamma\n", 0, { clipboard: { read: () => clip, write: (t) => { clip = t; } } });
+  e.feedKeys('"+yy');
+  eq('"+yy writes the system clipboard', clip, "alpha beta\n");
+  eq("...and the unnamed register", e.registers.read().text, "alpha beta\n");
+  clip = "from another app\n";
+  e.feedKeys('"+p');
+  eq('"+p reads the clipboard and pastes it as a line', e.hostText, "alpha beta\nfrom another app\ngamma");
+}
+{
+  // `*` is an alias of `+`: a browser has one clipboard, and inventing a second one we
+  // cannot fill would be a lie (registers.js).
+  let clip = "shared\n";
+  const e = mk("x\n", 0, { clipboard: { read: () => clip, write: (t) => { clip = t; } } });
+  e.feedKeys('"*p');
+  eq('"*p reads the same clipboard', e.hostText, "x\nshared");
+  e.feedKeys('"*yy');
+  eq('"*yy writes the same clipboard', clip, "shared\n");
+}
+{
+  // No capability at all: say so rather than silently doing nothing.
+  const e = mk("x\n");
+  e.feedKeys('"+p');
+  eq('"+p with no clipboard reports it', /system clipboard unavailable/.test(e.status.slice(-1)[0] || ""), true);
+  eq("...and does not move the buffer", e.hostText, "x");
+}
+
+console.log("\n\x1b[1muppercase registers append (all four cases, measured against vim)\x1b[0m");
+{
+  // One rule covers the four combinations; these four cases are the measurement that
+  // proves it, so they stay as four expectations.
+  const line = "alpha beta\ngamma\n";
+  const yank = (keys) => { const e = mk(line); e.feedKeys(keys); return e; };
+  eq("linewise + linewise joins on a new line",
+    yank('"ayy"Ayy"ap').hostText, "alpha beta\nalpha beta\nalpha beta\ngamma");
+  eq("linewise + charwise puts the new text on its own line",
+    yank('"ayy"Ayw"ap').hostText, "alpha beta\nalpha beta\nalpha \ngamma");
+  eq("charwise + linewise: linewise wins, existing text first",
+    yank('"ayw"Ayy"ap').hostText, "alpha beta\nalpha \nalpha beta\ngamma");
+  const e = mk("alpha beta\ngamma\n");
+  e.feedKeys('"ayw"Ayw');
+  eq("charwise + charwise concatenates", e.registers.read("a").text, "alpha alpha ");
+  eq("...and the unnamed register follows the merged content", e.registers.read().text, "alpha alpha ");
+}
+
+console.log("\n\x1b[1mthe : commands record registers too\x1b[0m");
+{
+  const e = mk("one\ntwo\nthree\n");
+  e.feed(":"); e.submitPrompt("d");
+  eq(":d fills the register like any delete", e.registers.read().text, "one\n");
+  eq("...so p pastes the line back", (() => { e.feed("p"); return e.hostText; })(), "two\none\nthree");
+}
+{
+  const y = mk("one\ntwo\n");
+  y.feed(":"); y.submitPrompt("y");
+  eq(":y fills the unnamed register", y.registers.read().text, "one\n");
+  eq("...and a named one when asked", (() => {
+    const n = mk("one\ntwo\n"); n.feed(":"); n.submitPrompt("y b");
+    return n.registers.read("b").text;
+  })(), "one\n");
+}
+
 console.log("\n\x1b[1mviewport capability\x1b[0m");
 {
   const e = mk("l1\nl2\nl3\nl4\nl5\nl6\n", 0, { viewport: () => ({ top: 0, height: 4 }) });

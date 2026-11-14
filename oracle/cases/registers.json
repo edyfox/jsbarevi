@@ -1,0 +1,77 @@
+{
+  "about": "The register set we support, measured against vim 9.2 on 2026-11-14 and pinned here so the differential harness keeps comparing us to the real thing. Scope is deliberate (docs/DECISIONS.md): the unnamed register, one-character names with the uppercase append form, `_`, `+`/`*` (one system clipboard, the same implementation) and `=`. NOT here on purpose: \"1-\"9 and \"-\" (rotation + small/big classification, measured and then rejected as scope) and `.` (the last-inserted-text register) — the cases that would need them are absent rather than approximated. Every case below only affects the BUFFER through a put, so vim is the reference at runtime; position is not compared because these are about content.",
+  "cases": [
+    {
+      "name": "a named yank, then a put from that name",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"aywj\"ap",
+      "noPosition": true,
+      "expect": { "text": "alpha beta\ngalpha amma" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "a linewise yank appended to itself pastes as two lines",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayy\"Ayy\"ap",
+      "noPosition": true,
+      "expect": { "text": "alpha beta\nalpha beta\nalpha beta\ngamma" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "append: charwise onto charwise concatenates inline",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayw\"Ayw\"ap",
+      "noPosition": true,
+      "expect": { "text": "aalpha alpha lpha beta\ngamma" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "append: linewise plus charwise puts the new text on its own line",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayy\"Ayw\"ap",
+      "noPosition": true,
+      "expect": { "text": "alpha beta\nalpha beta\nalpha \ngamma" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "append: charwise plus linewise becomes linewise",
+      "input": "alpha beta\ngamma\n",
+      "keys": "\"ayw\"Ayy\"ap",
+      "noPosition": true,
+      "expect": { "text": "alpha beta\nalpha \nalpha beta\ngamma" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "the black hole leaves the unnamed register alone",
+      "input": "one\ntwo\n",
+      "keys": "\"ayy\"_ddp",
+      "noPosition": true,
+      "expect": { "text": "two\none" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "a register prefix applies to one command only",
+      "input": "aaa bbb\nccc ddd\n",
+      "keys": "\"aywj\"bywk\"app",
+      "noPosition": true,
+      "expect": { "text": "aaaa ccc aa bbb\nccc ddd" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "an uppercase delete appends to a named register",
+      "input": "one\ntwo\nthree\n",
+      "keys": "\"add\"Add\"ap",
+      "noPosition": true,
+      "expect": { "text": "three\none\ntwo" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "a visual selection yanks into a named register",
+      "input": "abcdef\nghijkl\nmnopqr\n",
+      "keys": "vj\"ayG\"ap",
+      "noPosition": true,
+      "expect": { "text": "abcdef\nghijkl\nmabcdef\ngnopqr" },
+      "engines": ["vim"]
+    }
+  ]
+}

@@ -10,6 +10,7 @@
 import * as B from "./buffer.js";
 import * as C from "./cursor.js";
 import { runEx } from "./ex.js";
+import { Registers, isNamed, isClipboard } from "./registers.js";
 
 export const Mode = { NORMAL: "NORMAL", INSERT: "INSERT", VISUAL: "VISUAL", VISUAL_LINE: "VISUAL_LINE" };
 
@@ -33,9 +34,13 @@ export class Engine {
       flash: true,
       tabstop: 4,
       shiftwidth: 4,
+      // The `=` register evaluates a JavaScript expression in the page. On unless a
+      // host says otherwise: a page whose CSP refuses `new Function` reports that
+      // instead of failing silently (see _expressionValue).
+      expressionRegister: true,
       ...opts.options,
     };
-    this.registers = new Map(); // name -> {text, linewise}
+    this.registers = new Registers({ clipboard: opts.clipboard || null });
     this.marks = new Map(); // char -> offset
     this.lastSearch = null;
     this.lastSearchForward = true;
@@ -334,12 +339,53 @@ export class Engine {
       if (result.ok && !result.message) this.onStatus("");
       return { handled: true, ex: result };
     }
+    if (kind === "expression") {
+      const text = this._expressionValue(value);
+      if (text === null) { this.pending.reg = null; return { handled: true }; }
+      this.registers.setExpression(text);
+      return { handled: true, expression: text };
+    }
     return { handled: true };
+  }
+
+  /**
+   * Evaluate the `=` register's expression.
+   *
+   * The body is JAVASCRIPT, not Vimscript: the `:s` regex contract already translates
+   * from vim's syntax to the engine we actually have, and pretending to speak Vimscript
+   * would be a worse lie than the one we are avoiding. What runs is what the user just
+   * typed, in the page — the same authority as their devtools console, which is the
+   * only thing that makes `"=` useful.
+   *
+   * Returns the string, "" for an empty expression, or null when it failed (the status
+   * line has already said why: a CSP that forbids `new Function` is the interesting one).
+   */
+  _expressionValue(source) {
+    if (this.options.expressionRegister === false) {
+      this.onStatus("the = register is disabled in this host", "error");
+      return null;
+    }
+    const expr = String(source == null ? "" : source).replace(/^=/, "").trim();
+    if (!expr) return "";
+    try {
+      const fn = new Function(`"use strict";return (${expr});`);
+      const value = fn();
+      return value == null ? "" : String(value);
+    } catch (err) {
+      this.onStatus(`= ${(err && err.message) || "expression failed"}`, "error");
+      return null;
+    }
   }
 
   // --- normal mode ---------------------------------------------------------
   _normalKey(key) {
     const p = this.pending;
+    if (this._swallowNext) {
+      // One key after a rejected register prefix: the command it belonged to.
+      this._swallowNext = false;
+      this.pending = this._emptyPending();
+      return { handled: true };
+    }
 
     if (key === "Esc") {
       this.pending = this._emptyPending();
@@ -423,8 +469,9 @@ export class Engine {
         const range = this._textObject(p.textObj, key);
         if (!range) { this.pending = this._emptyPending(); this.onStatus("no text object", "error"); return { handled: true }; }
         const op = p.op;
+        const reg = p.reg;
         this.pending = this._emptyPending();
-        this._applyOperatorRange(op, range.from, range.to, false, range.inclusive);
+        this._applyOperatorRange(op, range.from, range.to, false, true, false, reg, range.inclusive);
         return { handled: true, edit: op !== "y" };
       }
       const motion = this._resolveMotionKey(key);
@@ -532,7 +579,26 @@ export class Engine {
     const count = this._takeCount(1);
 
     if (kind === "register") {
-      p.reg = key;
+      // Supported: a-z, "+" (the system clipboard), "=" (an expression), and `""`
+      // for the unnamed register. Anything else is REFUSED here, before the command
+      // runs: vim's "1-"9 and "-" are deliberately not implemented (registers.js says
+      // why), and a half-executed `"1dd` that deleted the line and stored it nowhere
+      // would be worse than an error.
+      if (key === "=") {
+        // Vim prompts for the expression here; the register applies to the next command.
+        p.reg = "=";
+        this.prompt = "expression";
+        return { handled: true, prompt: { kind: "expression", initial: "=" } };
+      }
+      if (!isClipboard(key) && key !== '"' && key !== "_" && !isNamed(key)) {
+        // Vim rejects the whole command (E354) rather than falling back to the unnamed
+        // register, so the next key is swallowed: `"1dd` must not delete the line.
+        this.onStatus(`unsupported register: ${key}`, "error");
+        this.pending = this._emptyPending();
+        this._swallowNext = true;
+        return { handled: true };
+      }
+      p.reg = key === '"' ? null : key;
       return { handled: true };
     }
     if (kind === "replaceChar") {
@@ -1084,7 +1150,7 @@ export class Engine {
     // `c` replaces the *content* of the line(s) and keeps the line itself;
     // `d` and `y` take the line including its newline.
     if (op !== "c" && to < text.length) to += 1;
-    return this._applyOperatorRange(op, from, to, true, true, keepCursor);
+    return this._applyOperatorRange(op, from, to, true, true, keepCursor, this._takeReg());
   }
 
   /** Shift the lines a motion spans (`>j`, `>G`, `>ap` treated linewise). */
@@ -1109,7 +1175,7 @@ export class Engine {
     const lastLine = Math.min(B.lineCount(text) - 1, line + count - 1);
     const from = this.state.cursor;
     const to = B.lineEnd(text, B.lineOffset(text, lastLine));
-    return this._applyOperatorRange(op, from, to, false, true);
+    return this._applyOperatorRange(op, from, to, false, true, false, this._takeReg());
   }
 
   _operatorWithMotion(op, name, count, reg) {
@@ -1253,8 +1319,11 @@ export class Engine {
     this._storeRegister(this.text.slice(from, to), linewise, reg);
   }
 
-  deleteRange(from, to, { record = true } = {}) {
+  /** Delete a range for the `:` commands, recording it in the registers like any other
+   *  delete (vim does the same for `:d`; it is NOT a yank, whatever `:y` says). */
+  deleteRange(from, to, { record = true, linewise = false, reg = null } = {}) {
     const text = this.text;
+    this._storeRegister(text.slice(from, to), linewise, reg);
     this._pushUndo({ text, cursor: this.state.cursor });
     this._setText(text.slice(0, from) + text.slice(to));
     this.state.cursor = Math.min(from, Math.max(0, this.state.text.length - 1));
@@ -1265,10 +1334,23 @@ export class Engine {
   noteLineChange() { /* line-level bookkeeping hook; `U` uses lineSnapshot */ }
 
   _storeRegister(slice, linewise, reg = null) {
-    const name = reg || '"';
-    this.registers.set(name, { text: slice, linewise });
-    if (!reg) this.registers.set('"', { text: slice, linewise });
-    this.registers.set("0", { text: slice, linewise });
+    const res = this.registers.write({ text: slice, linewise, name: reg });
+    if (!res.ok) this.onStatus(res.error, "error");
+    return res.ok;
+  }
+
+  /**
+   * Take the pending register prefix, and clear it.
+   *
+   * A register prefix applies to ONE command. Leaving it in `pending` made a plain `p`
+   * re-use the named register for ever: `"ayw … "ap … p` pasted `a` twice, measured on
+   * the old code. The operator path already resets `pending` when it fires; the
+   * single-key commands have to consume the name explicitly.
+   */
+  _takeReg() {
+    const name = this.pending.reg;
+    this.pending.reg = null;
+    return name;
   }
 
   _textObject(prefix, target) {
@@ -1418,7 +1500,7 @@ export class Engine {
     if (from === to) return { handled: true };
     const slice = text.slice(from, to);
     this._pushUndo(before);
-    this._storeRegister(slice, false, this.pending.reg);
+    this._storeRegister(slice, false, this._takeReg());
     this._setText(text.slice(0, from) + text.slice(to));
     this.state.cursor = B.clampToLineEnd(this.state.text, Math.min(from, Math.max(0, this.state.text.length - 1)), from);
     this._setDesiredCol();
@@ -1557,9 +1639,15 @@ export class Engine {
   }
 
   _put(count, before) {
-    const reg = this.registers.get(this.pending.reg || '"') || this.registers.get('"');
+    const asked = this._takeReg();
+    const reg = this.registers.read(asked);
     // an empty register has nothing to insert, and must not move the cursor either
-    if (!reg || reg.text === "") { this.onStatus("register empty", "error"); return { handled: true }; }
+    if (!reg || reg.text === "") {
+      this.onStatus(isClipboard(asked)
+        ? "system clipboard unavailable in this host"
+        : asked === "=" ? "empty expression register" : "register empty", "error");
+      return { handled: true };
+    }
     const text = this.text;
     const cur = this.state.cursor;
     this._pushUndo({ text, cursor: cur });
@@ -1776,6 +1864,11 @@ export class Engine {
     const p = this.pending;
     if (key === "Esc") { this.mode = Mode.NORMAL; this.visual = null; this.pending = this._emptyPending(); return { handled: true }; }
     if (key === "v" && this.mode === Mode.VISUAL) { this.mode = Mode.NORMAL; this.visual = null; return { handled: true }; }
+    // The register prefix works on a visual yank/delete too (`vj"ay`). It used to be
+    // collected only in normal mode, so the prefix was silently ignored here and the
+    // yank went to the unnamed register — the same "wrong beats missing" trap.
+    if (p.awaiting === "register") return this._consumeArgument("register", key);
+    if (key === '"') { p.awaiting = "register"; return { handled: true }; }
     if (key === "V" && this.mode === Mode.VISUAL_LINE) { this.mode = Mode.NORMAL; this.visual = null; return { handled: true }; }
     if (key === "v") { this.mode = Mode.VISUAL; return { handled: true }; }
     if (key === "V") { this.mode = Mode.VISUAL_LINE; return { handled: true }; }
@@ -1824,10 +1917,11 @@ export class Engine {
     if (opMap[key]) {
       const range = this._visualRange();
       const op = opMap[key];
+      const reg = this.pending.reg;
       this.mode = Mode.NORMAL;
       this.visual = null;
       this.pending = this._emptyPending();
-      const res = this._applyOperatorRange(op, range.from, range.to, range.linewise, true);
+      const res = this._applyOperatorRange(op, range.from, range.to, range.linewise, true, false, reg);
       if (op === "y") this.state.cursor = range.from;   // vim parks at the start
       return res;
     }

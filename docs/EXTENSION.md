@@ -125,6 +125,26 @@ palettes clears 4.5:1 against its own chip; `npm run test:e2e` flips the fixture
 dark to light and checks the chip, caret and ring change without a reload, and that
 the `data-jsbarevi-theme` override wins.
 
+## The system clipboard (`"+` / `"*`)
+
+The engine never touches `navigator.clipboard`; it is synchronous by contract, and the
+clipboard API is not. So the clipboard is a **host capability** passed into the engine
+(`{read: () => string|null, write: (text) => void}`), the same shape as `viewport`:
+
+- `src/adapters/clipboard.js` keeps one cache per page, fed by a `paste` event (the only
+  synchronous source that always works), by our own writes, and by a `readText()` on
+  focus that is attempted but never waited on;
+- a write tries `navigator.clipboard.writeText` and falls back to `execCommand("copy")`
+  — which needs the keypress gesture we are already inside, and restores the focus and
+  selection it borrows, because in a rich composer that selection is the host's model;
+- `"*` is an alias of `"+`: a browser has one clipboard, so a second name is honest where
+  a second implementation would not be;
+- with no clipboard API at all (Lark's `native-resource://`, an Electron page world) the
+  register reports its absence and nothing else changes.
+
+Ctrl-C in visual mode goes through the same capability, so `v`…`y`-style copy followed
+by `"+p` sees what the copy put there.
+
 ## What attaches, and when
 
 - **On focus**, one adapter per element, never two (a second engine would double
@@ -337,4 +357,5 @@ fall back to `localStorage` (`chrome.storage` is not there), and `:e` needs a
 | Ctrl-W / Ctrl-R are consumed while a field is focused | they are vi's `C-w` / `C-r`; a field that swallowed neither would be a field where vi half-works. Esc or a click outside gives the browser back |
 | Esc never blurs the field | vi's rule; Tab leaves |
 | `:e` needs a local server | by design — it is the "hand this to a real editor" escape hatch, not a remote service |
+| `"+p` can be empty right after a copy made in another app | the engine is synchronous and the browser's clipboard API is not. The host caches what it has been *told* — a `paste` event, our own `"+y`, or a `readText()` on focus — and the status line says "system clipboard unavailable" rather than pretending the clipboard is empty. Adding the `clipboardRead` permission would remove the guess; it is a store-listing change, so it is not in 0.1.0 |
 | A page that stops `focusin` in capture on `document` ahead of us | discovery rides that one event; there is no per-field fallback, so such a page would never attach |

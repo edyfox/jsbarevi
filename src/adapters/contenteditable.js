@@ -51,12 +51,16 @@ export class ContenteditableAdapter {
       onScroll: (line) => this.scrollToLine(line),
       describeBuffer: () => opts.describeBuffer?.() ?? this.describe(),
       session: opts.session ?? null,
+      clipboard: opts.clipboard ?? null,
       version: opts.version,
       options: opts.options,
     });
     this.onStatus = opts.onStatus;
     this.onModeChange = opts.onModeChange;
     this.onPrompt = opts.onPrompt;
+    // Host capability, same contract as the textarea adapter: a synchronous cache in
+    // front of the browser's asynchronous clipboard.
+    this.clipboard = opts.clipboard ?? null;
     this.onKeyConsumed = opts.onKeyConsumed;
     this._keysDispatchedByHost = !!opts.keysDispatchedByHost;
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
@@ -299,7 +303,8 @@ export class ContenteditableAdapter {
       if (text) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        navigator.clipboard?.writeText(text).catch(() => {});
+        if (this.clipboard) this.clipboard.write(text);
+        else navigator.clipboard?.writeText(text).catch(() => {});
         this.onStatus?.(`copied ${text.length} chars`);
         return;
       }
@@ -344,7 +349,8 @@ export class ContenteditableAdapter {
   }
 
   finishPrompt(kind, value) {
-    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search" : null;
+    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search"
+      : kind === "expression" ? "expression" : null;
     this.engine.submitPrompt(value);
     this._commit();
     this._emitMode();

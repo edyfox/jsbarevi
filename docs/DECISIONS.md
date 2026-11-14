@@ -34,19 +34,50 @@ A command may only be excluded for one of three reasons:
 | Repeat/undo | `.` `u` `U` |
 | Join/case/indent | `J ~ < >` |
 | Visual | `v` `V` (no block visual) |
-| Registers | `"` |
+| Registers | `"` `_` `+` `*` `=` (and `"a`-`"z`, `"A`-`"Z`) |
 | Ex mode | `:` |
 
 Explicitly **out**: `[ ]` (C sections — no referent), `^V` (block visual),
-`@` (macros — needs a replay loop), `!` `=` `&` `K` `` `^A ``-style nvi extras with
-no counterpart, `Q` `\` (ex mode).
+`@`/`q` (macros — a replay loop plus register recording, and it would have to own
+insert mode to replay typing), `"0`-`"9` and `"-` (see below), `.` (the
+last-inserted-text register), `!` `=` `&` `K` `` `^A ``-style nvi extras with no
+counterpart (the `=` *command* that prints a line number, not the `=` register),
+`Q` `\` (ex mode).
+
+### Registers: the set, and the set we refused
+
+The reason to have registers at all is the system clipboard: without `"+` there is no
+way to get text out of a browser field into the rest of the machine, and making the
+clipboard the *default* would put every `x` and every word of a `cw` on the system
+clipboard. So the unnamed register stays in-engine, and `"+` is the explicit door.
+
+| In | Why |
+|---|---|
+| `""` | what `p` reads; every yank and delete writes it |
+| `"a`-`"z` | one character, one store — a line of code each |
+| `"A`-`"Z` | the append form. Not useful, but leaving it out is a **silent wrong**: `"Ayy` would quietly create a second register named `A` rather than appending. One rule covers it (linewise if either side is) |
+| `"_` | the black hole. Writes go nowhere, including to `""` — that is the whole point |
+| `"+` `"*` | the system clipboard. One clipboard, two spellings: `*` is vim's X11 primary selection, which a browser does not have, so aliasing is the only honest option |
+| `"=` | an expression. Vim evaluates Vimscript; this evaluates **JavaScript**, the same way `:s` translates vim regex to JS rather than emulating POSIX |
+
+| Out | Why not |
+|---|---|
+| `"0`, `"1`-`"9`, `"-` | Not one rule but three that interact: they rotate on a linewise or multi-line delete, hold *small* deletes back in `"-` instead, and rotate anyway when that small delete was given a named register (`"adw` fills `"a` and leaves `"-` alone, while `dd` fills `"1` and leaves `"-`). Measured against vim 9.2 and written into `docs/ENGINE.md`; the rotation exists so you can walk back through a session's deletes, which is not what this editor is for, and the small/big split needs a per-operation classification nothing else in the engine has |
+| `.` (last insert) | A whole second recording surface for one case: "repeat the text I typed, not the command". `.` already replays the *command* by diffing a snapshot (`docs/DECISIONS.md` above), and this register would not improve that — it would only add a second, subtly different answer |
+| `q`/`@` (macros) | A replay loop, plus key recording that has to capture insert-mode typing — which belongs to the host, so the recording would be a reconstruction, not a recording. Every failure in this area is a silently wrong buffer |
+
+Scope rule this follows: a register goes in when it is one rule; it stays out when it is
+a state machine (numbered), a second recording surface (`.`), or a replay engine (`@`).
+
 
 ### Notable inclusions, and why
 
 - **Marks and registers** are in because busybox implements them in ~20 lines
-  each (`mark[26]`, `char *reg[28]`), and registers stay **in-engine** — the
-  browser's system clipboard is async and permission-gated, so `p` must not wait
-  on it.
+  each (`mark[26]`, `char *reg[28]`), and the registers stay **in-engine** — the
+  browser's clipboard is async and permission-gated, so `p` must not wait on it.
+  The system clipboard is a host *capability* behind a cache rather than a register
+  the engine owns; see "Registers" in `docs/ENGINE.md` for the set, the reason for
+  each, and the ones that were measured and refused.
 - **`. ` repeat, `U`, `R`** are in because both references have them. `.` is the
   highest-value single addition and the hardest: insert mode belongs to the host,
   so the typed text is captured by diffing snapshots, not by recording keys.

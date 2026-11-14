@@ -285,7 +285,7 @@ NOTES = {
     "v": "NEITHER reference has it: nvi has no visual mode, and busybox's v/V are commented-out stubs",
     "V": "same: Vim-lineage only",
     "\x16": "cut by spec (no block visual); nvi has none, busybox has none",
-    '"': "busybox: `char *reg[28]` + a-z select (~20 lines). Cheap => IN. One real trap: the SYSTEM clipboard in a browser is async and permission-gated, so registers live in-engine first (synchronous, testable); clipboard mirroring is a later, separate feature",
+    '"': "busybox: `char *reg[28]` + a-z select (~20 lines). Cheap => IN. The set is capped on purpose (2026-11-14): `\"\"`, a-z with the uppercase append form, `_`, `+`/`*` and `=`; `\"0`-`\"9`/`\"-` were measured against vim and refused (rotation + small/big classification is a state machine, see docs/ENGINE.md). The SYSTEM clipboard is a host capability behind a synchronous cache (the browser's API is async), so `p` never waits on it",
     "@": "nvi only — busybox's `@` is a commented stub, so macro stays out either way",
     "m": "busybox: `mark[26]` offsets + a validity guard on use (~20 lines). Cheap => IN. Per-field, invalidated when the field is replaced",
     "(": "nvi-only, but a pure buffer scan (~20 lines) — the same cost class as marks, so arguably IN under the cost rule",

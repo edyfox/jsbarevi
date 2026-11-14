@@ -4,6 +4,7 @@
 import { TextareaAdapter } from "./adapters/textarea.js";
 import { ContenteditableAdapter } from "./adapters/contenteditable.js";
 import { bindTheme } from "./adapters/theme.js";
+import { systemClipboard } from "./adapters/clipboard.js";
 
 /**
  * Which adapter owns this element.
@@ -39,6 +40,18 @@ const OVERLAY_CSS = `
 `;
 
 let overlaySheet = null;
+
+/**
+ * The page's one clipboard cache. One per document, not one per field: the clipboard is
+ * a property of the page, and two caches would disagree about what a copy in another
+ * window looks like. The failure sink is per attachment (only the focused field's status
+ * line is on screen), so `attach()` re-points it each time.
+ */
+let pageClipboard = null;
+function clipboardFor() {
+  if (!pageClipboard) pageClipboard = systemClipboard();
+  return pageClipboard;
+}
 
 /**
  * Install the overlay CSS.
@@ -122,7 +135,7 @@ function makeUi(el) {
       prompt.style.display = "block";
       // The sigil lives in the input, as it does in vi: ":" for ex, "/" or "?"
       // for search. That is what makes "delete the sigil to leave" expressible.
-      prompt.value = initial || (kind === "ex" ? ":" : "/");
+      prompt.value = initial || (kind === "ex" ? ":" : kind === "expression" ? "=" : "/");
       prompt.dataset.sigil = prompt.value[0];
       prompt.focus();
       prompt.setSelectionRange(prompt.value.length, prompt.value.length);
@@ -148,8 +161,12 @@ export function attach(el, opts = {}) {
     console.info(`[jsbarevi] ${BUILD} attached to`, what);
   }
   const Adapter = adapterFor(el);
+  const clipboard = opts.clipboard || clipboardFor();
+  // Only the focused field's status line is visible, so the last attach owns the sink.
+  clipboard.onStatus = (msg, kind) => ui.status(msg, kind);
   const adapter = new Adapter(el, {
     ...opts,
+    clipboard,
     // the full stamp, not just the semver: ":version" is the in-field way to tell
     // one commit from another, which is what a stale page looks like from inside
     version: BUILD,
@@ -175,7 +192,7 @@ export function attach(el, opts = {}) {
     const kind = ui.promptEl.dataset.kind;
     if (e.key === "Enter") {
       e.preventDefault();
-      const value = ui.promptEl.value.replace(/^[:/?]/, "");
+      const value = ui.promptEl.value.replace(/^[:/?=]/, "");
       ui.hidePrompt();
       adapter.finishPrompt(kind, value);
     } else if (e.key === "Escape") {
@@ -203,6 +220,10 @@ export function attach(el, opts = {}) {
   const onResize = () => ui.place();
   window.addEventListener("resize", onResize);
   window.addEventListener("scroll", onResize, true);
+  // The clipboard cannot be read synchronously, so the cache is refreshed when a field
+  // takes focus — which is always before the `"+p` that needs it.
+  const onFocus = () => clipboard.refresh?.();
+  el.addEventListener("focus", onFocus);
 
   return {
     adapter,
@@ -226,6 +247,7 @@ export function attach(el, opts = {}) {
       ui.promptEl.removeEventListener("input", onPromptInput);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onResize, true);
+      el.removeEventListener("focus", onFocus);
       for (const release of ui.releaseTheme) { try { release(); } catch { /* already gone */ } }
       el.removeAttribute("data-jsbarevi-mode");
       for (const node of ui.nodes) node.remove();

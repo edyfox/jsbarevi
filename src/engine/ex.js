@@ -366,8 +366,8 @@ function exDelete(engine, range, args) {
   // include the newline so the lines disappear rather than leaving blanks
   if (to < text.length) to += 1;
   else if (from > 0) from -= 1;
-  engine.yankRange(from, to, true, args.trim() || undefined);
-  engine.deleteRange(from, to, { record: true });
+  // A delete, not a yank: `:d` fills the unnamed register through deleteRange.
+  engine.deleteRange(from, to, { record: true, linewise: true, reg: args.trim() || null });
   engine.cursor = Math.min(from, Math.max(0, engine.text.length ? engine.text.length - 1 : 0));
   engine.cursor = B.firstNonBlank(engine.text, engine.cursor);
   return { ok: true, message: "" };

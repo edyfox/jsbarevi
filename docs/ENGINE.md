@@ -549,6 +549,91 @@ a field that cannot measure still behaves predictably.
 The e2e fixture now has a third field, `#hscroll`, with `white-space: pre` and horizontal
 scrolling, so this path is exercised rather than assumed.
 
+## Registers: five names, one capability, and a measured refusal
+
+The register set is `src/engine/registers.js`. It is small on purpose, and the part
+worth documenting is which parts were *measured and then refused*.
+
+### What is stored
+
+| Name | Write | Read |
+|---|---|---|
+| `""` | every yank and delete | `p` / `P` default |
+| `"a`-`"z` | that name only | that name |
+| `"A`-`"Z` | appends to the lowercase name | — |
+| `"_` | nowhere, including `""` | nothing (`register empty`) |
+| `"+` / `"*` | the system clipboard, via the host cache | the host cache |
+| `"=` | set by the expression prompt | re-read on every use |
+
+Measured against vim 9.2 (2026-11-14) and pinned in `oracle/cases/registers.json`,
+where the differential harness re-runs vim at test time:
+
+- a **named** yank also fills `""` (but not `"0`);
+- a **named** delete also fills `""`;
+- the **uppercase** append rule is one condition — linewise if *either* side is,
+  otherwise concatenate — and it reproduces all four combinations exactly;
+- `"_` suppresses the write entirely, so `"ayy "_dd p` pastes the yank, not the delete.
+
+### What was refused, with the measurements
+
+`"0`, `"1`-`"9` and `"-` are **not implemented**. The reason is not "extra code"; it is
+that the family is three interacting rules whose interactions are the feature:
+
+| Operation | `""` | `"0` | `"1`-`"9` | `"-` |
+|---|---|---|---|---|
+| `x`, `dw`, `D`, `cw`, `viwd` | set | — | — | **set** |
+| `dd`, `dj`, `2dd`, `dG`, `d}` | set | — | **rotate, `"1` = text** | — |
+| `yy`, `yiw` | set | **set** | — | — |
+| `"add` (named, big) | set | — | **rotate anyway** | — |
+| `"adw` (named, small) | set | — | — | **not set** |
+| `"_dd`, `"_x` | — | — | — | — |
+| `.` repeat of a delete | set | — | rotates **again** | — |
+
+So supporting them means classifying every delete as small-or-big (a per-operation
+property nothing else in the engine has), implementing a rotation, and keeping the
+named-register exception — to buy "walk back through this session's deletes", which is
+not what a browser field is for. The rotation is also load-bearing for correctness once
+you have it: `.` must rotate again, and a small delete must not. That is a state machine
+wearing a register's clothes.
+
+Also refused: `.` (last inserted text — a second recording surface for one case, while
+`.` already replays the command by diffing) and `q`/`@` (macros — a replay loop whose
+recording would have to reconstruct host-owned typing). `docs/DECISIONS.md` carries the
+same table as a decision record; this file carries the evidence.
+
+### The clipboard is a capability, not a register
+
+Vim reads `"+` and gets a string. A browser cannot: `navigator.clipboard.readText()` is
+asynchronous and permission-gated, and the engine is synchronous by design (it returns
+text and a cursor; it never awaits). So the same shape as `viewport` and `metrics`:
+
+```js
+new Engine({ clipboard: { read: () => string|null, write: (text) => void } })
+```
+
+`src/adapters/clipboard.js` supplies the browser implementation: a **cache** fed by
+
+1. a `paste` event — synchronous, always available, and the only one that reveals text
+   copied in another application before the page asks for it;
+2. our own writes (`"+y`, and Ctrl-C in visual mode);
+3. `readText()` on focus, attempted but never waited on.
+
+Three consequences that are documented rather than hidden:
+
+- `"+p` can be empty right after a copy made outside the page — the host says
+  **"system clipboard unavailable"** instead of pretending the clipboard is empty;
+- a write is best-effort: `navigator.clipboard.writeText` first, `execCommand("copy")`
+  as the fallback (it needs the keypress gesture we are inside, and it restores the
+  focus and selection it borrows);
+- a page with no clipboard API at all (`native-resource://` in Lark, an Electron page
+  world) makes `"+` report its absence, and the rest of the editor is unaffected.
+
+The `=` register evaluates **JavaScript**, not Vimscript — the same choice `:s` makes
+when it translates vim's regex instead of emulating POSIX. It runs what the user just
+typed, in the page, which is the only thing that makes it useful; a page whose CSP
+forbids `new Function` gets an explicit status line, and `options.expressionRegister:
+false` turns it off for a host that wants no eval at all.
+
 ## The cursor never leaves the field
 
 Vim keeps the cursor inside the window; a browser field does not, and our block caret is

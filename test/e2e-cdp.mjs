@@ -1156,8 +1156,36 @@ async function main() {
     await sendKey(session, "Escape");
 
     // ---------------------------------------------------------------------
-    // The palette follows the page.
+    // The system clipboard, through the host cache.
     //
+    // The engine is synchronous and the clipboard API is not, so the host keeps a
+    // cache. A `paste` event is the one source that is always available
+    // synchronously, and our own writes fill it too — both are asserted here,
+    // because "the clipboard register works" is exactly the claim that is easy to
+    // make and hard to notice when it is false.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1mthe system clipboard, through the host cache\x1b[0m");
+    await resetField();
+    await evaluate(session, `(() => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "piped in\\n");
+      document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+      return true;
+    })()`);
+    await sleep(30);
+    await typeKeys(session, '"+p');
+    check('"+p pastes what the page was told about the clipboard',
+      (await field()).includes("piped in"), true);
+
+    await resetField();
+    await typeKeys(session, '"+yy');
+    await resetField();
+    await typeKeys(session, '"+p');
+    check("...and a yank round-trips through the cache", (await field()).startsWith("alpha beta gamma"), true);
+    check("...without the unnamed register being confused by it",
+      await evaluate(session, "window.jsbarevi.textarea.engine.registers.read().text"), "alpha beta gamma\n");
+
+    // ---------------------------------------------------------------------
     // The overlay is painted ON the page, so a palette tuned for a dark editor
     // is invisible on a white document (a 35%-alpha green caret over white).
     // The fixture is dark; flipping the page's own colours to light must

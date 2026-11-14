@@ -45,11 +45,15 @@ export class TextareaAdapter {
       onScroll: (line) => this.scrollToLine(line),
       describeBuffer: () => opts.describeBuffer?.() ?? this.describe(),
       session: opts.session ?? null,
+      // The system clipboard is a host capability, like viewport/metrics: the engine is
+      // synchronous and the browser's clipboard is not, so the host supplies a cache.
+      clipboard: opts.clipboard ?? null,
       version: opts.version,
       options: opts.options,
     });
     this.onStatus = opts.onStatus;
     this.onModeChange = opts.onModeChange;
+    this.clipboard = opts.clipboard ?? null;
     this.onPrompt = opts.onPrompt;
     this.onKeyConsumed = opts.onKeyConsumed;
     this._keysDispatchedByHost = !!opts.keysDispatchedByHost;
@@ -451,7 +455,8 @@ export class TextareaAdapter {
       if (text) {
         e.preventDefault();
         e.stopPropagation();
-        navigator.clipboard?.writeText(text).catch(() => {});
+        if (this.clipboard) this.clipboard.write(text);
+        else navigator.clipboard?.writeText(text).catch(() => {});
         this.onStatus?.(`copied ${text.length} chars`);
         return;
       }
@@ -494,7 +499,8 @@ export class TextareaAdapter {
   }
 
   finishPrompt(kind, value) {
-    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search" : null;
+    this.engine.prompt = kind === "ex" ? "ex" : kind === "search" ? "search"
+      : kind === "expression" ? "expression" : null;
     this.engine.submitPrompt(value);
     this._commit();
     this._emitMode();
