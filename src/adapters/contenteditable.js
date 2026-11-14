@@ -137,6 +137,10 @@ export class ContenteditableAdapter {
     document.removeEventListener("selectionchange", this._bound.selectionchange);
     window.removeEventListener("resize", this._bound.resize);
     this._resizeObserver?.disconnect();
+    // The beam is hidden INLINE in NORMAL/VISUAL mode (`caret-color: transparent`). Put it
+    // back, or a detached field keeps an invisible caret — which is what `:q` looks like in
+    // a rich composer that the host refuses to re-style (found in Lark, 2026-11-14).
+    this.el.style.caretColor = "";
     this.caret?.destroy();
     this.highlight?.destroy();
   }

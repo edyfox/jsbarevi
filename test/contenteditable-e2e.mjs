@@ -247,6 +247,28 @@ async function main() {
     await typeKeys(page, "<Esc>");
     check("...and NORMAL still works after Esc", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
 
+    // ---------------------------------------------------------------------
+    // destroy() must leave the box as it found it.
+    //
+    // The beam is hidden INLINE in NORMAL/VISUAL, so a destroyed field that keeps
+    // `caret-color: transparent` has an invisible caret: editing works and you cannot
+    // see where you are. That is exactly what `:q` looked like in Lark's composer.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1mdestroy() leaves the box as it found it\x1b[0m");
+    await focus();
+    await typeKeys(page, "i");
+    await typeKeys(page, "<Esc>");                 // NORMAL: the beam is hidden inline
+    await sleep(40);
+    check("the beam is hidden while the engine owns the field",
+      await evaluate(page, "document.getElementById('editor').style.caretColor"), "transparent");
+    await evaluate(page, "window.handle.destroy()");
+    await sleep(40);
+    check("...and visible again once it lets go",
+      await evaluate(page, "document.getElementById('editor').style.caretColor"), "");
+    check("...with no overlay left behind",
+      await evaluate(page, "document.querySelectorAll('.jsbarevi-caret, .jsbarevi-sel, .jsbarevi-badge').length"), 0);
+    check("...and no mode marker", await evaluate(page, "document.getElementById('editor').hasAttribute('data-jsbarevi-mode')"), false);
+
   } finally {
     try { page?.close(); } catch { /* ignore */ }
     child.kill("SIGKILL");
