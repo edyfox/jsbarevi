@@ -13,6 +13,12 @@ Config forms accepted for `config["server"]["cors"]`:
     "*"                           # same as True
     ["http://127.0.0.1:8080"]     # allow-list  <- recommended
     "http://127.0.0.1:8080"       # single origin, same as a one-item list
+    ["http://localhost:*"]        # `*` matches any run of characters: any port here
+    ["http://localhost:*", "http://127.0.0.1:*"]
+
+Hosts are never aliased: `localhost` and `127.0.0.1` are different origins to a
+browser, and on ChromeOS they are not even the same network path, so both have to
+be listed if both are wanted.
 
     python3 tools/pytextfilter-add-cors.py ~/workspace/pytextfilter/pytextfilter.py
 
@@ -51,10 +57,37 @@ BLOCK = BEGIN + '''
     if setting is True or setting == "*":
       return True
     if isinstance(setting, str):
-      return [setting]
+      setting = [setting]
     if isinstance(setting, (list, tuple, set)):
-      return [o for o in setting if isinstance(o, str)]
+      entries = [o.rstrip("/") for o in setting if isinstance(o, str)]
+      return [o for o in entries if o] or None
     return None
+
+  def __origin_allowed(self, origin, allowed):
+    """Does this request's Origin match an entry?
+
+    An entry is an origin, and a `*` inside it matches any run of characters, so
+    "http://localhost:*" admits every port on localhost. Hosts are NOT aliased:
+    "localhost" and "127.0.0.1" are different origins to a browser (and on ChromeOS
+    they are not even the same network path), so list each one you want.
+    """
+    import re
+    if allowed is True:
+      return True
+    if not origin:
+      return False
+    for pattern in allowed:
+      # "host:*" also has to admit the DEFAULT port, which a browser omits entirely.
+      forms = (pattern, pattern[:-2]) if pattern.endswith(":*") else (pattern,)
+      for form in forms:
+        if origin.lower() == form.lower():
+          return True
+        if "*" not in form:
+          continue
+        rx = "^" + ".*".join(re.escape(part) for part in form.split("*")) + "$"
+        if re.match(rx, origin, re.IGNORECASE):
+          return True
+    return False
 
   def __cors(self):
     """Send CORS headers when config["server"]["cors"] permits this origin."""
@@ -62,10 +95,10 @@ BLOCK = BEGIN + '''
     if not allowed:
       return
     origin = self.headers.get("Origin", "")
-    if allowed is True:
+    if self.__origin_allowed(origin, allowed):
+      # Echo the request's own origin rather than "*": a wildcard answer cannot carry
+      # credentials, and an exact echo is accepted everywhere.
       self.send_header("Access-Control-Allow-Origin", origin or "*")
-    elif origin in allowed:
-      self.send_header("Access-Control-Allow-Origin", origin)
     else:
       self.send_header("Vary", "Origin")
       return

@@ -80,6 +80,17 @@ Accepted values for `config["server"]["cors"]`: `False` (default, patch inert),
 `Access-Control-Allow-Origin`, everyone else gets nothing. Revert by deleting the
 key; the patch then does nothing.
 
+A `*` **inside** an entry matches any run of characters, so
+`["http://localhost:*"]` admits every port on localhost — what a dev server needs,
+since its port changes per project — and `host:*` also admits the default-port form
+a browser sends with no port at all. Hosts are never aliased: `localhost` and
+`127.0.0.1` are different origins, and on ChromeOS they can resolve to different
+machines (the browser's localhost is not a Linux container's), so list each one:
+
+```python
+"cors": ["http://localhost:*", "http://127.0.0.1:*"]
+```
+
 **Installing the patch without configuring it is a true no-op**: with `cors`
 unset, `OPTIONS` still answers `501` and no CORS header is sent, exactly like the
 stock server. The failure that *does* bite is patched **and** configured with the

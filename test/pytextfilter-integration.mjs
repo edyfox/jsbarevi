@@ -58,9 +58,11 @@ async function startServer({ cors, port }) {
     const r = spawnSync("python3", [path.join(HERE, "..", "tools/pytextfilter-add-cors.py"), path.join(dir, "pytextfilter.py")], { encoding: "utf8" });
     if (r.status !== 0) throw new Error("CORS patch failed: " + (r.stderr || r.stdout));
   }
+  // `cors` is true, falsy, or an allow-list of origin patterns (a wildcard is allowed).
+  const corsValue = cors === true ? "True" : Array.isArray(cors) ? JSON.stringify(cors) : "";
   fs.writeFileSync(path.join(dir, "config.py"), `
 config = {
-  "server": {"interface": "127.0.0.1", "port": ${port}${cors ? ', "cors": True' : ""}},
+  "server": {"interface": "127.0.0.1", "port": ${port}${corsValue ? `, "cors": ${corsValue}` : ""}},
   "environment": {"tmpdir": ${JSON.stringify(tmpdir)}, "editor": ["sed", "-i", "s/hello/HELLO/", "%s"]},
 }
 `);
@@ -83,6 +85,7 @@ config = {
 
 const p1 = 34000 + Math.floor(Math.random() * 400);
 const p2 = p1 + 500;
+const p3 = p1 + 1000;
 
 // ---------------------------------------------------------------- unpatched
 console.log("\n\x1b[1munpatched pyTextFilter: why :e needs a proxy\x1b[0m");
@@ -146,6 +149,46 @@ console.log("\n\x1b[1mCORS-patched pyTextFilter: a page can talk to it directly\
     check("a page can POST directly and read the result", direct.text, "HELLO world");
     check("the POST response is readable cross-origin", direct.headers["access-control-allow-origin"], "http://127.0.0.1:8080");
     check("the status is still 200", direct.status, 200);
+  } finally {
+    srv.child.kill("SIGKILL");
+  }
+}
+
+// ------------------------------------------------- wildcard allow-list
+console.log("\n\x1b[1mCORS with a wildcard port: http://localhost:*\x1b[0m");
+{
+  // A dev server picks a port per project, so an allow-list of exact origins is
+  // useless for localhost: the entry has to say "any port on this host". Hosts are
+  // still not aliased — 127.0.0.1 and localhost are different origins (and on
+  // ChromeOS not even the same network path), so a wildcard on one must not admit
+  // the other.
+  const srv = await startServer({ cors: ["http://localhost:*"], port: p3 });
+  try {
+    const pre = (origin) => http({
+      host: "127.0.0.1", port: p3, path: "/", method: "OPTIONS",
+      headers: { Origin: origin, "Access-Control-Request-Method": "POST" },
+    });
+    const anyPort = await pre("http://localhost:31416");
+    check("a port wildcard admits any port", anyPort.status, 204);
+    check("...and echoes that exact origin", anyPort.headers["access-control-allow-origin"], "http://localhost:31416");
+
+    const defaultPort = await pre("http://localhost");
+    check("...including the default port a browser omits",
+      defaultPort.headers["access-control-allow-origin"], "http://localhost");
+
+    const otherHost = await pre("http://127.0.0.1:31416");
+    check("...but does NOT alias localhost to 127.0.0.1 (ChromeOS disagrees too)",
+      otherHost.headers["access-control-allow-origin"], undefined);
+
+    const unrelated = await pre("http://evil.test:31416");
+    check("...nor admit an unrelated origin", unrelated.headers["access-control-allow-origin"], undefined);
+
+    const post = await http({
+      host: "127.0.0.1", port: p3, path: "/", method: "POST",
+      headers: { "content-type": "text/plain;charset=utf-8", Origin: "http://localhost:5173" },
+    }, "hello world");
+    check("a POST from a wildcarded port is readable", post.headers["access-control-allow-origin"], "http://localhost:5173");
+    check("...and still edits", post.text, "HELLO world");
   } finally {
     srv.child.kill("SIGKILL");
   }
