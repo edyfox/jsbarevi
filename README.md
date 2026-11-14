@@ -20,6 +20,7 @@ npm test                     # undo audit · unit · transport · engine · diff
 npm run test:e2e             # real headless Chrome, real key events
 npm run test:ext             # the PACKAGED extension in Chrome for Testing (29)
 npm run test:ce              # contenteditable composer: chips, host keymap, host model
+npm run test:matrix          # registers x every command form that writes one
 npm run test:oracle          # the reference editors themselves
 
 npm run dev                  # http://127.0.0.1:8080/test/e2e.html, `:e` proxied
@@ -401,7 +402,17 @@ see a rule that only exists **across** commands, which is where `s` + Esc + `u`
 lived: the deletion and the insert were two undo steps, and the shape-by-shape
 audit was green throughout.
 
-`tools/audit-undo.mjs` adds that second axis, and it needs no reference editor
+`test/registers-matrix.mjs` is the third axis, and it came from a real miss: `"+yy`
+worked while `"+yaw` silently did not, because one command path never looked at the
+prefix. Fixing the cell a human hit is whack-a-mole; the matrix enumerates 41 command
+forms (every code path that writes a register) against five registers, asserting nine
+things per cell — the named register carries what the unnamed one carries, pasting it
+reproduces **vim's** buffer, `+` mirrors it, `_` writes nothing, `A` appends, and an
+unsupported name aborts the command. Two pre-existing motion bugs fell out of it
+(`t` under an operator, and where `{` lands); both are fixed and pinned in
+`oracle/cases/motions.json`.
+
+`tools/audit-undo.mjs` adds the sequence axis, and it needs no reference editor
 because it is an invariant rather than a comparison:
 
 > if a command changed the buffer, then the same command followed by `u` must

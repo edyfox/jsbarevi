@@ -359,6 +359,8 @@ function exSubstitute(engine, range, args, bang) {
 }
 
 function exDelete(engine, range, args) {
+  const bad = engine.badRegister(args.trim());
+  if (bad) return { ok: false, message: bad };
   const [a, b] = resolveRange(engine, range);
   const text = engine.text;
   let from = B.lineOffset(text, a);
@@ -374,6 +376,8 @@ function exDelete(engine, range, args) {
 }
 
 function exYank(engine, range, args) {
+  const bad = engine.badRegister(args.trim());
+  if (bad) return { ok: false, message: bad };
   const [a, b] = resolveRange(engine, range);
   const text = engine.text;
   const from = B.lineOffset(text, a);

@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "node tools/stamp-build.mjs && node tools/audit-undo.mjs && node test/dev-server.mjs && node test/cursor.mjs && node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs",
+    "test": "node tools/stamp-build.mjs && node tools/audit-undo.mjs && node test/dev-server.mjs && node test/cursor.mjs && node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs && node test/registers-matrix.mjs",
     "test:e2e": "node tools/stamp-build.mjs && node test/e2e-cdp.mjs",
     "test:ext": "node tools/build-extension.mjs --no-zip && node test/extension-e2e.mjs",
     "build:ext": "node tools/build-extension.mjs",
@@ -19,9 +19,10 @@
     "audit:undo": "node tools/audit-undo.mjs",
     "store:shots": "node tools/build-extension.mjs --no-zip && node tools/store-screenshots.mjs",
     "test:ce": "node test/contenteditable-e2e.mjs",
-    "test:all": "node tools/stamp-build.mjs && node test/audit-undo.mjs && node test/dev-server.mjs && node test/cursor.mjs && node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs && node test/e2e-cdp.mjs && node test/contenteditable-e2e.mjs && node tools/build-extension.mjs --no-zip && node test/extension-e2e.mjs && node test/lark-payload.mjs",
+    "test:all": "node tools/stamp-build.mjs && node test/audit-undo.mjs && node test/dev-server.mjs && node test/cursor.mjs && node test/unit.mjs && node test/editor-session.mjs && node test/pytextfilter-integration.mjs && node test/run-engine-tests.mjs && node test/differential.mjs && node test/registers-matrix.mjs && node test/e2e-cdp.mjs && node test/contenteditable-e2e.mjs && node tools/build-extension.mjs --no-zip && node test/extension-e2e.mjs && node test/lark-payload.mjs",
     "lark:payload": "node tools/lark-payload.mjs --print-install",
-    "test:lark": "node test/lark-payload.mjs"
+    "test:lark": "node test/lark-payload.mjs",
+    "test:matrix": "node test/registers-matrix.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2"

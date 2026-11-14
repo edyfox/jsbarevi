@@ -667,6 +667,28 @@ typed, in the page, which is the only thing that makes it useful; a page whose C
 forbids `new Function` gets an explicit status line, and `options.expressionRegister:
 false` turns it off for a host that wants no eval at all.
 
+## Known divergences, measured and kept visible
+
+One case where we deliberately do not match vim, recorded here rather than hidden by a
+skipped test. `test/registers-matrix.mjs` keeps the cell in its grid with a
+`knownDivergence` note, so the day someone fixes it the note is what they delete.
+
+| Case | vim 9.2 | us |
+|---|---|---|
+| `d}` with the cursor **on an empty line**, or at the last paragraph | runs to **end of buffer** (it lands past the last paragraph and the operator takes everything to EOF) | stops at the paragraph end — one line short |
+
+Everything else about the paragraph motions is now measured and matched, including the
+two bugs the register matrix exposed on the way (they were pre-existing, and unrelated
+to registers — pasting a register is simply what made them visible as text):
+
+- **`t`/`T` under an operator are inclusive** of the character they land on: `dt,` on
+  `alpha,beta` deletes `alpha`, not `alph`;
+- **`{` lands ON the blank line** it walked up to. It used to return the cursor's own
+  line when the cursor sat directly after a blank line, so `{` never moved there;
+- **`{`/`}` are exclusive linewise under an operator**: the target line is not taken, so
+  the range is `[start(a), start(b))`. `d}` from a normal line is correct now; the
+  empty-line case above is the residue.
+
 ## The cursor never leaves the field
 
 Vim keeps the cursor inside the window; a browser field does not, and our block caret is

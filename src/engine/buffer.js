@@ -236,6 +236,10 @@ export function paragraphBack(text, i, count = 1) {
     let target = ln;
     // walk up to the previous blank line (or line 0)
     while (target > 0 && !isLineEmpty(text, lineOffset(text, target - 1))) target--;
+    // ...and LAND on it. Without this step `{` from the line after a blank line
+    // returned the cursor's own line, so it never moved (measured against vim 9.2:
+    // from line 4 of "a\nb\n\nc\nd", `{` is line 3, not line 4).
+    if (target > 0) target -= 1;
     k = lineOffset(text, Math.max(0, target));
   }
   return k;

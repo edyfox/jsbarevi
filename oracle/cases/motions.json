@@ -1,0 +1,63 @@
+{
+  "about": "Motion semantics the register matrix exposed on 2026-11-14. Both were pre-existing and unrelated to registers: they surfaced because the matrix pastes from a register, which turns a cursor/motion difference into a text difference. Measured against vim 9.2 and pinned here so the differential keeps checking them. Position IS compared: these are about where a motion lands, and the operator rules built on top of it.",
+  "cases": [
+    {
+      "name": "dt, is inclusive of the character t lands on",
+      "input": "alpha,beta\nsecond line\n",
+      "keys": "dt,G$p",
+      "noPosition": true,
+      "expect": { "text": ",beta\nsecond linealpha" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "yt, is inclusive too",
+      "input": "alpha,beta\nsecond line\n",
+      "keys": "yt,G$p",
+      "noPosition": true,
+      "expect": { "text": "alpha,beta\nsecond linealpha" },
+      "engines": ["vim"]
+    },
+    {
+      "name": "d} from a normal line stops before the blank line",
+      "input": "a\nb\n\nc\nd\n",
+      "keys": "d}",
+      "expect": { "text": "\nc\nd\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "d{ from the last paragraph stops before the cursor's line",
+      "input": "a\nb\n\nc\nd\n",
+      "keys": "Gd{",
+      "expect": { "text": "a\nb\nd\n", "line": 3, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "d{ with the cursor on a blank line takes the paragraph before it",
+      "input": "a\nb\n\nc\nd\n",
+      "keys": "jjd{",
+      "expect": { "text": "\nc\nd\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "{ lands on the blank line, not on the cursor's own line",
+      "input": "a\nb\n\nc\nd\n",
+      "keys": "jjj{",
+      "expect": { "text": "a\nb\n\nc\nd\n", "line": 3, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "d} on a two-paragraph buffer",
+      "input": "alpha beta\n\nbeta gamma\n",
+      "keys": "d}",
+      "expect": { "text": "\nbeta gamma\n", "line": 1, "col": 1 },
+      "engines": ["vim"]
+    },
+    {
+      "name": "Gd{ on a two-paragraph buffer",
+      "input": "alpha beta\n\nbeta gamma\n",
+      "keys": "Gd{",
+      "expect": { "text": "alpha beta\nbeta gamma\n", "line": 2, "col": 1 },
+      "engines": ["vim"]
+    }
+  ]
+}

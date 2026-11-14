@@ -253,6 +253,14 @@ export class Engine {
 
   feed(key) {
     if (this.prompt) return { handled: false };
+    if (this._swallowNext) {
+      // One key after a REJECTED register prefix: the command it belonged to. This lives
+      // in feed() rather than in _normalKey because the prefix can be typed in visual
+      // mode too, where swallowing only in normal mode let the operator half-run.
+      this._swallowNext = false;
+      this.pending = this._emptyPending();
+      return { handled: true };
+    }
     let res;
     if (this.mode === Mode.INSERT) {
       res = this._insertKey(key);
@@ -341,12 +349,6 @@ export class Engine {
   // --- normal mode ---------------------------------------------------------
   _normalKey(key) {
     const p = this.pending;
-    if (this._swallowNext) {
-      // One key after a rejected register prefix: the command it belonged to.
-      this._swallowNext = false;
-      this.pending = this._emptyPending();
-      return { handled: true };
-    }
 
     if (key === "Esc") {
       this.pending = this._emptyPending();
@@ -902,8 +904,11 @@ export class Engine {
         for (let i = 0; i < count; i++) to = B.wordEnd(text, to, name === "E");
         return { to, charwise: true, inclusive: true };
       }
-      case "}": return { to: B.paragraphForward(text, cur, count), linewise: true };
-      case "{": return { to: B.paragraphBack(text, cur, count), linewise: true };
+      // Exclusive linewise: the motion spans lines, so an operator takes whole lines,
+      // but the line it LANDS on is not included (measured: "a\nb\n\nc\nd" + `d}` is
+      // "\nc\nd", and `d{` from the last line is "a\nb\nd").
+      case "}": return { to: B.paragraphForward(text, cur, count), linewise: true, exclusive: true };
+      case "{": return { to: B.paragraphBack(text, cur, count), linewise: true, exclusive: true };
       case ")": return { to: B.sentenceForward(text, cur, count), charwise: true };
       case "(": return { to: B.sentenceBack(text, cur, count), charwise: true };
       case "%": {
@@ -1010,7 +1015,10 @@ export class Engine {
       if (hit === -1) return { to: pos, charwise: true, failed: true };
       pos = kind === "t" ? (forward ? B.prevChar(text, hit) : B.nextChar(text, hit)) : hit;
     }
-    return { to: pos, charwise: true, inclusive: kind === "f" || kind === "F" };
+    // `f` lands ON a character and `t` lands on the one BEFORE the target; under an
+    // operator both ranges include the character they land on (measured against vim:
+    // "alpha,beta" + `dt,` deletes "alpha", not "alph"). Only the plain motion differs.
+    return { to: pos, charwise: true, inclusive: true };
   }
 
   _wordUnderCursor() {
@@ -1182,6 +1190,13 @@ export class Engine {
       const a = Math.min(cur, motion.to);
       const b = Math.max(cur, motion.to);
       let from = B.lineOffset(text, B.lineNumber(text, a));
+      if (motion.exclusive) {
+        // `d}` / `d{`: the motion spans lines, so the operator takes whole lines, but
+        // the line it LANDS on is excluded — the range is [start(a), start(b)). Measured
+        // in both directions: "a\nb\n\nc\nd" + `d}` is "\nc\nd"; `Gd{` is "a\nb\nd".
+        const to = B.lineOffset(text, B.lineNumber(text, b));
+        return this._applyOperatorRange(op, from, to, true, true, false, reg);
+      }
       let to = B.lineEnd(text, B.lineOffset(text, B.lineNumber(text, b)));
       if (to < text.length) to += 1;
       else if (from > 0) from -= 1;
@@ -1286,6 +1301,19 @@ export class Engine {
   }
 
   noteLineChange() { /* line-level bookkeeping hook; `U` uses lineSnapshot */ }
+
+  /**
+   * Is this a register name we refuse? Returns the message, or "" when it is fine.
+   *
+   * The ex commands take the register as an ARGUMENT (`:d a`), which means they can be
+   * validated before anything is deleted — vim answers E354 and leaves the buffer alone,
+   * so `:d 1` must not delete the line and then discover it has nowhere to put it.
+   */
+  badRegister(name) {
+    if (!name) return "";
+    if (name === "_" || isClipboard(name) || isNamed(name)) return "";
+    return `E354: Invalid register name: '${name}'`;
+  }
 
   _storeRegister(slice, linewise, reg = null) {
     const res = this.registers.write({ text: slice, linewise, name: reg });
