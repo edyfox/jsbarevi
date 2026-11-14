@@ -312,7 +312,7 @@ NOTES = {
     "@": "macro = register + command replay loop; the real cost is replaying counts/operators, not storing keys",
     "=": "not in busybox (stub); auto-indent belongs to the host editor",
     "&": "depends on `:s`, which depends on ex mode — out with it",
-    "^A": "nvi's word search; `*` already covers the need",
+    "^A": "nvi uses ^A for word search, but in vim (the behaviour oracle) ^A/^X are increment/decrement — implemented as those, with counts and `.` repeat (measured against vim 9.2: octal 007->010, unsigned 64-bit hex, width-preserving digits, the cursor on the last digit)",
 }
 
 

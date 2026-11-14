@@ -1,0 +1,525 @@
+{
+  "about": "Ctrl-A / Ctrl-X, measured against vim 9.2 on 2026-11-14. The expectations here were GENERATED from vim, not typed by hand — the shift cases in sweep.json were first written from a guess and six of them were wrong, which is exactly the failure mode this file avoids. What the cases pin: the number is the one containing the cursor else the next one to its right (a cursor just PAST a number does not take it); a leading +/- belongs to the number; 0x/0b are unsigned 64-bit (0x0 - 1 wraps); leading-zero digits are OCTAL (007 + 1 is 010, not zero padding) while 009 is decimal with its zeros dropped; a written + survives and a minus is dropped when the result is not negative; non-decimal digits keep their width; the cursor lands on the last digit; and . repeats it.",
+  "cases": [
+    {
+      "name": "Ctrl-A increments the number under the cursor",
+      "input": "a 42 b\n",
+      "keys": "2l<C-a>",
+      "expect": {
+        "text": "a 43 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "Ctrl-A from before the number finds the next one",
+      "input": "a 42 b\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "a 43 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a count adds that many",
+      "input": "a 42 b\n",
+      "keys": "5<C-a>",
+      "expect": {
+        "text": "a 47 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "Ctrl-X subtracts",
+      "input": "a 42 b\n",
+      "keys": "2l<C-x>",
+      "expect": {
+        "text": "a 41 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a count subtracts that many",
+      "input": "a 42 b\n",
+      "keys": "5<C-x>",
+      "expect": {
+        "text": "a 37 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "the cursor lands on the last digit of the result",
+      "input": "a 42 b\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "a 43 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a cursor just past a number does not take it",
+      "input": "a 42 b\n",
+      "keys": "4l<C-a>",
+      "expect": {
+        "text": "a 42 b\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "the number under the cursor wins over a later one",
+      "input": "10 20\n",
+      "keys": "3l<C-a>",
+      "expect": {
+        "text": "10 21\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a cursor on the space takes the NEXT number",
+      "input": "10 20\n",
+      "keys": "3l<C-a>",
+      "expect": {
+        "text": "10 21\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "numbers inside words are fair game",
+      "input": "a1b\n",
+      "keys": "l<C-a>",
+      "expect": {
+        "text": "a2b\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a leading minus belongs to the number",
+      "input": "x -3 y\n",
+      "keys": "3l<C-a>",
+      "expect": {
+        "text": "x -2 y\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "the cursor on the minus still increments the number",
+      "input": "x -3 y\n",
+      "keys": "2l<C-a>",
+      "expect": {
+        "text": "x -2 y\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "minus one plus one is zero",
+      "input": "-1\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "0\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a positive result drops the minus",
+      "input": "-1\n",
+      "keys": "5<C-a>",
+      "expect": {
+        "text": "4\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a negative result keeps it",
+      "input": "-1\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "-2\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a written plus survives",
+      "input": "+5\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "+6\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "more digits than before",
+      "input": "999\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "1000\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "nine with a count",
+      "input": "12\n",
+      "keys": "9<C-a>",
+      "expect": {
+        "text": "21\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "zero minus one is negative",
+      "input": "0\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "-1\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "leading zeros with octal digits are octal",
+      "input": "007\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "010\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "…and keep the octal marker",
+      "input": "0777\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "01000\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "…including on the way back",
+      "input": "010\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "007\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "zero is not octal",
+      "input": "00\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "01\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "nine is not an octal digit, so the number is decimal",
+      "input": "009\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "10\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "…and its leading zeros are dropped",
+      "input": "009\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "8\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "hex increments",
+      "input": "0x1f\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "0x20\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "hex keeps its digit width",
+      "input": "0x10\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "0x0f\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "hex keeps a wider width",
+      "input": "0x0010\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "0x000f\n",
+        "line": 1,
+        "col": 6
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "hex grows when it must",
+      "input": "0xff\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "0x100\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "hex digits come back lowercase",
+      "input": "0xAb\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "0xac\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "the 0X prefix case survives",
+      "input": "0XFF\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "0X100\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "hex wraps at 64 bits, unsigned",
+      "input": "0x0\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "0xffffffffffffffff\n",
+        "line": 1,
+        "col": 18
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "binary increments",
+      "input": "0b101\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "0b110\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "binary keeps its width",
+      "input": "0b10\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "0b01\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "binary keeps a wider width",
+      "input": "0b1000\n",
+      "keys": "<C-x>",
+      "expect": {
+        "text": "0b0111\n",
+        "line": 1,
+        "col": 6
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a line with no number is a no-op",
+      "input": "abc\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "abc\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dot repeats the increment",
+      "input": "a 42 b\n",
+      "keys": "2l<C-a>.",
+      "expect": {
+        "text": "a 44 b\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "u undoes it",
+      "input": "7\n",
+      "keys": "<C-a>u",
+      "expect": {
+        "text": "7\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a number at the end of the line grows",
+      "input": "x9\n",
+      "keys": "l<C-a>",
+      "expect": {
+        "text": "x10\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a number after leading spaces",
+      "input": "  7\n",
+      "keys": "<C-a>",
+      "expect": {
+        "text": "  8\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

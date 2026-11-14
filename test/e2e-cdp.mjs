@@ -1208,6 +1208,27 @@ async function main() {
       await evaluate(session, "window.jsbarevi.textarea.engine.registers.read().text"), "alpha beta gamma\n");
 
     // ---------------------------------------------------------------------
+    // Ctrl-A / Ctrl-X belong to vi, and to the browser they are "select all" and
+    // "cut" — so the only thing worth asserting in a real browser is that they were
+    // CONSUMED: the value changes and the field keeps a collapsed selection.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1mCtrl-A / Ctrl-X are ours, not the browser's\x1b[0m");
+    await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText("count 41 here\\n", 0);
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+    await sleep(40);
+    await sendKey(session, "C-a");
+    check("Ctrl-A increments instead of selecting the page", await field(), "count 42 here");
+    await sendKey(session, "C-x");
+    check("Ctrl-X decrements instead of cutting", await field(), "count 41 here");
+    const sel = await evaluate(session, "(() => { const f = document.getElementById('field'); return [f.selectionStart, f.selectionEnd]; })()");
+    check("...and the field selection stays collapsed", [sel[0], sel[1]], [sel[0], sel[0]]);
+
+    // ---------------------------------------------------------------------
     // The overlay is painted ON the page, so a palette tuned for a dark editor
     // is invisible on a white document (a 35%-alpha green caret over white).
     // The fixture is dark; flipping the page's own colours to light must

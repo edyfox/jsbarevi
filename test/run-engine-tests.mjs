@@ -18,7 +18,7 @@ const ROOT = path.resolve(HERE, "..");
 const TOKENS = {
   "<Esc>": "Esc", "<CR>": "CR", "<Tab>": "Tab", "<BS>": "BS",
   "<C-r>": "C-r", "<C-w>": "C-w", "<C-u>": "C-u", "<C-d>": "C-d",
-  "<C-f>": "C-f", "<C-b>": "C-b", "<C-e>": "C-e", "<C-y>": "C-y",
+  "<C-f>": "C-f", "<C-b>": "C-b", "<C-e>": "C-e", "<C-y>": "C-y", "<C-a>": "C-a", "<C-x>": "C-x",
   "<C-g>": "C-g", "<Space>": " ",
 };
 

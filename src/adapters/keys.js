@@ -20,7 +20,9 @@ export function tokenFor(e, mode) {
   if (e.ctrlKey && !e.altKey && !e.metaKey) {
     const k = e.key.toLowerCase();
     if (k === "c") return "C-c";
-    if (["r", "w", "u", "d", "f", "b", "e", "y", "g"].includes(k)) return `C-${k}`;
+    // `a`/`x` are here because they are vi's increment/decrement: leaving them to the
+    // browser means Ctrl-A selects the whole page and Ctrl-X CUTS the field.
+    if (["a", "x", "r", "w", "u", "d", "f", "b", "e", "y", "g"].includes(k)) return `C-${k}`;
     return null;
   }
   if (e.altKey || e.metaKey) return null;

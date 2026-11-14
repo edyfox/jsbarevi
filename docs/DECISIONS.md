@@ -25,7 +25,8 @@ A command may only be excluded for one of three reasons:
 | Motions, screen lines | `gj gk g0 g$ g^` — see the note below |
 | Motions, words | `w b e W B E` |
 | Motions, paragraphs/sentences | `{ } ( )` |
-| Jumps and search | `f F t T ; , % / ? n N * # ^A G gg` |
+| Jumps and search | `f F t T ; , % / ? n N * # G gg` |
+| Increment/decrement | `^A` `^X` — with counts, and `.` repeats |
 | Marks | `m ' `` ` `` |
 | Viewport | `H M L z ^B ^D ^E ^F ^U ^Y ^G` |
 | Insert entry | `i a I A o O R` |

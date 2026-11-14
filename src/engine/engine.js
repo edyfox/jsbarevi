@@ -325,6 +325,7 @@ export class Engine {
       "<Esc>": "Esc", "<CR>": "CR", "<Tab>": "Tab", "<BS>": "BS",
       "<C-r>": "C-r", "<C-w>": "C-w", "<C-u>": "C-u", "<C-d>": "C-d", "<C-f>": "C-f", "<C-b>": "C-b",
       "<C-e>": "C-e", "<C-y>": "C-y", "<C-g>": "C-g", "<Space>": " ",
+      "<C-a>": "C-a", "<C-x>": "C-x",
     };
     return map[tok] ?? tok;
   }
@@ -524,6 +525,8 @@ export class Engine {
       case "?": this.prompt = "search"; this._promptDirection = "?"; return { handled: true, prompt: { kind: "search", initial: "?" } };
       case "C-d": case "C-u": return this._halfPage(key === "C-d" ? 1 : -1);
       case "C-e": case "C-y": return this._scrollLines(key === "C-e" ? 1 : -1);
+      case "C-a": return this._adjustNumber(this._takeCount(1));
+      case "C-x": return this._adjustNumber(-this._takeCount(1));
       case "C-f": case "C-b": return this._page(key === "C-f" ? 1 : -1);
       case ";": case ",": return this._repeatFind(key === ";");
       case "C-g": return this._status();
@@ -1625,6 +1628,83 @@ export class Engine {
     return { handled: true, edit: true };
   }
 
+  /**
+   * `<C-a>` / `<C-x>`: add or subtract from the number under the cursor, or the next one
+   * on the line. Every rule here is measured against vim 9.2 (oracle/cases/increment.json):
+   *
+   *   * the number is the one CONTAINING the cursor, else the first one AT OR AFTER it —
+   *     a cursor just past a number does not pick it up;
+   *   * a leading `+`/`-` belongs to the number, even when the cursor sits on it;
+   *   * `0x`/`0X` is hex and `0b`/`0B` is binary, and both are UNSIGNED 64-bit, so
+   *     `0x0` minus one is `0xffffffffffffffff` (vim, measured), not -1;
+   *   * `0` followed by octal digits is OCTAL (`007` + 1 is `010`, because it is 0 + "10",
+   *     not zero padding) — while `009` is decimal, and its leading zeros are dropped;
+   *   * the sign is kept only when it still means something: `-1` + 1 is `0`, and a
+   *     written `+` survives (`+5` -> `+6`);
+   *   * the cursor lands on the LAST character of the new number.
+   */
+  _adjustNumber(delta) {
+    const text = this.text;
+    const ls = B.lineStart(text, this.state.cursor);
+    const le = B.lineEnd(text, this.state.cursor);
+    const line = text.slice(ls, le);
+    const spot = this._numberAt(line, this.state.cursor - ls);
+    if (!spot) { this.onStatus("no number under or after the cursor", "error"); return { handled: true }; }
+    const next = this._increment(spot, delta);
+    if (next == null) { this.onStatus("cannot change this number", "error"); return { handled: true }; }
+    this._pushUndo({ text, cursor: this.state.cursor });
+    this._setText(text.slice(0, ls) + line.slice(0, spot.from) + next + line.slice(spot.to) + text.slice(le));
+    this.state.cursor = ls + spot.from + next.length - 1;
+    this._noteChange({ kind: "adjust", delta });
+    this._setDesiredCol();
+    return { handled: true, edit: true };
+  }
+
+  /**
+   * The number at `cur`, or the next one to its right. One regex, ordered so the longer
+   * forms win and so the octal form cannot swallow `009` (the lookahead rejects it, and
+   * the decimal branch takes the whole thing).
+   */
+  _numberAt(line, cur) {
+    const re = /([+-]?)(0[xX][0-9a-fA-F]+|0[bB][01]+|0[0-7]+(?![0-9])|[0-9]+)/g;
+    let m;
+    let next = null;
+    while ((m = re.exec(line)) !== null) {
+      const from = m.index;
+      const to = from + m[0].length;
+      if (cur >= from && cur < to) return { from, to, sign: m[1], body: m[2] };
+      if (!next && from >= cur) next = { from, to, sign: m[1], body: m[2] };
+    }
+    return next;
+  }
+
+  /** The replacement text for one number, or null when it cannot be parsed. */
+  _increment(spot, delta) {
+    const { sign, body } = spot;
+    const hex = /^0[xX]/.test(body);
+    const bin = /^0[bB]/.test(body);
+    const oct = !hex && !bin && body.length > 1 && body[0] === "0" && /^[0-7]+$/.test(body);
+    if (hex || bin || oct) {
+      const prefix = hex || bin ? body.slice(0, 2) : "0";
+      const digits = hex || bin ? body.slice(2) : body.slice(1);
+      const radix = hex ? 16 : bin ? 2 : 8;
+      const literal = radix === 16 ? `0x${digits}` : radix === 2 ? `0b${digits}` : `0o${digits}`;
+      let value;
+      try { value = BigInt(literal); } catch { return null; }
+      // Unsigned 64-bit, as vim: `0x0` - 1 wraps rather than going negative.
+      value = (value + BigInt(delta)) & ((1n << 64n) - 1n);
+      // ...and the digits keep their WIDTH: `0x10` - 1 is `0x0f`, not `0xf`, while a
+      // value that outgrows the width simply grows (`0xff` + 1 is `0x100`).
+      return prefix + value.toString(radix).padStart(digits.length, "0");
+    }
+    if (!/^[0-9]+$/.test(body)) return null;
+    const value = Number(body) * (sign === "-" ? -1 : 1) + delta;
+    const abs = String(Math.abs(value));
+    if (value < 0) return `-${abs}`;
+    // A written `+` is part of the number and survives; leading zeros do not.
+    return sign === "+" ? `+${abs}` : abs;
+  }
+
   /** Shift the cursor's line(s) — the `.` repeat path for `>>`/`<<` (see _repeat). */
   _shift(count, right) {
     const startLine = B.lineNumber(this.text, this.state.cursor);
@@ -2148,6 +2228,7 @@ export class Engine {
     if (lc.kind === "join") return this._join(count);
     if (lc.kind === "replace") return this._replaceChars(count, lc.ch);
     if (lc.kind === "shift") return this._shift(count, lc.right);
+    if (lc.kind === "adjust") return this._adjustNumber(lc.delta * count);
     if (lc.kind === "put") return this._put(count, lc.before);
     if (lc.kind === "op") {
       const text = this.text;
