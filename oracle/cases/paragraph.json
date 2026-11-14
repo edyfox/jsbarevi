@@ -1,0 +1,200 @@
+{
+  "about": "The paragraph motions, measured against vim 9.2 on 2026-11-14 — the last open divergence, now closed. `}`/`{` are EXCLUSIVE linewise: the operator takes whole lines but not the line the motion lands on. The subtlety is at end of buffer: an exclusive motion ending at EOF is backed off by one character first, which changes the SHAPE when the range starts on the last line — `Gd}` EMPTIES that line (leaving an empty last line) while `Gdd`/`GdG` REMOVE it; and a linewise run to EOF takes the newline before it, so no trailing empty line survives. Expectations generated from vim.",
+  "cases": [
+    {
+      "name": "d} from the first paragraph stops at the blank line",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "d}",
+      "expect": {
+        "text": "\nc\nd\n\ne\nf\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d} with the cursor ON a blank line takes the next paragraph too",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkkkd}",
+      "expect": {
+        "text": "a\nb\n\n\ne\nf\n",
+        "line": 4,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d} at the last paragraph boundary runs to the end of the buffer",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkd}",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n",
+        "line": 5,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d} inside the last paragraph runs to the end of the buffer",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkd}",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n\n",
+        "line": 6,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d} on the LAST line empties it instead of removing it",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gd}",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n\ne\n\n",
+        "line": 8,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dd on the last line removes it (the difference that proves the shape rule)",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gdd",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n\ne\n",
+        "line": 7,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dG on the last line removes it too",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "GdG",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n\ne\n",
+        "line": 7,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d{ from the second paragraph stops before the blank line",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkkkkd{",
+      "expect": {
+        "text": "\nc\nd\n\ne\nf\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d{ with the cursor on a blank line takes the paragraph before it",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkkkd{",
+      "expect": {
+        "text": "a\nb\nc\nd\n\ne\nf\n",
+        "line": 3,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d{ from the last line takes the paragraph above it",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gd{",
+      "expect": {
+        "text": "a\nb\n\nc\nd\nf\n",
+        "line": 6,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "} from a blank line skips to the next paragraph",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkkk}",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n\ne\nf\n",
+        "line": 6,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "{ from a line after a blank line lands on that blank line",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkkkk{",
+      "expect": {
+        "text": "a\nb\n\nc\nd\n\ne\nf\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d} on a two-paragraph buffer",
+      "input": "alpha beta\n\nbeta gamma\n",
+      "keys": "d}",
+      "expect": {
+        "text": "\nbeta gamma\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "Gd{ on a two-paragraph buffer",
+      "input": "alpha beta\n\nbeta gamma\n",
+      "keys": "Gd{",
+      "expect": {
+        "text": "alpha beta\nbeta gamma\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "d} then p puts the deleted text back",
+      "input": "a\nb\n\nc\nd\n\ne\nf\n",
+      "keys": "Gkkkd}p",
+      "expect": {
+        "text": "a\nb\n\nc\n\nd\ne\nf\n",
+        "line": 6,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

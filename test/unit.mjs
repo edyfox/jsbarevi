@@ -787,7 +787,8 @@ console.log("\n\x1b[1mthe host-facing engine API (a coverage sweep found these u
   const e = mk("l1\nl2\nl3\nl4\nl5\n", 0, host);
   e.feed("C-e");
   eq("C-e asks the host to scroll one line down", scrolled, [1]);
-  eq("...and leaves the cursor alone", e.cursor, 0);
+  // ...and the cursor is pushed down with the window, because it was on the top line.
+  eq("...taking the cursor with it", e.text.slice(0, e.cursor).split("\n").length, 2);
   e.feed("C-y");
   eq("C-y asks for one line up", scrolled, [1, 0]);
   // The cursor is the host's to move once the window moves: we can only ask for the
@@ -800,6 +801,24 @@ console.log("\n\x1b[1mthe host-facing engine API (a coverage sweep found these u
   const quiet = mk("a\nb\n", 0, { viewport: () => ({ top: 0, height: 2 }) });
   quiet.feed("C-e");
   eq("a viewport with no onScroll is harmless", quiet.status.length, 0);
+  // vim keeps the cursor INSIDE the window: C-e pushes it down off the top, C-y pushes
+  // it up off the bottom, and a scroll that leaves it visible leaves it alone.
+  const win = { top: 0, height: 3 };
+  const lines = "l1\nl2\nl3\nl4\nl5\nl6\n";
+  const scroll = mk(lines, 0, { viewport: () => ({ ...win }), onScroll: (t) => { win.top = t; } });
+  const lineOf = (e) => e.text.slice(0, e.cursor).split("\n").length;
+  scroll.feed("C-e");
+  eq("C-e scrolls and takes the cursor with it", [win.top, lineOf(scroll)], [1, 2]);
+  scroll.feed("C-e");
+  eq("...and again, one row at a time", [win.top, lineOf(scroll)], [2, 3]);
+  scroll.feed("C-y");
+  eq("C-y scrolls back and leaves a visible cursor alone", [win.top, lineOf(scroll)], [1, 3]);
+  const bottom = { top: 5, height: 3 };
+  const down = mk("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\n", 0, { viewport: () => ({ ...bottom }), onScroll: (t) => { bottom.top = t; } });
+  down.feedKeys("7j");
+  eq("the cursor sits on the window's last row", lineOf(down), 8);
+  down.feed("C-y");
+  eq("C-y pushes it up into the window", [bottom.top, lineOf(down)], [4, 7]);
 }
 {
   const e = mk("hello world\nsecond\n", 0);

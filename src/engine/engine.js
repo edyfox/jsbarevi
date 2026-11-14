@@ -279,7 +279,14 @@ export class Engine {
     if (this.state.text !== before) {
       const line = before === this.state.text ? 0 : B.lineNumber(before, Math.min(preCursor, Math.max(0, before.length - 1)));
       if (!this.lineSnapshot || this.lineSnapshot.line !== line) {
-        this.lineSnapshot = { line, text: B.lineText(before, B.lineOffset(before, line)) };
+        // The column is recorded AFTER the command, not before: measured (`llXU` lands on
+        // 1:2, `lXjllkU` on 1:1, `xxU` on 1:1) — vim saves the position the change left
+        // the cursor at, and U reproduces it.
+        this.lineSnapshot = {
+          line,
+          text: B.lineText(before, B.lineOffset(before, line)),
+          col: this.state.cursor - B.lineStart(this.state.text, this.state.cursor),
+        };
       }
       if (B.lineCount(this.state.text) !== B.lineCount(before)) this.lineSnapshot = null;
       void preCursor;
@@ -920,7 +927,17 @@ export class Engine {
       // Exclusive linewise: the motion spans lines, so an operator takes whole lines,
       // but the line it LANDS on is not included (measured: "a\nb\n\nc\nd" + `d}` is
       // "\nc\nd", and `d{` from the last line is "a\nb\nd").
-      case "}": return { to: B.paragraphForward(text, cur, count), linewise: true, exclusive: true };
+      case "}": {
+        const raw = B.paragraphForward(text, cur, count);
+        // `to` is where the CURSOR may land (a valid character); `end` is what an
+        // operator takes, which is EOF when there is no further paragraph.
+        return {
+          to: Math.min(raw, Math.max(0, text.length - 1)),
+          end: raw,
+          linewise: true,
+          exclusive: true,
+        };
+      }
       case "{": return { to: B.paragraphBack(text, cur, count), linewise: true, exclusive: true };
       case ")": return { to: B.sentenceForward(text, cur, count), charwise: true };
       case "(": return { to: B.sentenceBack(text, cur, count), charwise: true };
@@ -1230,7 +1247,25 @@ export class Engine {
         // `d}` / `d{`: the motion spans lines, so the operator takes whole lines, but
         // the line it LANDS on is excluded — the range is [start(a), start(b)). Measured
         // in both directions: "a\nb\n\nc\nd" + `d}` is "\nc\nd"; `Gd{` is "a\nb\nd".
-        const to = B.lineOffset(text, B.lineNumber(text, b));
+        // A motion that ran out of paragraphs reports `end` past the last character, and
+        // then the range really is the rest of the buffer (vim: `d}` on the last
+        // paragraph deletes to EOF).
+        // `b`, not `motion.to`: a BACKWARD motion (`d{`) reports the small offset, and
+        // the range has to end at the cursor's line, not at the motion's start.
+        const end = motion.end ?? b;
+        if (end >= text.length) {
+          // The motion ran out of paragraphs and ended at EOF. Vim backs an exclusive
+          // motion's end off by one character, which changes the SHAPE at the last line:
+          //   `Gd}` on the last line EMPTIES it   ("…e\nf" -> "…e\n", an empty line left)
+          //   `GdG` / `Gdd` remove the line       ("…e\nf" -> "…e")
+          //   `d}` from an earlier line takes whole lines to the end.
+          const lastLine = B.lineCount(text) - 1;
+          if (B.lineNumber(text, a) === lastLine) {
+            return this._applyOperatorRange(op, from, Math.max(from, text.length - 1), false, true, false, reg);
+          }
+          return this._applyOperatorRange(op, from, text.length, true, true, false, reg);
+        }
+        const to = B.lineOffset(text, B.lineNumber(text, end));
         return this._applyOperatorRange(op, from, to, true, true, false, reg);
       }
       let to = B.lineEnd(text, B.lineOffset(text, B.lineNumber(text, b)));
@@ -1804,15 +1839,14 @@ export class Engine {
     const snap = this.lineSnapshot;
     const text = this.text;
     if (!snap || snap.line >= B.lineCount(text)) { this.onStatus("no line change to restore", "error"); return { handled: true }; }
-    const col = this.state.cursor - B.lineStart(text, this.state.cursor);
+    const col = snap.col;
     this._pushUndo({ text, cursor: this.state.cursor });
     const lines = text.split("\n");
     lines[snap.line] = snap.text;
     this._setText(lines.join("\n"));
-    // The cursor goes to the line that changed, keeping its column where it was
-    // (clamped) — measured: `xxU` lands on 1:1 and `llXU` on 1:2. Vim's own column is
-    // recorded at the moment of the first change and is not reproducible from ours; the
-    // differential pins the BUFFER and skips the position for `U` (docs/DECISIONS.md).
+    // The cursor goes to the line that changed, in the column the first change left it
+    // in (clamped to the restored line). Measured: `xxU` -> 1:1, `llXU` -> 1:2,
+    // `lXjllkU` -> 1:1 (after moving to another line and back).
     const at = B.lineOffset(this.state.text, snap.line);
     this.state.cursor = B.clampToLineEnd(this.state.text, at, at + Math.max(0, col));
     this.lineSnapshot = null;
@@ -1836,7 +1870,7 @@ export class Engine {
             : cur;
     this._pushUndo({ text, cursor: entry });
     // U restores the line to how it looked before its FIRST change (see feed()).
-    this.lineSnapshot = { line: B.lineNumber(text, entry), text: B.lineText(text, entry) };
+    this.lineSnapshot = { line: B.lineNumber(text, entry), text: B.lineText(text, entry), col: entry - B.lineStart(text, entry) };
     this.mode = Mode.INSERT;
     this.pending = this._emptyPending();
 
@@ -2186,10 +2220,32 @@ export class Engine {
     this.state.cursor = r.to;
     return { handled: true };
   }
+  /**
+   * `C-e` / `C-y`: scroll the window one line and keep the cursor INSIDE it.
+   *
+   * The window belongs to the host, so the engine can only ask (`onScroll`); what it can
+   * do on its own is move the cursor when the new window would no longer contain it —
+   * which is vim's rule (measured: `3<C-e>` from line 1 puts the cursor on line 4, and
+   * `G<C-y>` at the end of the buffer leaves the cursor where it is, because it is still
+   * on screen).
+   */
   _scrollLines(dir) {
     const vp = this._viewport();
     if (!vp) { this.onStatus("no viewport on this host", "error"); return { handled: true }; }
-    this.onScroll(Math.max(0, vp.top + dir));
+    const top = Math.max(0, vp.top + dir);
+    this.onScroll(top);
+    const row = this._rowIndex(this.state.cursor);
+    const current = row != null ? row : B.lineNumber(this.text, this.state.cursor);
+    if (current >= top && current <= top + vp.height - 1) return { handled: true };
+    const target = current < top ? top : top + vp.height - 1;
+    const landing = this._rowLanding(target, 0);
+    if (landing != null) this.state.cursor = landing;
+    else {
+      const lines = B.lineCount(this.text);
+      const line = Math.max(0, Math.min(target, lines - 1));
+      this.state.cursor = B.firstNonBlank(this.text, B.lineOffset(this.text, line));
+    }
+    this._setDesiredCol();
     return { handled: true };
   }
   _status() {

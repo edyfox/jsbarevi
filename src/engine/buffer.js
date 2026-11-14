@@ -221,7 +221,11 @@ export function paragraphForward(text, i, count = 1) {
       k = lineOffset(text, ln + 1);
     }
   }
-  return Math.min(k, Math.max(0, text.length === 0 ? 0 : prevChar(text, text.length)));
+  // UNCLAMPED: when there is no further paragraph, vim's `}` runs to END OF BUFFER, and
+  // an operator needs that end (the cursor is clamped by the caller). `d}` on the last
+  // paragraph takes the rest of the buffer — measured, and the cause of the one open
+  // divergence in docs/ENGINE.md.
+  return k;
 }
 
 export function paragraphBack(text, i, count = 1) {

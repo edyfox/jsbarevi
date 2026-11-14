@@ -77,12 +77,10 @@ const FORMS = [
   { name: "y%", body: "y%", input: PAREN_INPUT, prep: "4l" },
   { name: "yt,", body: "yt,", input: COMMA_INPUT },
   { name: "d}", body: "d}", input: PARA_INPUT },
-  // Known divergence, kept in the grid so it cannot be forgotten: with the cursor ON an
-  // empty line vim's `d}` runs to END OF BUFFER, ours stops at the paragraph end.
-  // Measured 2026-11-14 (docs/ENGINE.md, "Known divergences"); only the vim-comparison
-  // cell is skipped — every register assertion still runs.
-  { name: "d}\u200b(empty line)", body: "d}", input: PARAGRAPH_INPUT, prep: "jj",
-    knownDivergence: "d} from an empty line runs to end-of-buffer in vim" },
+  // This cell used to be a KNOWN DIVERGENCE (vim runs `d}` to end-of-buffer from an empty
+  // line, we stopped at the paragraph end). Fixed 2026-11-14: the motion now reports the
+  // raw end, so the grid runs it like any other cell.
+  { name: "d}\u200b(empty line)", body: "d}", input: PARAGRAPH_INPUT, prep: "jj" },
   { name: "d(", body: "d(", input: PAREN_INPUT, prep: "5l" },
   { name: "dG", body: "dG" },
   { name: "d'a", body: "d'a", prep: "maG" },

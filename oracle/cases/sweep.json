@@ -1,5 +1,5 @@
 {
-  "about": "Pinned by the coverage sweep (tools/coverage.mjs) on 2026-11-14: features that DECISIONS.md claims and that no test had ever executed. `*` and `#` were BROKEN (the pattern was built with vim's `\\<`/`\\>`, which JavaScript reads as a literal '<', so the search matched nothing and the cursor never moved), `U` did nothing after any non-insert change, and the search did not wrap. Sentence motions and the shift commands were correct but never run. U's cursor column is approximate — vim records it at the moment of the first change and we cannot reproduce that — so those cases compare the BUFFER only (docs/DECISIONS.md, 'Deliberately approximated').",
+  "about": "Pinned by the coverage sweep (tools/coverage.mjs) on 2026-11-14: features that DECISIONS.md claims and that no test had ever executed. `*` and `#` were BROKEN (the pattern was built with vim's `\\<`/`\\>`, which JavaScript reads as a literal '<', so the search matched nothing and the cursor never moved), `U` did nothing after any non-insert change, and the search did not wrap. Sentence motions and the shift commands were correct but never run. U's cursor column is now reproduced too: the snapshot records the column the first change left the cursor in (measured: llXU 1:2, lXjllkU 1:1, xxU 1:1), so those cases compare position like the rest.",
   "cases": [
     {
       "name": "* jumps to the next occurrence of the word under the cursor",
@@ -164,9 +164,10 @@
       "name": "U restores the line after a delete-before-cursor",
       "input": "abcdef\nsecond\n",
       "keys": "llXU",
-      "noPosition": true,
       "expect": {
-        "text": "abcdef\nsecond\n"
+        "text": "abcdef\nsecond\n",
+        "line": 1,
+        "col": 2
       },
       "engines": [
         "vim"
@@ -176,9 +177,10 @@
       "name": "U restores the whole line after two deletes",
       "input": "abcdef\nsecond\n",
       "keys": "xxU",
-      "noPosition": true,
       "expect": {
-        "text": "abcdef\nsecond\n"
+        "text": "abcdef\nsecond\n",
+        "line": 1,
+        "col": 1
       },
       "engines": [
         "vim"
@@ -188,9 +190,10 @@
       "name": "U survives moving to another line and back",
       "input": "abc\ndef\n",
       "keys": "lXjllkU",
-      "noPosition": true,
       "expect": {
-        "text": "abc\ndef\n"
+        "text": "abc\ndef\n",
+        "line": 1,
+        "col": 1
       },
       "engines": [
         "vim"
@@ -200,9 +203,10 @@
       "name": "U on another line still restores the changed line",
       "input": "abcdef\nsecond\n",
       "keys": "xjU",
-      "noPosition": true,
       "expect": {
-        "text": "abcdef\nsecond\n"
+        "text": "abcdef\nsecond\n",
+        "line": 1,
+        "col": 1
       },
       "engines": [
         "vim"
@@ -212,9 +216,10 @@
       "name": "U restores text typed in insert mode",
       "input": "abcdef\nsecond\n",
       "keys": "iXYZ<Esc>U",
-      "noPosition": true,
       "expect": {
-        "text": "abcdef\nsecond\n"
+        "text": "abcdef\nsecond\n",
+        "line": 1,
+        "col": 1
       },
       "engines": [
         "vim"
@@ -224,9 +229,10 @@
       "name": "U is itself undoable",
       "input": "abcdef\n",
       "keys": "xUu",
-      "noPosition": true,
       "expect": {
-        "text": "bcdef\n"
+        "text": "bcdef\n",
+        "line": 1,
+        "col": 1
       },
       "engines": [
         "vim"
@@ -236,9 +242,10 @@
       "name": "U does nothing after a linewise delete removed the line",
       "input": "a\nb\nc\n",
       "keys": "ddU",
-      "noPosition": true,
       "expect": {
-        "text": "b\nc\n"
+        "text": "b\nc\n",
+        "line": 1,
+        "col": 1
       },
       "engines": [
         "vim"

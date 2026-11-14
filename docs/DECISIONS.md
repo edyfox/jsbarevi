@@ -74,13 +74,12 @@ capability the host may refuse (`=`).
 
 ### Where we are approximate, and say so
 
-- **`U`'s cursor column.** The line is restored exactly (pinned against vim in
-  `oracle/cases/sweep.json`), but vim records the column at the moment of the first change
-  and we cannot reproduce it from our state; we keep the current column, clamped. The
-  differential compares the buffer only for `U`.
-- **`C-e` / `C-y` cannot move the cursor.** Vim moves the cursor down when scrolling would
-  push it out of the window. The window belongs to the host, so the engine can only *ask*
-  for a scroll (`onScroll`) and the adapter re-reads the viewport afterwards.
+Nothing in the register or motion surface is knowingly approximate any more: the three
+divergences found on 2026-11-14 (`U`'s cursor column, `C-e`/`C-y` and the cursor, and `d}`
+at the end of the buffer) were measured and fixed — see "Divergences: closed" in
+`docs/ENGINE.md`. The approximations that remain are the old, documented ones about `.`
+replaying an insert by diffing a snapshot, and the viewport commands needing a host that
+can report a viewport.
 
 
 ### Notable inclusions, and why

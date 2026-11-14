@@ -667,63 +667,21 @@ typed, in the page, which is the only thing that makes it useful; a page whose C
 forbids `new Function` gets an explicit status line, and `options.expressionRegister:
 false` turns it off for a host that wants no eval at all.
 
-## Known divergences, measured and kept visible
+## Divergences: closed (2026-11-14)
 
-One case where we deliberately do not match vim, recorded here rather than hidden by a
-skipped test. `test/registers-matrix.mjs` keeps the cell in its grid with a
-`knownDivergence` note, so the day someone fixes it the note is what they delete.
+Three places where we knowingly differed from vim, each one measured first and then
+fixed. The list is empty now, which is the point of writing it down: a divergence with a
+named mechanism is a work item, and one without is folklore.
 
-| Case | vim 9.2 | us |
+| Case | vim | what we did |
 |---|---|---|
-| `d}` with the cursor **on an empty line**, or at the last paragraph | runs to **end of buffer** (it lands past the last paragraph and the operator takes everything to EOF) | stops at the paragraph end — one line short |
+| `d}` with the cursor on/after the last paragraph | runs to **end of buffer** | fixed: the paragraph motion reports its RAW end (`motion.end`), so an operator can take the rest of the buffer while the cursor stays on a real character. The shape at EOF is also vim's: `Gd}` on the last line **empties** it, `Gdd`/`GdG` **remove** it (an exclusive motion's end is backed off by one character before the linewise conversion) |
+| `U`'s cursor column | the column the first change left the cursor in | fixed: the snapshot records that column (`llXU` → 1:2, `lXjllkU` → 1:1, `xxU` → 1:1) |
+| `C-e` / `C-y` had no cursor rule | the cursor is pushed down/up when the new window would not contain it | fixed: the engine asks for the scroll and then moves the cursor to the window edge it fell off (`3<C-e>` from line 1 lands on line 4; `G<C-y>` leaves it alone because it is still on screen) |
 
-Everything else about the paragraph motions is now measured and matched, including the
-two bugs the register matrix exposed on the way (they were pre-existing, and unrelated
-to registers — pasting a register is simply what made them visible as text):
-
-- **`t`/`T` under an operator are inclusive** of the character they land on: `dt,` on
-  `alpha,beta` deletes `alpha`, not `alph`;
-- **`{` lands ON the blank line** it walked up to. It used to return the cursor's own
-  line when the cursor sat directly after a blank line, so `{` never moved there;
-- **`{`/`}` are exclusive linewise under an operator**: the target line is not taken, so
-  the range is `[start(a), start(b))`. `d}` from a normal line is correct now; the
-  empty-line case above is the residue.
-
-## The coverage sweep, and what it found
-
-`npm run coverage` (`tools/coverage.mjs`) runs every Node-hosted suite under
-`NODE_V8_COVERAGE`, merges the block coverage, and reports **functions never entered**
-plus the multi-line spans that never executed. It exists because of the register matrix:
-a rule that lives in one branch and is forgotten in a sibling is a coverage question, and
-"the user found it" is not a test strategy.
-
-Three details make the report trustworthy rather than decorative:
-
-- **Function coverage, not line painting.** V8 emits a zero-count range for a function's
-  parameter list, so a naive per-line rule marks `submitPrompt(value) {` as dead while it
-  ran 18 times. The first version of this tool reported 921 "dead blocks", almost all of
-  them that artefact. A function counts as entered when the MAX count over its ranges is
-  positive, and a zero-count range only matters when it sits *inside* a function that ran.
-- **`--no-opt` for the children.** TurboFan inlining hides a small function's own counter,
-  which is how `_shift` reported as never entered while `>>` demonstrably shifted lines.
-- **Browser-only modules are excluded from the claim.** `theme.js` and
-  `editor-session.js` are DOM/HTTP code: their coverage comes from the browser suites'
-  own assertions, not from this sweep. Saying "97 %" about them would be a lie in the
-  safe direction, which is still a lie.
-
-First run, engine at 86/97 functions, found:
-
-| Finding | Verdict |
-|---|---|
-| `*` and `#` **never moved the cursor** | The pattern was built with vim's `\<` / `\>`, which JavaScript reads as a literal `<`. Nothing had ever run that line. Fixed to `\b`, and the search now **wraps** like `'wrapscan'` |
-| `U` did nothing except after insert mode | It only had a snapshot from `_enterInsert`. Now a change to the current line records the line as it was *before* that first change, `U` restores it as an undoable change, the snapshot survives moving away and back, and a change in line COUNT drops it (so `ddU` restores nothing, like vim) |
-| `case "<": case ">":` in the key switch | **Unreachable** — `>>` is caught by the operator branch first. Deleted; `_shift` survives only for `.` repeat, which is now pinned by a test |
-| `buffer.charCount`, `cursor.lastChar`, `HttpEditorSession.describe`, `registers.names` | **Dead** — no caller in `src/`, `test/` or `tools/`. Deleted |
-| sentence motions `( )`, shift `>> << >j`, `:e/:w/:q`, `C-e/C-y`, `^G`, `:set` | Correct but **never executed**. Pinned in `oracle/cases/sweep.json` (20 cases against vim) and `test/unit.mjs` |
-
-After: **engine 98/98 functions, buffer 28/28, cursor 8/8, ex 16/16, registers 9/9**.
-The sweep is part of the record, not a one-off: `npm run coverage` prints the table and
-writes `.coverage/summary.md`.
+The paragraph rules are pinned in `oracle/cases/paragraph.json` (15 cases, generated from
+vim), the register matrix no longer skips its `d}` cell, and `C-e`/`C-y` have unit tests
+against a fake window.
 
 ## The cursor never leaves the field
 
