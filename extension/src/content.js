@@ -84,6 +84,21 @@ function isTextField(el) {
   return TEXT_INPUT_TYPES.has((el.getAttribute("type") || "").toLowerCase());
 }
 
+/**
+ * A host that injects this script into a larger application can narrow where the engine
+ * attaches by defining `globalThis.jsbareviHostGate`.
+ *
+ * The asar seam in Lark is the case it exists for: one script loads in all ~340 shells,
+ * and the Docs/Bitable editors are contenteditable too. Returning `false` leaves a field
+ * completely alone — no engine, no badge, no key handling. Absent, or throwing, means
+ * "ours": a broken gate must never silently disable the editor everywhere.
+ */
+function hostGate(el) {
+  const gate = globalThis.jsbareviHostGate;
+  if (typeof gate !== "function") return true;
+  try { return gate(el) !== false; } catch { return true; }
+}
+
 function isEligible(el) {
   if (!isTextField(el)) return false;
   if (el.disabled || el.readOnly) return false;
@@ -93,6 +108,7 @@ function isEligible(el) {
   // Per-field and per-subtree opt-out, so a host page whose own editor handles keys
   // (or a field that is not a text field in spirit) can say so.
   if (el.closest?.('[data-jsbarevi="off"]')) return false;
+  if (!hostGate(el)) return false;
   return true;
 }
 

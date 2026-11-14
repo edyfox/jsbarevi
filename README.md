@@ -254,6 +254,39 @@ Relying on the native selection was the first attempt and it was wrong in a way
 tests alone did not catch: the range *was* set and a pixel *did* change, but the
 OS highlight in a dark field is so weak that it was invisible in practice.
 
+## Inside an app with no extension system (Lark)
+
+Lark on Linux is not Electron: its extension system and devtools are compiled out of
+`liblark.so`, and the UI is served from `native-resource://`, so no content-script match
+pattern can apply. What does work is the asar entry every shell loads —
+`resource.asar → js/after-js-load.js` — which the personal `lark-ext-patch` tool
+appends to and rebuilds with its integrity recomputed.
+
+```bash
+npm run lark:payload                    # dist/lark-payload.js: bundle + gate + beacon
+# then, with the installer from the workspace:
+LARK_PAYLOAD_FROM=$PWD/dist/lark-payload.js ../../_local/bin/lark-ext-patch patch
+# restart Lark
+npm run test:lark                       # the payload against a Lark-shaped page
+```
+
+Three things the payload adds on top of the bundled content script, because a page world
+has none of them:
+
+- **A gate.** The script loads in every Lark shell and the Docs/Bitable editors are
+  contenteditable too, so the payload defines `globalThis.jsbareviHostGate` and the
+  content script refuses every field it rejects. The selector (`[class*=chat]`) is read
+  at page load from a local beacon, so retuning needs no re-patch.
+- **The `blur()` patch**, normally a separate MAIN-world content script; in Lark the
+  payload already runs in the page's world.
+- **A beacon**, because there is no devtools and no extension console to read a
+  diagnostic from.
+
+Settings need no shim: with no `chrome.storage` at all, the content script falls back to
+its defaults plus `localStorage["jsbarevi:settings"]` — the path Electron hosts already
+proved. `:e` is the one thing that does not travel: a page on a custom scheme may not
+fetch `http://127.0.0.1`, so Lark refuses it, and the status line says so.
+
 ## Why another one
 
 Three options existed and none fit:

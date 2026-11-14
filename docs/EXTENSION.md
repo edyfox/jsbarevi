@@ -229,6 +229,49 @@ Two measured traps, both fixed and both pinned by `npm run test:ce`:
 - **A deletion may remove more than asked.** The adapter re-reads the DOM after every
   edit and adopts what really happened instead of insisting on its own buffer.
 
+## The Lark seam (an app with no extension system)
+
+Lark's desktop client compiles the extension system and devtools out of `liblark.so` and
+serves its UI from `native-resource://`, so the packaged extension cannot reach it at
+all. The one seam is the asar entry every shell loads; `tools/lark-payload.mjs` builds
+the payload that gets appended there, and `_local/bin/lark-ext-patch` (in the personal
+workspace, not this repo) owns the container: integrity recomputation, backup, atomic
+install, verify, restore.
+
+```bash
+npm run lark:payload          # dist/lark-payload.js
+npm run test:lark             # the ARTEFACT, against a Lark-shaped page in Chrome
+```
+
+The payload is the same content script the extension ships — bundled by the same
+`tools/build-extension.mjs`, so the two cannot drift — wrapped in three things a page
+world does not provide:
+
+| Wrapper | Why |
+|---|---|
+| **Host gate** — `globalThis.jsbareviHostGate(el)` | One script loads in all ~340 shells, and Docs/Bitable are contenteditable. `isEligible()` refuses any field the gate rejects, so the engine never even attaches outside the chat composer |
+| **`blur()` patch** | The extension ships this as a separate `world: "MAIN"` content script; in Lark the payload already *is* the page world. Honest limit: an app that captured `HTMLElement.prototype.blur` before injection keeps the native method, and the focus-reclaim guard covers that case |
+| **Beacon** | No devtools, no extension console. `report()` writes to Lark's own frontend log and to a local beacon server, and it **fetches the gate config from it at page load**, so retuning the selector needs no re-patch and no sudo |
+
+The gate config is the same file the previous Input Vim payload used
+(`_local/scratchpad/ext-injection/config/lark.json` → `http://127.0.0.1:8765/lark-config.json`):
+
+```json
+{"enabled": true, "gateSelector": "[class*=chat]", "logFocus": true}
+```
+
+Two deliberate details:
+
+- **The focus report is throttled to 1/s.** Eligibility is asked on every keydown that
+  lands in an editable we do not own — i.e. throughout someone typing in a Lark doc — so
+  an unthrottled beacon would be one HTTP request per keystroke.
+- **The report is the tuning instrument.** `inChat=false` next to the focused element's
+  classes is how the selector was chosen against reality rather than guessed, and it is
+  how it gets re-chosen after a Lark release.
+
+`:e` does not travel: a page on a custom scheme may not fetch `http://127.0.0.1`, so the
+transport reports "cannot reach" and the session stays in the field.
+
 ## Settings
 
 `chrome.storage.local`, three keys — nothing else is stored anywhere:
