@@ -16,6 +16,7 @@
 
 import { attach } from "../../src/entry.js";
 import { HttpEditorSession } from "../../src/adapters/editor-session.js";
+import { pageTheme, refreshTheme } from "../../src/adapters/theme.js";
 
 const DEFAULTS = {
   enabled: true,
@@ -515,4 +516,9 @@ globalThis.__jsbarevi = {
   settings: () => settings,
   attach: (el) => attachField(el),
   detachAll,
+  // The palette follows the page, and a host that re-themes without touching <html> or
+  // <body> (a framework swapping a stylesheet, a shell we injected into) can ask for a
+  // re-measure instead of waiting for the next focus.
+  theme: (el) => pageTheme(el),
+  refreshTheme,
 };

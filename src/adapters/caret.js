@@ -11,6 +11,8 @@
 // That handles soft wrap, tabs and proportional fonts, which arithmetic on
 // line-height does not.
 
+import { bindTheme } from "./theme.js";
+
 const MIRROR_PROPS = [
   "boxSizing", "width", "fontStyle", "fontVariant", "fontWeight", "fontStretch",
   "fontSize", "lineHeight", "fontFamily", "letterSpacing", "wordSpacing",
@@ -27,7 +29,8 @@ function ensureStyle() {
   s.id = STYLE_ID;
   s.textContent = `
   .jsbarevi-caret{position:fixed;z-index:2147483646;pointer-events:none;box-sizing:border-box;
-    background:rgba(166,226,46,.35);border:1px solid rgba(166,226,46,.85);
+    background:var(--jsbarevi-caret-bg,rgba(166,226,46,.35));
+    border:1px solid var(--jsbarevi-caret-border,rgba(166,226,46,.85));
     border-radius:1px;mix-blend-mode:normal}
   .jsbarevi-caret.line{border-left-width:2px;border-right-width:2px}
   .jsbarevi-caret.blink{animation:jsbarevi-blink 1.1s steps(1,end) infinite}
@@ -45,11 +48,15 @@ export class BlockCaret {
     this.node.className = "jsbarevi-caret blink";
     this.node.style.display = "none";
     document.documentElement.appendChild(this.node);
+    // Painted against the page behind the field: a light-green block is unfindable on a
+    // white document, so the light palette uses a darker, more opaque one.
+    this.releaseTheme = bindTheme(el, this.node);
     this.mirror = null;
     this._lastText = null;
   }
 
   destroy() {
+    try { this.releaseTheme?.(); } catch { /* already gone */ }
     this.node.remove();
     this.mirror?.remove();
   }

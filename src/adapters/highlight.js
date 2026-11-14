@@ -10,6 +10,8 @@
 // The native selection is collapsed while this is active, so the two never
 // double-paint. Copy still works: Ctrl-C copies the engine's visual range.
 
+import { bindTheme } from "./theme.js";
+
 const STYLE_ID = "jsbarevi-highlight-style";
 function ensureStyle() {
   if (document.getElementById(STYLE_ID)) return;
@@ -42,11 +44,14 @@ export class SelectionHighlight {
     this.host.setAttribute("aria-hidden", "true");
     this.host.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483645;";
     document.documentElement.appendChild(this.host);
+    // The boxes inherit their colours from the host, which carries the page's palette.
+    this.releaseTheme = bindTheme(el, this.host);
     this.mirror = null;
     this._mirrorText = null;
   }
 
   destroy() {
+    try { this.releaseTheme?.(); } catch { /* already gone */ }
     this.host.remove();
     this.mirror?.remove();
   }

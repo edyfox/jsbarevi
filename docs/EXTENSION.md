@@ -89,6 +89,42 @@ Written down because both cost an install to find:
   The extension test asserts the computed `position: fixed`, so a regression fails
   the suite rather than looking slightly wrong in one host.
 
+## The palette follows the page, not the OS
+
+Everything vi paints — the mode badge, the status line, the command line, the block
+caret, the visual selection — sits **on top of** the host page. The palette was tuned
+for a dark editor, which is where the first hosts lived, and on a white document a
+35 %-alpha light-green caret is simply not findable. The page's own colours are not
+ours to change, so the palette adapts instead.
+
+- **Two palettes, one set of CSS custom properties** (`src/adapters/theme.js`):
+  `--jsbarevi-ui-bg/-fg/-accent/-error/-prompt`, a ring and a shadow, plus
+  `--jsbarevi-caret-bg/-border` and `--jsbarevi-sel-bg/-border`. Every overlay keeps
+  its dark value as the CSS fallback, so a page we cannot measure renders exactly what
+  it rendered before this existed.
+- **The field decides.** Detection starts at the element and walks up to the first
+  ancestor that actually paints a background, because a dark composer on a light page
+  (Lark in light mode, a code editor in a light app) is still a dark surface.
+  `prefers-color-scheme` is only the tie-break when nothing paints, and a background
+  *image* stops the walk — its colour is unknowable, and guessing could invert a light
+  chip onto a dark photo.
+- **The switch point is contrast, not taste.** Text goes dark when dark text has the
+  better contrast ratio against that background, which puts the boundary at relative
+  luminance **0.179** (`LIGHT_SWITCH`), not an eyeballed 0.5 — 0.5 calls mid-gray
+  "dark" and then puts white text on it.
+- **It repaints live.** A `MutationObserver` on `<html>`/`<body>` attributes (the
+  elements a page actually re-themes), the `prefers-color-scheme` media query, and
+  field focus all trigger a re-measure. A host that re-themes some other way calls
+  `window.__jsbarevi.refreshTheme()`.
+- **A page can overrule the measurement** with `data-jsbarevi-theme="light|dark"` on
+  the field or an ancestor — the escape hatch for a shell whose real background we
+  cannot read (a canvas, a painted gradient).
+
+`npm test` asserts the detection boundary and that **every** text colour in **both**
+palettes clears 4.5:1 against its own chip; `npm run test:e2e` flips the fixture from
+dark to light and checks the chip, caret and ring change without a reload, and that
+the `data-jsbarevi-theme` override wins.
+
 ## What attaches, and when
 
 - **On focus**, one adapter per element, never two (a second engine would double

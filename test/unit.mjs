@@ -2,6 +2,7 @@
 // `:` line, the regex contract, registers, marks and the viewport capability.
 
 import { Engine, Mode } from "../src/engine/engine.js";
+import { THEMES, LIGHT_SWITCH, luminance, parseColor, themeFromColor } from "../src/adapters/theme.js";
 
 let pass = 0, fail = 0;
 const eq = (name, got, want) => {
@@ -528,6 +529,38 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   eq("...and g$ the line end", noWindow.cursor, 31);
   noWindow.feed("l"); noWindow.feed("g"); noWindow.feed("^");
   eq("...and g^ the first non-blank of the line", noWindow.cursor, 0);
+}
+
+console.log("\n\x1b[1mtheme detection (adapters/theme.js)\x1b[0m");
+{
+  // Which palette a page needs is a contrast question, not a taste question: text goes
+  // dark where dark text has the better contrast ratio against that background.
+  eq("white is a light page", themeFromColor("rgb(255,255,255)"), "light");
+  eq("the dark fixture is a dark page", themeFromColor("rgb(30,30,30)"), "dark");
+  eq("mid-gray #767676 reads better with dark text", themeFromColor("rgb(118,118,118)"), "light");
+  eq("...and #6f6f6f tips the other way", themeFromColor("rgb(111,111,111)"), "dark");
+  eq("a transparent colour is not a surface", themeFromColor("rgba(255,255,255,0)"), null);
+  eq("an unparsable colour is not a surface", themeFromColor("not-a-colour"), null);
+  eq("the switch point is the equal-contrast luminance",
+    Math.abs(LIGHT_SWITCH - 0.1791) < 0.001, true);
+
+  // The invariant that makes the light palette worth having: every text colour in both
+  // palettes is readable on its own surface (WCAG AA, 4.5:1). A palette that fails this
+  // is not "adapted", it is a second way of being invisible.
+  const contrast = (a, b) => {
+    const [hi, lo] = [luminance(parseColor(a)), luminance(parseColor(b))].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  for (const [name, set] of Object.entries(THEMES)) {
+    for (const key of ["--jsbarevi-ui-fg", "--jsbarevi-ui-accent", "--jsbarevi-ui-error", "--jsbarevi-ui-prompt"]) {
+      const ratio = contrast(set[key], set["--jsbarevi-ui-bg"]);
+      eq(`${name} ${key} is readable on the chip (${ratio.toFixed(1)}:1)`, ratio >= 4.5, true);
+    }
+    // A caret painted in the same colour as the field is not a caret. The light set has
+    // to be materially darker, which is the whole point of the second palette.
+    const caretOnPage = contrast(set["--jsbarevi-caret-border"], name === "light" ? "#ffffff" : "#1e1e1e");
+    eq(`${name} caret stands out from the page (${caretOnPage.toFixed(1)}:1)`, caretOnPage >= 3, true);
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

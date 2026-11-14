@@ -175,6 +175,15 @@ and a block caret is drawn over the character at the engine cursor, measured wit
 a mirror element so soft wrap, tabs and proportional fonts are handled. In INSERT
 the block disappears and the native caret returns.
 
+The overlay's **palette follows the page**: dark chip, green caret and pale blue
+selection on a dark document; on a light one the chip turns white with a ring,
+the text goes dark and the caret/selection get darker and more opaque, because the
+dark-tuned colours are invisible there. Detection is per field (walking up to the
+first ancestor that paints), the switch point is the luminance at which dark text
+has the better contrast ratio, and it repaints live when a host re-themes.
+`data-jsbarevi-theme="light|dark"` overrides it. See
+[`docs/EXTENSION.md`](docs/EXTENSION.md#the-palette-follows-the-page-not-the-os).
+
 **Who owns the caret** is the question that decides most of the interaction
 behaviour, and the answer has two halves:
 

@@ -1154,6 +1154,57 @@ async function main() {
     await typeKeys(session, "Q");
     check("typing past the end of the line appends", await field(), "ZWQ");
     await sendKey(session, "Escape");
+
+    // ---------------------------------------------------------------------
+    // The palette follows the page.
+    //
+    // The overlay is painted ON the page, so a palette tuned for a dark editor
+    // is invisible on a white document (a 35%-alpha green caret over white).
+    // The fixture is dark; flipping the page's own colours to light must
+    // repaint our chips and caret WITHOUT a reload or a reattach — that is the
+    // shape a host re-theming itself has.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1mthe palette follows the page\x1b[0m");
+    const styleOf = (sel, prop) => evaluate(session,
+      `getComputedStyle(document.querySelector(${JSON.stringify(sel)})).${prop}`);
+    check("a dark page gets the dark chip", await styleOf(".jsbarevi-badge", "backgroundColor"), "rgb(17, 17, 17)");
+    check("...and the light-green caret", await styleOf(".jsbarevi-caret", "backgroundColor"), "rgba(166, 226, 46, 0.35)");
+
+    await evaluate(session, `(() => {
+      document.body.style.background = "#ffffff";
+      document.body.style.color = "#111";
+      const f = document.getElementById('field');
+      f.style.background = "#ffffff";
+      f.style.color = "#111";
+      return true;
+    })()`);
+    await sleep(60);
+    check("a light page gets the light chip", await styleOf(".jsbarevi-badge", "backgroundColor"), "rgb(255, 255, 255)");
+    check("...and the darker caret", await styleOf(".jsbarevi-caret", "backgroundColor"), "rgba(47, 111, 0, 0.28)");
+    check("...with accent text, not the bright green", await styleOf(".jsbarevi-badge", "color"), "rgb(47, 111, 0)");
+    check("...and a ring, so a white chip has an edge", /rgba\(0, 0, 0, 0\.16\)/.test(await styleOf(".jsbarevi-badge", "boxShadow")), true);
+
+    // A page that THINKS it is dark can say so, and that overrides the measurement.
+    await evaluate(session, `(() => {
+      document.getElementById('field').parentElement.setAttribute('data-jsbarevi-theme', 'dark');
+      return true;
+    })()`);
+    await evaluate(session, "document.body.setAttribute('data-theme','x')");
+    await sleep(60);
+    check("data-jsbarevi-theme overrides the measurement", await styleOf(".jsbarevi-badge", "backgroundColor"), "rgb(17, 17, 17)");
+
+    await evaluate(session, `(() => {
+      document.getElementById('field').parentElement.removeAttribute('data-jsbarevi-theme');
+      document.body.removeAttribute('data-theme');
+      document.body.style.background = "";
+      document.body.style.color = "";
+      const f = document.getElementById('field');
+      f.style.background = "";
+      f.style.color = "";
+      return true;
+    })()`);
+    await sleep(60);
+    check("removing the override goes back to the page", await styleOf(".jsbarevi-badge", "backgroundColor"), "rgb(17, 17, 17)");
   } finally {
     try { session?.close(); } catch {}
     child.kill("SIGKILL");

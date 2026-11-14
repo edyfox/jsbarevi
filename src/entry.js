@@ -3,6 +3,7 @@
 
 import { TextareaAdapter } from "./adapters/textarea.js";
 import { ContenteditableAdapter } from "./adapters/contenteditable.js";
+import { bindTheme } from "./adapters/theme.js";
 
 /**
  * Which adapter owns this element.
@@ -19,13 +20,22 @@ function adapterFor(el) {
 const OVERLAY_CSS = `
 .jsbarevi-badge{position:fixed;z-index:2147483647;pointer-events:none;
   font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
-  padding:1px 5px;border-radius:3px;background:#111;color:#a6e22e;opacity:.92}
+  padding:1px 5px;border-radius:3px;background:var(--jsbarevi-ui-bg,#111);
+  color:var(--jsbarevi-ui-accent,#a6e22e);opacity:.92;
+  box-shadow:0 0 0 1px var(--jsbarevi-ui-ring,transparent),
+    0 2px 8px var(--jsbarevi-ui-shadow,transparent)}
 .jsbarevi-line{position:fixed;z-index:2147483647;font:500 12px/1.5 ui-monospace,monospace;
-  background:#111;color:#ddd;padding:2px 8px;border-radius:3px;max-width:60vw;
+  background:var(--jsbarevi-ui-bg,#111);color:var(--jsbarevi-ui-fg,#ddd);
+  padding:2px 8px;border-radius:3px;max-width:60vw;
+  box-shadow:0 0 0 1px var(--jsbarevi-ui-ring,transparent),
+    0 2px 8px var(--jsbarevi-ui-shadow,transparent);
   white-space:pre;overflow:hidden;text-overflow:ellipsis;display:none}
-.jsbarevi-line.error{color:#ff6188}
+.jsbarevi-line.error{color:var(--jsbarevi-ui-error,#ff6188)}
 .jsbarevi-prompt{position:fixed;z-index:2147483647;font:500 12px/1.5 ui-monospace,monospace;
-  background:#111;color:#fd971f;border:0;outline:0;padding:2px 8px;border-radius:3px}
+  background:var(--jsbarevi-ui-bg,#111);color:var(--jsbarevi-ui-prompt,#fd971f);
+  box-shadow:0 0 0 1px var(--jsbarevi-ui-ring,transparent),
+    0 2px 8px var(--jsbarevi-ui-shadow,transparent);
+  border:0;outline:0;padding:2px 8px;border-radius:3px}
 `;
 
 let overlaySheet = null;
@@ -72,6 +82,9 @@ function makeUi(el) {
   // engine would attach to its own command line and type into two buffers.
   for (const node of [badge, line, prompt]) node.setAttribute("data-jsbarevi-ui", "");
   document.body.append(badge, line, prompt);
+  // The palette follows the page behind the FIELD, not the OS (adapters/theme.js): the
+  // same chip on a white document needs dark text and a ring to read at all.
+  const releaseTheme = [badge, line, prompt].map((node) => bindTheme(el, node));
 
   const place = () => {
     const r = el.getBoundingClientRect();
@@ -86,6 +99,7 @@ function makeUi(el) {
   let statusTimer = 0;
   return {
     place,
+    releaseTheme,
     setMode(mode, count) {
       place();
       const label = mode === "REPLACE" ? "-- REPLACE --" : mode === "INSERT" ? "-- INSERT --"
@@ -212,6 +226,7 @@ export function attach(el, opts = {}) {
       ui.promptEl.removeEventListener("input", onPromptInput);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onResize, true);
+      for (const release of ui.releaseTheme) { try { release(); } catch { /* already gone */ } }
       el.removeAttribute("data-jsbarevi-mode");
       for (const node of ui.nodes) node.remove();
     },
