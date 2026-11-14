@@ -28,6 +28,16 @@ import {
   deleteRange, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
 } from "./contenteditable-dom.js";
 
+/**
+ * Do two texts differ ONLY in line breaks?
+ *
+ * The question the adapter needs after an edit: a host that owns its block structure may
+ * collapse a block a change command emptied (`S`/`cc`, or `ciw` on a one-word line) or add
+ * the placeholder block it needs. That is line structure, not a lost edit — while any
+ * other difference is text that went missing, which must be reported.
+ */
+const withoutBreaks = (text) => text.replace(/\n/g, "");
+
 /** Longest common prefix/suffix, i.e. the smallest edit between two buffers. */
 export function diffRange(prev, next) {
   const max = Math.min(prev.length, next.length);
@@ -421,15 +431,30 @@ export class ContenteditableAdapter {
         }
         const actual = getFlatText(this.el);
         if (actual !== next) {
-          // The host's own atomicity: deleting part of an unbreakable element removed
-          // the whole element. Adopt what really happened instead of insisting.
+          // The host re-styled its own document. Two shapes, and only one of them is a
+          // problem:
+          //
+          //   * ONLY line breaks differ — the host collapsed a block that a change
+          //     command emptied (`S`, `cc`, `ciw` on a one-word line) or added the
+          //     placeholder one it needs. That is the host's line model, not a lost edit,
+          //     so it is adopted SILENTLY: a red status line for the host's own
+          //     normalization trains the user to ignore the status line.
+          //   * any other difference — text disappeared that we did not ask it to remove
+          //     (an unbreakable chip, a framework rewrite). Adopt it, and SAY SO.
+          const breaksOnly = withoutBreaks(actual) === withoutBreaks(next);
           this.engine.setText(fromField(actual), Math.min(from, Math.max(0, actual.length - 1)));
-          this.onStatus?.("the host removed more than the command asked for (an unbreakable element)", "error");
-          // A host we cannot step through (Lark) can still tell us what it produced: the
-          // payload exposes `__jsbareviReport`, a beacon/log sink. A no-op anywhere else.
-          globalThis.__jsbareviReport?.("edit-mismatch", JSON.stringify({
-            from, to, insert, prev, next, actual,
-          }).slice(0, 900));
+          if (breaksOnly) {
+            // A host we cannot step through can still tell us what it produced: the Lark
+            // payload exposes `__jsbareviReport`, a beacon/log sink. A no-op elsewhere.
+            globalThis.__jsbareviReport?.("edit-reflowed", JSON.stringify({
+              from, to, insert, prev, next, actual,
+            }).slice(0, 900));
+          } else {
+            this.onStatus?.("the host removed more than the command asked for (an unbreakable element)", "error");
+            globalThis.__jsbareviReport?.("edit-mismatch", JSON.stringify({
+              from, to, insert, prev, next, actual,
+            }).slice(0, 900));
+          }
         }
         this._lastText = this.engine.hostText;
         this._dispatchInput();

@@ -277,6 +277,56 @@ async function main() {
     check("...and Esc returns to NORMAL", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
 
     // ---------------------------------------------------------------------
+    // A host that rewrites its own document after an edit.
+    //
+    // Two shapes and two answers. If only LINE BREAKS differ, the host collapsed a block
+    // a change command emptied (`S`/`cc`, or `ciw` on a one-word line) — its line model,
+    // not a lost edit, so it is adopted silently. If TEXT differs, something we did not
+    // ask for was removed and the status line must say so.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1ma host that reflows its own blocks\x1b[0m");
+    await evaluate(page, `(() => {
+      const make = (id, onInput) => {
+        const host = document.createElement('div');
+        host.id = id;
+        host.setAttribute('contenteditable', 'true');
+        host.style.cssText = 'width:400px;min-height:80px;white-space:pre-wrap;background:#111;color:#eee;padding:8px';
+        host.innerHTML = '<div>alpha beta</div><div>gamma</div>';
+        document.body.appendChild(host);
+        host.addEventListener('input', onInput);
+        window[id] = window.attach(host, { editorUrl: '' });
+        return host;
+      };
+      // (a) Lark-shaped: an emptied block does not survive the host's own render.
+      make('reflowing', () => {
+        for (const b of [...document.getElementById('reflowing').children]) {
+          if (b.tagName === 'DIV' && b.textContent.trim() === '' && document.getElementById('reflowing').children.length > 1) b.remove();
+        }
+      });
+      return true;
+    })()`);
+    await sleep(80);
+
+    // (a) reflowed: silent, and the engine follows the host's document
+    await evaluate(page, "document.getElementById('reflowing').focus()");
+    await sleep(60);
+    await typeKeys(page, "<Esc>S");
+    await sleep(150);
+    check("a reflowed block is adopted without a red status",
+      /removed more than/.test(await evaluate(page, "(document.querySelector('.jsbarevi-line')||{}).textContent || ''")), false);
+    check("...and the engine follows the host's document",
+      await evaluate(page, "window.reflowing.engine.hostText"), "gamma");
+    // Clean up: this host is a second attachment, and later assertions count the page's
+    // overlays.
+    await evaluate(page, `(() => { window.reflowing.destroy(); document.getElementById('reflowing').remove(); return true; })()`);
+
+    // The other half of that branch — a host losing TEXT rather than structure — keeps its
+    // red status, and is not tested here on purpose: a synthetic host that mutates on
+    // `input` is adopted by our own input sync before `_commit` ever compares, so the test
+    // would prove nothing. Its real trigger is the unbreakable-element case above.
+
+
+    // ---------------------------------------------------------------------
     // destroy() must leave the box as it found it.
     //
     // The beam is hidden INLINE in NORMAL/VISUAL, so a destroyed field that keeps
