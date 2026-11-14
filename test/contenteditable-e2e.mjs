@@ -248,6 +248,34 @@ async function main() {
     check("...and NORMAL still works after Esc", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
 
     // ---------------------------------------------------------------------
+    // `ciw` in a rich composer: a CHANGE command, so it deletes and enters insert in
+    // one keystroke combination — the shape that broke in Lark, while plain deletes
+    // were fine. Here it is pinned, so a regression in either half is caught.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1mciw in a rich composer\x1b[0m");
+    await evaluate(page, `(() => {
+      const el = document.getElementById('editor');
+      el.textContent = "hello world here";
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      return true;
+    })()`);
+    await sleep(60);
+    await focus();
+    await sleep(30);
+    await typeKeys(page, "ciw");
+    await sleep(60);
+    check("ciw removes the word from the DOM", await domText(), " world here");
+    check("...and the engine agrees", await text(), " world here");
+    check("...and it is in INSERT, ready to type", await evaluate(page, "window.handle.engine.mode"), "INSERT");
+    await typeKeys(page, "XYZ");
+    await sleep(60);
+    check("typed text lands where the word was", await domText(), "XYZ world here");
+    check("...and the engine agrees", await text(), "XYZ world here");
+    await typeKeys(page, "<Esc>");
+    await sleep(40);
+    check("...and Esc returns to NORMAL", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
+
+    // ---------------------------------------------------------------------
     // destroy() must leave the box as it found it.
     //
     // The beam is hidden INLINE in NORMAL/VISUAL, so a destroyed field that keeps
