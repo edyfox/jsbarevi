@@ -1,5 +1,5 @@
 {
-  "about": "gu / gU / g~ as OPERATORS: the motion form, a text object, the doubled line form (guu/gUU/g~~), counts on both sides of the operator, g/G as motions, and the visual form u/U/~. Only LETTERS change; the cursor lands on the start of the range; registers are untouched, and an all-uppercase gUiw changes no text (so it costs no undo step). Three cases are deliberately absent because they do not match: `.` replay of a case operator (recorded as an absolute range, the same approximation dw already has), `gUgU` (vim's alias for gUU), and a case op over a quote object from OUTSIDE the quotes (our text object does not search forward — ci\"/di\" differ the same way). See docs/ENGINE.md.",
+  "about": "gu / gU / g~ as OPERATORS: the motion form, a text object, the doubled line form (guu/gUU/g~~), counts on both sides of the operator, g/G as motions, and the visual form u/U/~. Only LETTERS change; the cursor lands on the start of the range; registers are untouched, and an all-uppercase gUiw changes no text (so it costs no undo step). Three cases are deliberately absent because they do not match: `.` replay of a case operator (recorded as an absolute range, the same approximation dw already has), and a case op over a quote object from OUTSIDE the quotes (our text object does not search forward — ci\"/di\" differ the same way). See docs/ENGINE.md.",
   "cases": [
     {
       "name": "gUiw uppercases a word",
@@ -374,6 +374,97 @@
       ],
       "expect": {
         "text": "aB cD\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUgU is the long spelling of gUU",
+      "input": "alpha\nbeta\ngamma\n",
+      "keys": "gUgU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA\nbeta\ngamma\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gugu is the long spelling of guu",
+      "input": "ALPHA\nBETA\ngamma\n",
+      "keys": "gugu<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "alpha\nBETA\ngamma\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "g~g~ is the long spelling of g~~",
+      "input": "Alpha\nBeta\ngamma\n",
+      "keys": "g~g~<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "aLPHA\nBeta\ngamma\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUgU from mid-line still covers the whole line",
+      "input": "alpha beta\n",
+      "keys": "$gUgU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA BETA\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "2gUgU takes the count before the first g",
+      "input": "ab\ncd\nef\n",
+      "keys": "2gUgU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AB\nCD\nef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gU2gU takes the count between the halves",
+      "input": "ab\ncd\nef\n",
+      "keys": "gU2gU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AB\nCD\nef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "an incomplete gUg changes nothing",
+      "input": "ab\n",
+      "keys": "gUg<Esc><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ab\n",
         "line": 1,
         "col": 1
       }

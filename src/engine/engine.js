@@ -402,6 +402,17 @@ export class Engine {
     if (key === "'" || key === "`") { p.awaiting = key; return { handled: true }; }
     if (p.gPending) {
       p.gPending = false;
+      // `gUgU` / `gugu` / `g~g~` are vim's long spellings of the doubled operators
+      // `gUU` / `guu` / `g~~` — the prefix typed twice, the same whole-line result
+      // (measured, including a count on either side: `2gUgU` and `gU2gU` both cover two
+      // lines). The second `g` lands HERE while a case operator is already pending, which
+      // is the only reason this needs saying at all.
+      if (p.op && p.op.length === 2 && p.op[0] === "g" && p.op[1] === key) {
+        const op = p.op;
+        const count = parseInt(p.count || p.opCount || "1", 10);
+        this.pending = this._emptyPending();
+        return { ...this._applyCaseLinewise(op, count), handled: true };
+      }
       // `gu` / `gU` / `g~` are OPERATORS, not motions: their `g` is a prefix that changes
       // the case of what a MOTION selects. Everything below this point (motions, `dgG`,
       // `dgg`) is unchanged, which is the whole reason they are accepted here: the

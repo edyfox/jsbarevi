@@ -453,7 +453,7 @@ and the visual form cannot disagree. Measured against vim 9.2 in
 |---|---|---|
 | motion | `gUiw`, `gUe`, `gU$`, `gUb`, `gUj` | uppercases what the motion selects |
 | text object | `gUiw`, `gUap`, `gUi"` | …what the object covers |
-| doubled | `gUU`, `guu`, `g~~` | the whole line, `2gUU` = two lines |
+| doubled | `gUU`, `guu`, `g~~` — and vim's long spellings `gUgU`, `gugu`, `g~g~` | the whole line, `2gUU` = two lines (a count on either side works: `2gUgU` and `gU2gU`) |
 | count | `3gUw` and `gU2w` | both sides work (before the `g`, after the operator) |
 | g-motion | `gUG`, `gUgg` | to the end / to the start of the buffer |
 | visual | `U`, `u`, `~` | the selection |
@@ -479,12 +479,11 @@ character and leaves the character as it was. Consequence: `straße` uppercases 
 here and `STRAẞE` in vim — a measured divergence on that class only, kept because the
 alternative is corrupting every offset after the ß.
 
-### Three gaps, recorded rather than hidden
+### Two gaps, recorded rather than hidden
 
 | Not covered | vim | here |
 |---|---|---|
 | `.` after a case operator | repeats the operator with its MOTION (`gUiw` then `j.` uppercases the next word) | replays the recorded absolute range, exactly as `dw` + `.` already does — the documented `.` approximation. No new debt, but it looks wrong when the cursor has moved |
-| `gUgU` | an alias for `gUU` | swallowed: the second `gU` re-enters the prefix and finds no motion |
 | a case operator over a quote object from OUTSIDE the quotes (`gUi"` with the cursor before the `"`) | searches forward for the object | nothing: our quote object only matches when the cursor is inside or adjacent, and `ci"`/`di"` behave identically — a pre-existing text-object limitation, not a case-operator one |
 
 ## Visual `r`, and where `u` puts the cursor after a visual change (2026-11-15)
