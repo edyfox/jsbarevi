@@ -790,6 +790,37 @@ console.log("\n\x1b[1minsert-mode C-w and C-u: what a keystroke differential can
   eq("C-w in replace mode with nothing typed deletes nothing", r.hostText, "abc def");
 }
 
+console.log("\n\x1b[1mcase operators: the parts a keystroke differential cannot see\x1b[0m");
+{
+  // A differential compares text and cursor. It cannot see whether a command that changed
+  // NOTHING became an undo step, and it cannot see that `gUiw` is not a yank - both of
+  // which the user feels immediately.
+  const e = mk("alpha beta\n");
+  e.feedKeys("gUiw");
+  eq("gUiw uppercases the word", e.hostText, "ALPHA beta");
+  eq("...and leaves the cursor on its first character", e.cursor, 0);
+
+  const noop = mk("ALPHA beta\n");
+  noop.feedKeys("gUiw");
+  eq("an all-uppercase gUiw changes no text", noop.hostText, "ALPHA beta");
+  eq("...and costs no undo step", noop.undoStack.length, 0);
+
+  const yanked = mk("alpha beta\n");
+  yanked.feedKeys('"ayw');        // yank into register a (whatever yw covers exactly)
+  const registerBefore = yanked.registers.read("a").text;
+  yanked.feedKeys("wgUiw");       // uppercase "beta" - must not touch any register
+  eq("gUiw changes the text", yanked.hostText, "alpha BETA");
+  eq("...and is NOT a yank: the named register is byte-for-byte what it was",
+    yanked.registers.read("a").text, registerBefore);
+
+  // The doubled form is checked before `u` reaches undo, which is the whole reason it
+  // needs its own branch: `2guu` must lowercase two lines, not undo twice.
+  const doubled = mk("AB\nCD\nEF\n");
+  doubled.feedKeys("2guu");
+  eq("2guu lowercases two lines and does not touch undo", doubled.hostText, "ab\ncd\nEF");
+  eq("...creating exactly one undo step", doubled.undoStack.length, 1);
+}
+
 console.log("\n\x1b[1mthe :e / :w / :q session commands\x1b[0m");
 {
   // The ex layer drives the editor transport. Nothing had ever run these three together,

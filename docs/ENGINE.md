@@ -442,6 +442,51 @@ set. A motion implemented on one path is two features missing - once is a bug, t
 times is a rule: when adding a motion, wire it through the dispatch, never straight to
 the cursor.
 
+## The case operators: gu / gU / g~ (2026-11-15)
+
+Three operators that map a range's letters to lower, upper or toggled — the same
+`_applyCaseRange` for every form, so the motion form, a text object, the doubled line form
+and the visual form cannot disagree. Measured against vim 9.2 in
+`oracle/cases/case-ops.json` (29 cases):
+
+| form | keys | result |
+|---|---|---|
+| motion | `gUiw`, `gUe`, `gU$`, `gUb`, `gUj` | uppercases what the motion selects |
+| text object | `gUiw`, `gUap`, `gUi"` | …what the object covers |
+| doubled | `gUU`, `guu`, `g~~` | the whole line, `2gUU` = two lines |
+| count | `3gUw` and `gU2w` | both sides work (before the `g`, after the operator) |
+| g-motion | `gUG`, `gUgg` | to the end / to the start of the buffer |
+| visual | `U`, `u`, `~` | the selection |
+
+Four rules, all measured:
+
+1. **Only LETTERS change.** `gUU` on `a1-b_2` gives `A1-B_2` — digits, punctuation and
+   underscores are untouched by definition, not by a case filter.
+2. **The cursor lands at the START of the range** (`wgUiw` on `alpha beta gamma` reports
+   the `b` of `beta`), for the doubled and visual forms too.
+3. **Registers are untouched.** `gUiw` is not a yank: `p` afterwards still pastes whatever
+   the register held. This is why the case branch sits *before* the register write in
+   `_applyOperatorRange` rather than beside it.
+4. **No change → no undo step.** `gUiw` on text that is already upper leaves the buffer
+   alone, so `u` afterwards undoes something else.
+
+**The one rule that is not obvious: a case mapping may not change the character COUNT.**
+vim's default `'casemap'` is `internal`, which preserves the length — measured: `gUiw` on
+`straße` gives `STRAẞE`, one character in and one out. JavaScript's `toUpperCase()` turns
+`ß` into `SS`, **two** characters, which would shift every offset after it in the field, and
+a text field *is* an offset model. So `_caseChar` refuses a mapping whose result is not one
+character and leaves the character as it was. Consequence: `straße` uppercases to `STRAßE`
+here and `STRAẞE` in vim — a measured divergence on that class only, kept because the
+alternative is corrupting every offset after the ß.
+
+### Three gaps, recorded rather than hidden
+
+| Not covered | vim | here |
+|---|---|---|
+| `.` after a case operator | repeats the operator with its MOTION (`gUiw` then `j.` uppercases the next word) | replays the recorded absolute range, exactly as `dw` + `.` already does — the documented `.` approximation. No new debt, but it looks wrong when the cursor has moved |
+| `gUgU` | an alias for `gUU` | swallowed: the second `gU` re-enters the prefix and finds no motion |
+| a case operator over a quote object from OUTSIDE the quotes (`gUi"` with the cursor before the `"`) | searches forward for the object | nothing: our quote object only matches when the cursor is inside or adjacent, and `ci"`/`di"` behave identically — a pre-existing text-object limitation, not a case-operator one |
+
 ## Visual `r`, and where `u` puts the cursor after a visual change (2026-11-15)
 
 `vllrX` — replace every selected character — is one range-shaped edit, which is why it is

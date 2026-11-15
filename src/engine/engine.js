@@ -402,6 +402,17 @@ export class Engine {
     if (key === "'" || key === "`") { p.awaiting = key; return { handled: true }; }
     if (p.gPending) {
       p.gPending = false;
+      // `gu` / `gU` / `g~` are OPERATORS, not motions: their `g` is a prefix that changes
+      // the case of what a MOTION selects. Everything below this point (motions, `dgG`,
+      // `dgg`) is unchanged, which is the whole reason they are accepted here: the
+      // operator machinery already knows how to resolve a motion, a text object and a
+      // count, so none of it needs to be taught about case.
+      if (key === "u" || key === "U" || key === "~") {
+        p.op = `g${key}`;
+        p.opCount = p.count;
+        p.count = "";
+        return { handled: true };
+      }
       const gmotion = G_MOTIONS[key];
       if (!gmotion) return { handled: true }; // an unmapped g-command: swallow both keys
       if (p.op) {
@@ -442,6 +453,15 @@ export class Engine {
       p.opCount = p.count;
       p.count = "";
       return { handled: true };
+    }
+    // A DOUBLED case operator (guu / gUU / g~~) is the whole line, like `dd`. It is
+    // checked before the command switch because `u` there means undo and never gets a
+    // second look.
+    if (p.op && p.op.length === 2 && p.op[1] === key) {
+      const op = p.op;
+      const count = parseInt(p.count || p.opCount || "1", 10);
+      this.pending = this._emptyPending();
+      return { ...this._applyCaseLinewise(op, count), handled: true };
     }
     if (key === "i" || key === "a" || key === "I" || key === "A" || key === "o" || key === "O" || key === "R") {
       if (p.op) {
@@ -1320,6 +1340,11 @@ export class Engine {
     from = Math.max(0, Math.min(from, text.length));
     to = Math.max(from, Math.min(to, text.length));
     if (inclusive) to = Math.min(text.length, B.nextChar(text, to));
+    // A case operator TRANSFORMS the range: it does not yank it, does not delete it, and
+    // has no register to write to. Everything above (range resolution from a motion, a
+    // text object, marks, counts) is shared with d/c/y, which is why this is one branch
+    // and not a second operator pipeline.
+    if (op.length === 2 && op[0] === "g") return this._applyCaseRange(op, from, to);
     const slice = text.slice(from, to);
     // The undo snapshot's cursor is where vim puts the cursor after `u`: the START of the
     // changed range, not wherever the cursor happened to be. A visual selection carries
@@ -1793,6 +1818,63 @@ export class Engine {
     this.state.cursor = B.firstNonBlank(this.state.text, B.lineOffset(this.state.text, startLine));
     this._noteChange({ kind: "shift", count: 1, right });
     return { handled: true, edit: true };
+  }
+
+  /** Case-map one character, refusing a mapping that changes the character COUNT.
+   *
+   * vim's default 'casemap=internal' keeps the length (measured: `gUiw` on "straße" gives
+   * "STRAẞE", one character in and one out). JavaScript's `toUpperCase()` turns "ß" into
+   * "SS" — two characters — which would shift every offset after it in the field, and a
+   * text field is an offset model. So a mapping that changes the length is refused and the
+   * character is left alone: measured divergence on the ß class only, documented in
+   * docs/ENGINE.md.
+   */
+  _caseChar(c, op) {
+    const one = (s) => ([...s].length === 1 ? s : c);
+    if (op === "gU") return one(c.toUpperCase());
+    if (op === "gu") return one(c.toLowerCase());
+    // `g~` toggles: lower if it is upper, upper if it is lower, unchanged if neither.
+    const lower = one(c.toLowerCase());
+    if (lower !== c) return lower;
+    const upper = one(c.toUpperCase());
+    return upper !== c ? upper : c;
+  }
+
+  /**
+   * `gu` / `gU` / `g~` over a range: the ONE mutation, shared by the motion form
+   * (`gUiw`, `gU2w`, `gUj`), the doubled line form (`gUU`), the text-object form
+   * (`gUap`) and the visual form (`U`).
+   *
+   * Measured (vim 9.2): only LETTERS change ("a1-b_2" -> "A1-B_2"), the cursor lands on
+   * the START of the range, the registers are untouched (so `gUiw` then `p` pastes
+   * whatever was there before), and when nothing changes the buffer is not touched at all
+   * — which makes an all-uppercase `gUiw` cost no undo step.
+   */
+  _applyCaseRange(op, from, to) {
+    const text = this.text;
+    from = Math.max(0, Math.min(from, text.length));
+    to = Math.max(from, Math.min(to, text.length));
+    const slice = text.slice(from, to);
+    const out = [...slice].map((c) => this._caseChar(c, op)).join("");
+    if (out === slice) return { handled: true, edit: false };
+    this._pushUndo({ text, cursor: from });
+    this._setText(text.slice(0, from) + out + text.slice(to));
+    this.state.cursor = Math.min(from, Math.max(0, this.state.text.length - 1));
+    this._setDesiredCol();
+    // Recorded as an operator range, so `.` replays it through the SAME path `dw` uses.
+    // That is the documented `.` approximation (offsets, not the motion), not new debt.
+    this._noteChange({ kind: "op", op, from, to, linewise: false });
+    return { handled: true, edit: true };
+  }
+
+  /** The doubled form: whole lines from the cursor, `count` of them. */
+  _applyCaseLinewise(op, count) {
+    const text = this.text;
+    const line = B.lineNumber(text, this.state.cursor);
+    const last = Math.min(B.lineCount(text) - 1, line + count - 1);
+    const from = B.lineOffset(text, line);
+    const to = B.lineEnd(text, B.lineOffset(text, last));
+    return this._applyCaseRange(op, from, to);
   }
 
   _put(count, before) {
@@ -2308,15 +2390,14 @@ export class Engine {
       return res;
     }
     if (key === "r") { p.awaiting = "visualReplaceChar"; return { handled: true }; }
-    if (key === "~") {
+    // visual ~ / u / U: the same three case maps as the operators, over the selection.
+    if (key === "~" || key === "u" || key === "U") {
+      const op = key === "~" ? "g~" : key === "U" ? "gU" : "gu";
       const range = this._visualRange();
-      const slice = this.text.slice(range.from, range.to);
-      const flipped = [...slice].map((c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())).join("");
-      this._pushUndo({ text: this.text, cursor: range.from });
-      this._setText(this.text.slice(0, range.from) + flipped + this.text.slice(range.to));
-      this.state.cursor = range.from;
-      this.mode = Mode.NORMAL; this.visual = null;
-      return { handled: true, edit: true };
+      this.mode = Mode.NORMAL;
+      this.visual = null;
+      this.pending = this._emptyPending();
+      return this._applyCaseRange(op, range.from, range.to);
     }
     if (key === "J") {
       // join every line the selection spans, through the same rule as `J`

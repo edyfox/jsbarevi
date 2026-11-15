@@ -1,0 +1,382 @@
+{
+  "about": "gu / gU / g~ as OPERATORS: the motion form, a text object, the doubled line form (guu/gUU/g~~), counts on both sides of the operator, g/G as motions, and the visual form u/U/~. Only LETTERS change; the cursor lands on the start of the range; registers are untouched, and an all-uppercase gUiw changes no text (so it costs no undo step). Three cases are deliberately absent because they do not match: `.` replay of a case operator (recorded as an absolute range, the same approximation dw already has), `gUgU` (vim's alias for gUU), and a case op over a quote object from OUTSIDE the quotes (our text object does not search forward — ci\"/di\" differ the same way). See docs/ENGINE.md.",
+  "cases": [
+    {
+      "name": "gUiw uppercases a word",
+      "input": "alpha beta\n",
+      "keys": "gUiw<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA beta\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUiw leaves the cursor at the start of the word",
+      "input": "alpha beta gamma\n",
+      "keys": "wgUiw<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "alpha BETA gamma\n",
+        "line": 1,
+        "col": 7
+      }
+    },
+    {
+      "name": "gUw",
+      "input": "alpha beta\n",
+      "keys": "wgUw<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "alpha BETA\n",
+        "line": 1,
+        "col": 7
+      }
+    },
+    {
+      "name": "gUe",
+      "input": "alpha beta\n",
+      "keys": "gUe<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA beta\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gU$ uppercases to the end of the line",
+      "input": "alpha beta\n",
+      "keys": "gU$<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA BETA\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUU uppercases the whole line",
+      "input": "alpha beta\n",
+      "keys": "gUU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA BETA\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "only letters change under gUU",
+      "input": "a1-b_2\n",
+      "keys": "gUU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "A1-B_2\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "guu lowercases the line",
+      "input": "ALPHA BETA\n",
+      "keys": "guu<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "alpha beta\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "g~~ toggles the line's case",
+      "input": "Alpha Beta\n",
+      "keys": "g~~<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "aLPHA bETA\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "g~ toggles only letters",
+      "input": "a1-b_2\n",
+      "keys": "g~~<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "A1-B_2\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "g~w toggles a word",
+      "input": "Alpha Beta\n",
+      "keys": "g~w<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "aLPHA Beta\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "g~$ toggles to the end of the line",
+      "input": "Ab Cd\n",
+      "keys": "g~$<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "aB cD\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "g~l toggles one character",
+      "input": "abc\n",
+      "keys": "g~l<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "Abc\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUj covers two lines",
+      "input": "alpha\nbeta\ngamma\n",
+      "keys": "gUj<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA\nBETA\ngamma\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "3gUw takes a count before the operator",
+      "input": "a b c d\n",
+      "keys": "3gUw<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "A B C d\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gU2w takes a count after the operator",
+      "input": "a b c d\n",
+      "keys": "gU2w<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "A B c d\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUap uppercases a paragraph",
+      "input": "aa bb\ncc dd\n\nee\n",
+      "keys": "gUap<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AA BB\nCC DD\n\nee\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUip uppercases the paragraph's lines",
+      "input": "aa bb\ncc dd\n\nee\n",
+      "keys": "gUip<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AA BB\nCC DD\n\nee\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUb goes backwards",
+      "input": "alpha beta gamma\n",
+      "keys": "wgUb<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA beta gamma\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "2guu lowercases two lines",
+      "input": "AB\nCD\nEF\n",
+      "keys": "2guu<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ab\ncd\nEF\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "2gUU uppercases two lines",
+      "input": "ab\ncd\nef\n",
+      "keys": "2gUU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AB\nCD\nef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUG to the end of the buffer",
+      "input": "ab\ncd\nef\n",
+      "keys": "gUG<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AB\nCD\nEF\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUgg back to the start of the buffer",
+      "input": "ab\ncd\nef\n",
+      "keys": "jgUgg<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AB\nCD\nef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUiw on text that is already upper changes nothing",
+      "input": "ALPHA beta\n",
+      "keys": "gUiw<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ALPHA beta\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "guu on an empty line",
+      "input": "\n",
+      "keys": "guu<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "gUi\" inside a quoted string",
+      "input": "x \"ab cd\" y\n",
+      "keys": "fagUi\"<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "x \"AB CD\" y\n",
+        "line": 1,
+        "col": 4
+      }
+    },
+    {
+      "name": "visual U uppercases the selection",
+      "input": "ab cd\n",
+      "keys": "VU<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "AB CD\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual u lowercases the selection",
+      "input": "AB CD\n",
+      "keys": "Vu<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ab cd\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual ~ toggles the selection",
+      "input": "Ab Cd\n",
+      "keys": "V~<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "aB cD\n",
+        "line": 1,
+        "col": 1
+      }
+    }
+  ]
+}

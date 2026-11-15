@@ -163,7 +163,9 @@ marks (as motions too: a plain jump, under an operator — `d`a` — and extendi
 visual selection), registers, `C-a` / `C-x` (increment/decrement with counts — the
 number under the cursor or the next one on the line, decimal/hex/binary/octal, `.`
 repeats it), `f F t T ; ,`, `%`, `w b e W B E`, `{ } ( )`, `0 ^ $ |`,
-`G gg H M L z`, the screen-line motions `gj gk g0 g$ g^`, `C-b C-d C-e C-f C-u C-y`,
+`G gg H M L z`, the screen-line motions `gj gk g0 g$ g^`, the case operators
+`gu gU g~` (motion, text object, doubled line form and the visual `u`/`U`/`~`),
+`C-b C-d C-e C-f C-u C-y`,
 search via `/ ? n N * #`, the `:` line
 (`s d y = list set version features file e w q x`) with ranges and the
 translate/refuse regex contract, and the viewport capability.

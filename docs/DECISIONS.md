@@ -94,6 +94,15 @@ can report a viewport.
 - **`. ` repeat, `U`, `R`** are in because both references have them. `.` is the
   highest-value single addition and the hardest: insert mode belongs to the host,
   so the typed text is captured by diffing snapshots, not by recording keys.
+- **The case operators `gu` / `gU` / `g~`** (2026-11-15) are an exception with the gate
+  held shut: three operators, ONE transform rule shared by the motion, text-object,
+  doubled, count and visual forms, no new option, no new state, and an explicit refusal
+  list for the neighbours (`gq`/`gw` formatting, `g?` rot13, `g<C-a>`/`g<C-x>` increment —
+  none of them a case map, all of them new subsystems). They cost one branch in
+  `_applyOperatorRange` because the operator machinery already resolved motions, text
+  objects and counts for `d`/`c`/`y`; a second pipeline would have been the wrong shape.
+  Three gaps are recorded in `docs/ENGINE.md` instead of fixed: `.` replay, `gUgU`, and a
+  quote object reached from outside the quotes.
 - **Visual `r`** (2026-11-15) is the cheapest kind of exception: busybox has no visual
   mode at all, so the mode is already beyond baseline, and replacing every selected
   character is the same range-shaped edit the other visual operators perform. No new state,
