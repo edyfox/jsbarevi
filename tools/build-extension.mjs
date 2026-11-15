@@ -64,7 +64,6 @@ async function main() {
     : [];
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
-  for (const [name, bytes] of carried) fs.writeFileSync(path.join(OUT, name), bytes);
 
   const banner = `/* jsbarevi ${versionName} — built ${new Date().toISOString()}\n`
     + ` * one classic script: the engine (src/) bundled for a content script.\n`
@@ -145,6 +144,16 @@ async function main() {
     const zip = path.join(OUT, `jsbarevi-${pkg.version}.zip`);
     execFileSync("zip", ["-q", "-r", "-X", zip, ...files], { cwd: OUT });
     console.log(`  ${path.relative(ROOT, zip)} — ${(fs.statSync(zip).size / 1024).toFixed(0)} KiB (upload this)`);
+  }
+
+  // Put back what this build does not own — AFTER the zip, never before: restoring first
+  // made the previous zip and the Lark payload part of `files`, so the artifact shipped
+  // with a copy of both inside it (67 KiB became 123 KiB, and the store package contained
+  // a 239 KB dev payload). A freshly built zip of the same name wins over the old one.
+  for (const [name, bytes] of carried) {
+    const target = path.join(OUT, name);
+    if (fs.existsSync(target)) continue;
+    fs.writeFileSync(target, bytes);
   }
 }
 
