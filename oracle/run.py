@@ -66,6 +66,10 @@ TOKEN_TO_VIM = {
     # after a caret move needs them in the notation.
     "<Left>": "\\<Left>",
     "<Right>": "\\<Right>",
+    # increment / decrement: every case in increment.json was being typed as the
+    # literal text "<C-a>" into the buffer, which is why all 40 of them "failed".
+    "<C-a>": "\\<C-A>",
+    "<C-x>": "\\<C-X>",
 }
 TOKEN_TO_BYTES = {
     "<Esc>": b"\x1b",
@@ -80,6 +84,8 @@ TOKEN_TO_BYTES = {
     # treat pty results for caret keys with suspicion.
     "<Left>": b"\x1b[D",
     "<Right>": b"\x1b[C",
+    "<C-a>": b"\x01",
+    "<C-x>": b"\x18",
 }
 
 
