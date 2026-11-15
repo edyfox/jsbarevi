@@ -8,33 +8,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Engine, Mode } from "../src/engine/engine.js";
-// ONE definition of "the host types", shared with the differential driver: a second
-// copy silently kept typing like plain insert after replace mode existed.
-import { hostType, hostInsert, normalise } from "./lib/engine-driver.mjs";
+// ONE definition of "drive the engine like an adapter would", shared with the
+// differential driver. It used to keep its own token map and its own loop (only
+// hostType was shared), and the copies drifted as soon as caret keys were added:
+// "<Left>" was typed into the buffer as text and six correct cases failed.
+import { drive, normalise } from "./lib/engine-driver.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
-
-const TOKENS = {
-  "<Esc>": "Esc", "<CR>": "CR", "<Tab>": "Tab", "<BS>": "BS",
-  "<C-r>": "C-r", "<C-w>": "C-w", "<C-u>": "C-u", "<C-d>": "C-d",
-  "<C-f>": "C-f", "<C-b>": "C-b", "<C-e>": "C-e", "<C-y>": "C-y", "<C-a>": "C-a", "<C-x>": "C-x",
-  "<C-g>": "C-g", "<Space>": " ",
-};
-
-const norm = (tok) => TOKENS[tok] ?? tok;
-
-export function drive(engine, keys) {
-  for (const tok of keys.match(/<[A-Za-z-]+>|[\s\S]/g) || []) {
-    const key = norm(tok);
-    const r = engine.feed(key);
-    // `<C-r>{register}`: the host inserts what the engine chose.
-    if (r.insertText != null) { hostInsert(engine, r.insertText); continue; }
-    if (!r.handled && engine.mode === Mode.INSERT) hostType(engine, key);
-    if (r.prompt) return { prompt: r.prompt };
-  }
-  return {};
-}
 
 function position(engine) {
   const t = engine.text;

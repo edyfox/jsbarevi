@@ -735,10 +735,16 @@ console.log("\n\x1b[1minsert-mode C-w and C-u: what a keystroke differential can
   eq("C-w in an empty buffer is consumed", empty.feed("C-w").handled, true);
   eq("C-u in an empty buffer is consumed", empty.feed("C-u").handled, true);
 
-  const strict = mk("foo bar\n", 0, { options: { backspace: "" } });
-  strict.feed("A");
-  eq("C-w that 'backspace' forbids is still consumed", strict.feed("C-w").handled, true);
-  eq("...and leaves the text alone", strict.hostText, "foo bar");
+  // Column 1 with a line above it: vim JOINS the previous line here, and this engine
+  // deliberately does not (docs/ENGINE.md, "what is deliberately not covered"). The
+  // break has to be visible at the API: the key is consumed, and the text is untouched.
+  const colOne = mk("abc\ndef\n", 0);
+  colOne.feed("j");
+  colOne.feed("i");
+  eq("C-w at column 1 is consumed", colOne.feed("C-w").handled, true);
+  eq("...and does NOT join the line above, by design", colOne.hostText, "abc\ndef");
+  eq("C-u at column 1 is consumed too", colOne.feed("C-u").handled, true);
+  eq("...and also does not join", colOne.hostText, "abc\ndef");
 
   // Undo granularity: the deletion belongs to the INSERT, so Esc then one `u` puts the
   // whole thing back - it must not become its own step. (An insert whose net effect is

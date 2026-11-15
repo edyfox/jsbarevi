@@ -34,18 +34,6 @@ export class Engine {
       flash: true,
       tabstop: 4,
       shiftwidth: 4,
-      // vim's own 'backspace' flags, as the string vim uses. Two of them decide what
-      // insert-mode C-w / C-u may delete (measured against vim 9.2 on 2026-11-15 —
-      // `oracle/cases/insert-backspace.json`):
-      //   'start' — may delete text that existed before this insert began;
-      //   'eol'   — may delete the line break at column 1. That break also needs
-      //             'start', because the break sits before the insert start.
-      // 'indent' is accepted and has no work to do here: this engine never inserts
-      // an automatic indent, so there is never one to take back. A string option is
-      // deliberately outside `:set` (which is boolean/numeric only).
-      // The default is vim 9.2's effective one, so the differential harness compares
-      // like with like instead of testing our default against another one.
-      backspace: "indent,eol,start",
       ...opts.options,
     };
     this.registers = new Registers({ clipboard: opts.clipboard || null });
@@ -1971,100 +1959,60 @@ export class Engine {
     return this.insertEntry ? this.insertEntry.insStart : this.state.cursor;
   }
 
-  /** The 'backspace' flags as a Set; see the option's comment in the constructor. */
-  _backspaceFlags() {
-    return new Set(
-      String(this.options.backspace ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    );
-  }
-
   /**
    * INSERT `<C-w>`: delete back to the start of the word before the cursor.
    *
-   * Measured against vim 9.2 (`oracle/cases/insert-backspace.json`), and three of
-   * its rules are not guessable from the documentation:
+   * Measured against vim 9.2 (`oracle/cases/insert-backspace.json`). Two of vim's rules
+   * here are not in the documentation:
    *
-   *   1. **It never crosses a line start.** `ji<C-w>` at column 1 of line 2 on
-   *      "abc\ndef" gives "abcdef" — it deletes the line BREAK and nothing behind
-   *      it, not the word "abc" (a word scan that crossed the newline would give
-   *      "def").
+   *   1. **The scan never crosses a line start.** The floor is `lineStart`, so a word
+   *      that begins on the previous line is out of reach. vim's extra move - deleting
+   *      the line BREAK at column 1 and joining the lines - is NOT implemented; see
+   *      `docs/ENGINE.md`, "what is deliberately not covered".
    *   2. **Once anything is typed, the insert start is a wall.** `AXY<C-w>` on
-   *      "foo bar" gives "foo bar", not "foo ": the typed run goes, the word does
-   *      not. A SECOND C-w then has nothing typed before it and deletes "bar".
-   *      This holds with 'backspace' containing 'start' too, so it is not a
-   *      'backspace' rule — it is what "delete what I typed" means.
-   *   3. **Whitespace before the cursor goes with the word** (`A<C-w>` on "foo   "
-   *      empties the line), but typed whitespace is still the typed run and still
-   *      stops at the insert start.
+   *      "foo bar" gives "foo bar", not "foo ": the typed run goes, the word does not.
+   *      A second C-w then has nothing typed before it and takes "bar".
    *
-   * The remaining two decisions belong to 'backspace' and are measured in
-   * ENGINE.md: deleting text from before this insert needs 'start', and deleting
-   * the line break needs 'eol' as well.
+   * With nothing typed the word before the insert start goes (`A<C-w>` on "foo bar"
+   * empties it to "foo "), which is the case that makes the key useful at all — and the
+   * one that classic vi and nvi refuse. Whitespace before the cursor goes with the word.
    */
   _insertBackspaceWord() {
     const t = this.text;
     const cur = this.state.cursor;
     const ins = this._insertStart();
     const ls = B.lineStart(t, cur);
-    // At column 1 there is no word before the cursor, only the line break — and that
-    // is the one case where the deletion may span lines (rule 1).
-    if (cur === ls) return this._insertJoinLine();
+    // Column 1: there is no word on this line, and the line break is out of scope.
+    if (cur === ls) return { handled: true };
     let from = B.wordBack(t, cur, false, ls);
-    if (from < ins) {
-      if (cur > ins) from = Math.max(ins, ls);          // rule 2: the typed run is the limit
-      else if (!this._backspaceFlags().has("start")) from = cur; // pre-insert text is untouchable
-    }
+    // The wall: while text typed in this insert sits between the cursor and the word
+    // start, the deletion stops at the insert start instead of reaching past it.
+    if (from < ins && cur > ins) from = Math.max(ins, ls);
     if (from >= cur) return { handled: true };
     return this._insertDelete(from, cur);
   }
 
   /**
    * INSERT `<C-u>`: delete everything before the cursor on this line, down to where
-   * this insert began — or, when nothing has been typed yet, down to the start of
-   * the line.
+   * this insert began — or, when nothing has been typed yet, down to the start of the
+   * line.
    *
-   * That two-part rule is vim's, and both halves are measured: `AXY<C-u>` on
-   * "foo bar" leaves "foo bar" (the typed run goes, the line does not), while
-   * `A<C-u>` on the same buffer empties the line. `A<CR>XY<C-u>` deletes only the
-   * typed run on the NEW line, because the entered characters on this line are
-   * exactly that run.
+   * That two-part rule is vim's, and both halves are measured: `AXY<C-u>` on "foo bar"
+   * leaves "foo bar" (the typed run goes, the line does not), while `A<C-u>` on the same
+   * buffer empties the line. `A<CR>XY<C-u>` deletes only the typed run on the NEW line,
+   * because the entered characters on this line are exactly that run - which is why the
+   * stop is clamped to the line start as well as to the insert start.
    *
-   * At column 1 there is nothing on the line, so the line break is the only thing
-   * behind the cursor: with 'eol' and 'start' it is deleted and the lines join,
-   * which is the same 'backspace' pair C-w obeys.
+   * At column 1 there is nothing behind the cursor on this line, and vim's line JOIN is
+   * not implemented (see ENGINE.md), so it is inert — but still consumed.
    */
   _insertBackspaceLine() {
-    const t = this.text;
     const cur = this.state.cursor;
     const ins = this._insertStart();
-    const ls = B.lineStart(t, cur);
+    const ls = B.lineStart(this.text, cur);
     const stop = cur > ins ? Math.max(ins, ls) : ls;
-    if (stop >= cur) return this._insertJoinLine();
-    if (stop < ins && !this._backspaceFlags().has("start")) return { handled: true };
+    if (stop >= cur) return { handled: true };
     return this._insertDelete(stop, cur);
-  }
-
-  /**
-   * Column 1 of a line: nothing on this line sits before the cursor, so the line
-   * break is the only thing behind it — and deleting that break is the one move both
-   * C-w and C-u make, at any line but the first.
-   *
-   * 'backspace' decides whether it may happen, and the two flags split by AGE, which
-   * is the part that is easy to get wrong: a break this insert typed (an `A<CR>`) is
-   * typed text and needs only 'eol'; a break that was already there is pre-insert
-   * text and needs 'start' as well. Measured both ways (see the `options` cases in
-   * `oracle/cases/insert-backspace.json`).
-   */
-  _insertJoinLine() {
-    const cur = this.state.cursor;
-    if (cur === 0) return { handled: true };
-    const flags = this._backspaceFlags();
-    if (!flags.has("eol")) return { handled: true };
-    if (cur - 1 < this._insertStart() && !flags.has("start")) return { handled: true };
-    return this._insertDelete(cur - 1, cur);
   }
 
   /**

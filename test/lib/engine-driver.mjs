@@ -14,12 +14,15 @@ const TOKENS = {
   "<C-r>": "C-r", "<C-w>": "C-w", "<C-u>": "C-u", "<C-d>": "C-d", "<C-f>": "C-f", "<C-b>": "C-b",
   "<C-e>": "C-e", "<C-y>": "C-y", "<C-g>": "C-g", "<Space>": " ",
   "<C-a>": "C-a", "<C-x>": "C-x",
+  // caret keys: HOST-owned in insert mode, vi's h/l outside it (see runOurs)
+  "<Left>": "CaretLeft", "<Right>": "CaretRight",
 };
 const VIM_TOKENS = {
   "<Esc>": "\\<Esc>", "<CR>": "\\<CR>", "<Tab>": "\\<Tab>", "<BS>": "\\<BS>",
   "<C-r>": "\\<C-R>", "<C-w>": "\\<C-W>", "<C-u>": "\\<C-U>", "<C-d>": "\\<C-D>", "<C-f>": "\\<C-F>",
   "<C-b>": "\\<C-B>", "<C-e>": "\\<C-E>", "<C-y>": "\\<C-Y>", "<C-g>": "\\<C-G>",
   "<C-a>": "\\<C-A>", "<C-x>": "\\<C-X>",
+  "<Left>": "\\<Left>", "<Right>": "\\<Right>",
   "<Space>": " ",
 };
 
@@ -88,18 +91,41 @@ export function hostInsert(engine, text) {
   hostEdit(engine, t.slice(0, c) + text + t.slice(c), c + text.length);
 }
 
-/** Run the same keystrokes in our engine with a minimal host for insert mode. */
-export function runOurs(input, keys, options = {}) {
-  const engine = new Engine({ options });
-  engine.setText(input, 0);
+/**
+ * Feed a key sequence to an engine with a minimal host, exactly as an adapter would.
+ *
+ * ONE copy: the differential driver and test/run-engine-tests.mjs both drive engines
+ * through this. They used to keep separate token maps and separate loops, and the copies
+ * drifted the moment caret keys were added - run-engine-tests typed "<Left>" into the
+ * buffer as text and six correct cases failed.
+ */
+export function drive(engine, keys) {
   for (const tok of tokenize(keys)) {
     const key = TOKENS[tok] ?? tok;
+    // A caret key is the HOST's while inserting (the adapter syncs with
+    // setCursorFromHost) and vi's h/l outside it - the split keys.js makes for a real
+    // event. Without this the driver typed "<Left>" into the buffer as text, which made
+    // every "C-w after the caret moved" comparison measure nothing.
+    if (key === "CaretLeft" || key === "CaretRight") {
+      const dir = key === "CaretLeft" ? -1 : 1;
+      if (engine.mode === Mode.INSERT) engine.setCursorFromHost(engine.cursor + dir);
+      else engine.feed(dir < 0 ? "h" : "l");
+      continue;
+    }
     const r = engine.feed(key);
     // `<C-r>{register}`: the engine says which text, the HOST inserts it (so the harness
     // has to do it too — otherwise the differential would only be testing our half).
     if (r.insertText != null) { hostInsert(engine, r.insertText); continue; }
     if (!r.handled && engine.mode === Mode.INSERT) hostType(engine, key);
   }
+  return engine;
+}
+
+/** Run the same keystrokes in our engine; returns the comparison view. */
+export function runOurs(input, keys, options = {}) {
+  const engine = new Engine({ options });
+  engine.setText(input, 0);
+  drive(engine, keys);
   const before = engine.text.slice(0, engine.cursor);
   return {
     text: normalise(engine.text),

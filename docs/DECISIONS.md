@@ -99,6 +99,11 @@ can report a viewport.
   insert-mode editing usable.
 - **Viewport commands** are in because one adapter capability unlocks ten of
   them. They are inert on a host that cannot report a viewport.
+- **Insert-mode `C-w` / `C-u`** are in as an explicit, narrow exception to busybox
+  parity (2026-11-15): busybox has neither, but the browser's own answers to those keys
+  are close-tab and view-source, and the hand reaches for them without thinking. The
+  exception is capped — no `'backspace'` option, no line join, and a written refusal list
+  for the twelve neighbouring keys (see the section above).
 - **`^G`** is in by the rule, against Edward's own preference, reporting
   `[Modified] line N of M · col C · K chars`.
 
@@ -119,31 +124,90 @@ actually needs. (`g^` joined them on 2026-11-13, because with `'wrap'` off it is
 only way to reach the first non-blank of the *visible* window, which is a real place in a
 horizontally scrolling field.)
 
-## Insert-mode `C-w` / `C-u`, and the one new option
+## Insert-mode `C-w` / `C-u`: beyond baseline, no option, one corner broken on purpose
 
-Added 2026-11-15, after the freeze, for a reason that is not taste: in a browser field
-the browser's own answer to both keys is destructive (Ctrl-W closes the tab, Ctrl-U is
-view-source), so an editor that leaves them alone is an editor you lose work in. They are
-the only two insert-mode edits the engine performs itself — insert mode belongs to the
-host, but a deletion has no host API to ride.
+Added 2026-11-15, after the freeze, for two reasons that are not taste:
 
-That brought one new option, and it is the shape that matters rather than the feature:
+1. **In a browser field the browser's own answer to both keys is destructive** —
+   Ctrl-W closes the tab, Ctrl-U is view-source — so an editor that leaves them alone is
+   an editor you lose work in.
+2. **Frequency beats baseline parity.** Measured (`oracle/cases/insert-backspace-refs.json`):
+   **busybox does not implement either command at all** — it inserts the raw control byte
+   into the buffer, which is worse than doing nothing — while **nvi** implements both with
+   classic vi semantics (it deletes only what the insert typed, and never joins a line).
+   So this is a **beyond-baseline, Vim-lineage** command like text objects and marks.
 
-- **`backspace` is a vim FLAG STRING** (`"indent,eol,start"`), not a boolean, because
-  what it governs is not one behaviour: `start` allows deleting text from before this
-  insert and `eol` allows deleting a line break, and vim needs `eol` *and* `start` for a
-  break that was already there while `eol` alone suffices for one the insert typed.
-  Flattening that into a boolean would produce three states of wrong.
-- **It stays out of `:set`**, which is boolean/numeric only (`applySet`), exactly like
-  `'joinspaces'`. A second option syntax for one option is a cost nothing here earns.
-- **The default is vim 9.2's own** (`indent,eol,start`), so the differential harness
-  measures our behaviour against the reference's, not against a second opinion. A host
-  that wants vi-strict behaviour sets `backspace: ""`.
-- **`indent` is accepted and inert**: this engine never inserts an automatic indent, so
-  there is never one to take back. Accepting a flag in vim's option and doing nothing
-  with it is correct here; silently *rejecting* it would make a pasted vimrc look broken.
+### The scope rule, stated once (Edward, 2026-11-15)
 
-## The `:` line: busybox parity
+Three priorities, in this order, for any beyond-baseline command:
+
+1. **Muscle memory wins.** An operation done without thinking must land exactly as the
+   tool the hand already knows. This is not negotiable and not a place to be creative:
+   "delete what I just typed with Ctrl-W" has to behave like vim, or the feature is worse
+   than absent.
+2. **A corner is kept when it falls out of the same primitive.** If faithful behaviour
+   costs no new rule - it is the same word scan, the same wall, the same deletion - keep
+   it. Cheapest examples here: C-w *inside a pre-existing word* (both "delete the typed
+   insertion only" and "delete back to the word start when nothing was typed") came out of
+   `wordBack` plus the insert-start wall with **zero** case-specific code.
+3. **Otherwise the gap is documented and the corner dropped.** Not silently, not
+   "approximately": written down in `docs/ENGINE.md` with the mechanism that would be
+   needed, so it is a decision and not folklore.
+
+A useful calibration from outside this repo: **VsVim** - a famous Vim emulator, written by
+Microsoft engineers - does not handle the pre-existing-word case correctly. That is the
+class of corner where "faithful if free, dropped if not" is the right policy, because even
+a well-funded emulator with a large team leaves it behind.
+
+Scope is capped on purpose, following that rule (2026-11-15): *implement it, do not chase completeness
+— most people use a few happy paths, and the corners are not worth their code.* The
+concrete consequences, all recorded in `docs/ENGINE.md`:
+
+- **No `'backspace'` option.** The first draft had one — vim's flag string `indent,eol,start`,
+  plus its obsolete numeric form — because that is how vim expresses this. Removed. An
+  option does not add a case to the test matrix, it **multiplies** it; three flags over two
+  commands over the caret and replace-mode variants is a matrix nobody keeps running, and
+  the third option in a codebase is where the suite stops being convincing. The behaviour
+  is fixed instead: typed text and the word before the insert start are deletable, a line
+  break never is.
+- **The line join at column 1 is deliberately not implemented.** vim deletes the break and
+  joins the lines there; here the key is consumed and the text is untouched. Supporting it
+  needs three interacting states (`eol`, `start`, and whether the break was typed by this
+  insert or already existed) for a corner that is rarely intended, and an accidental join
+  in a message composer merges two sentences.
+- **What survives is the happy path plus the walls that make it safe**: the insert start is
+  a wall once text is typed (so a second C-w cannot reach into the document), the word
+  before the insert start goes when nothing is typed (the case that makes the key useful,
+  and the one nvi refuses), and whitespace travels with the word.
+
+The one piece that looks like a corner but stays is **replace mode**: there the deletion
+has to UN-type, restoring what the typed characters displaced, because a plain deletion
+would leave the snapshot reconstruction re-inserting text the user deleted. It is ~10 lines
+and shares its rule with the write path (`_replaceConsumed`), so it is not a second surface.
+
+### One insert-mode command invited the other twelve, all refused
+
+Adding `C-w`/`C-u` is how an insert-mode keymap starts. These are the neighbours a user
+will ask for next, and each is refused for a reason that does not change when it is asked
+again — busybox has none of them, so every one of them is a beyond-baseline addition that
+has to earn its code:
+
+| Refused | What vim does | Why not |
+|---|---|---|
+| `<C-o>` | run ONE normal-mode command, then return to insert | the biggest one, and the one people miss most. It is a temporary mode switch whose whole value is that the host's caret survives it — a state machine across two owners of the caret, for a command that normal mode already does one keystroke later |
+| `<C-a>` | insert the text inserted last time | a second recording surface (the same reason `.`-as-a-register and `"0`-`"9` were refused), and `C-a` is already increment in normal mode |
+| `<C-n>` / `<C-p>` | keyword completion | a completion engine: candidate sources, a menu, host-specific behaviour. Not a field editor's job |
+| `<C-x>` submodes | completion, again | same |
+| `<C-t>` / `<C-d>` | indent / dedent the current line | this engine never inserts an automatic indent, so there is no indent state to adjust; `>>`/`<<` in normal mode do it |
+| `<C-e>` / `<C-y>` | copy the character below / above | needs a column model across lines plus wrap interaction — and both keys already mean scroll-lines in normal mode |
+| `<C-v>` | insert the next key literally | the host already inserts what the host inserts; a literal-next mode would mean capturing keys we deliberately do not own |
+| `<C-k>` | digraph | an input-method feature, and the OS/IME already owns it |
+
+The rule that produces that table is the one above it: **busybox parity is the closed goal;
+anything past it is a deliberate exception, and an exception needs a reason that survives
+being written down.** One insert-mode command was worth an exception. Twelve are not.
+
+## The `:` line: busybox parity## The `:` line: busybox parity
 
 18 commands: `delete` `edit` `file` `features` `list` `quit` `next` `prev`
 `read` `rewind` `set` `version` `write` `yank` `s` `x` `=` `!`, plus addresses

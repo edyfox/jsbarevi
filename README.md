@@ -171,10 +171,13 @@ translate/refuse regex contract, and the viewport capability.
 Insert mode has two deletions of its own, because the browser's answer to both is
 destructive: `C-w` deletes back to the start of the word before the cursor and `C-u`
 deletes back to where the insert began (both measured against vim — see
-"C-w and C-u inside insert mode" in `docs/ENGINE.md`). They are consumed in every
-host, but they only *earn* their keep where the browser does not own the key: Chrome
-itself reserves Ctrl-W as close-tab, while a PWA window, an Electron app and a page
-that dispatches its own keymap (an OpenCode composer) do not.
+"C-w and C-u inside insert mode" in `docs/ENGINE.md`). They follow a deliberately small
+rule set: what you typed is always deletable, the word before the insert goes once nothing
+is typed, and a line break is never deleted — vim's line join at column 1 is refused on
+purpose, and there is **no option** to turn any of it on or off. Both keys are consumed in
+every host, but they only *earn* their keep where the browser does not own the key: Chrome
+reserves Ctrl-W as close-tab, while a PWA window, an Electron app and a page that
+dispatches its own keymap (an OpenCode composer) do not.
 
 Registers: the unnamed `""`, one-character names `"a`-`"z` with the Vim append form
 `"A`-`"Z`, the black hole `"_`, and the system clipboard as `"+` — with `"*` aliased to

@@ -1,0 +1,145 @@
+{
+  "about": "SCOPE AND BEHAVIOUR OF THE REFERENCES for insert-mode C-w and C-u, measured 2026-11-15 with oracle/run.py. busybox does NOT implement either command: char_insert() handles ESC, ^V, ^D, Backspace and Tab only, and do_cmd()'s insert branch forwards every byte >= 1 to char_insert, so the control byte is inserted LITERALLY - the buffer grows a \\u0017 / \\u0015. nvi implements both with vi-compatible semantics: it removes what the insert typed, never reaches past the insert start, and never joins a line (i.e. vim with backspace=\"\"). vim is the behaviour oracle and is the superset implemented by this engine. This file exists so the gap is a MEASUREMENT rather than prose; it restricts itself to the pty engines, so the JS suites skip it and only `python3 oracle/run.py` runs it. ENGINES ARE THE PTY ONES ONLY: this file records what the references do, and the engine deliberately diverges from vim on the column-1 line join (docs/ENGINE.md), so including vim here would make our own suite assert a behaviour we have decided not to have. The `vim` expectation is kept per case as the reference column of the table in docs/ENGINE.md.",
+  "cases": [
+    {
+      "name": "busybox and nvi have no insert-mode C-w, so the byte lands in the buffer",
+      "input": "foo bar\n",
+      "keys": "Ahi<C-w>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "foo bar\n"
+        },
+        "busybox": {
+          "text": "foo barhi\u0017\n"
+        },
+        "nvi": {
+          "text": "foo bar\n"
+        }
+      }
+    },
+    {
+      "name": "...and the same for C-u",
+      "input": "foo bar\n",
+      "keys": "Ahi<C-u>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "foo bar\n"
+        },
+        "busybox": {
+          "text": "foo barhi\u0015\n"
+        },
+        "nvi": {
+          "text": "foo bar\n"
+        }
+      }
+    },
+    {
+      "name": "vim deletes the word before the cursor",
+      "input": "foo bar\n",
+      "keys": "A<C-w>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "foo \n"
+        },
+        "busybox": {
+          "text": "foo bar\u0017\n"
+        },
+        "nvi": {
+          "text": "foo bar\n"
+        }
+      }
+    },
+    {
+      "name": "vim with nothing typed reaches back past the insert start; nvi cannot",
+      "input": "abcdef\n",
+      "keys": "llli<C-w>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "def\n"
+        },
+        "busybox": {
+          "text": "abc\u0017def\n"
+        },
+        "nvi": {
+          "text": "abcdef\n"
+        }
+      }
+    },
+    {
+      "name": "vim clears the line when nothing was typed; nvi only removes what it typed",
+      "input": "foo bar\n",
+      "keys": "A<C-u>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "\n"
+        },
+        "busybox": {
+          "text": "foo bar\u0015\n"
+        },
+        "nvi": {
+          "text": "foo bar\n"
+        }
+      }
+    },
+    {
+      "name": "vim joins at column 1; nvi does not join at all",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-w>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "abcdef\n"
+        },
+        "busybox": {
+          "text": "abc\n\u0017def\n"
+        },
+        "nvi": {
+          "text": "abc\ndef\n"
+        }
+      }
+    },
+    {
+      "name": "typed text is removed by every reference that implements the command",
+      "input": "foo bar\n",
+      "keys": "Axy<C-w>",
+      "engines": [
+        "busybox",
+        "nvi"
+      ],
+      "expect_by_engine": {
+        "vim": {
+          "text": "foo bar\n"
+        },
+        "busybox": {
+          "text": "foo barxy\u0017\n"
+        },
+        "nvi": {
+          "text": "foo bar\n"
+        }
+      }
+    }
+  ]
+}

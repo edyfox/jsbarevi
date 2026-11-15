@@ -62,6 +62,10 @@ TOKEN_TO_VIM = {
     # 2026-11-15, which made a C-w case ERROR instead of measuring anything.
     "<C-w>": "\\<C-W>",
     "<C-u>": "\\<C-U>",
+    # caret keys: the HOST moves the caret in insert mode, so measuring what C-w does
+    # after a caret move needs them in the notation.
+    "<Left>": "\\<Left>",
+    "<Right>": "\\<Right>",
 }
 TOKEN_TO_BYTES = {
     "<Esc>": b"\x1b",
@@ -71,6 +75,11 @@ TOKEN_TO_BYTES = {
     "<C-r>": b"\x12",
     "<C-w>": b"\x17",
     "<C-u>": b"\x15",
+    # multi-byte: run_pty sends these one byte at a time, which a terminal editor may
+    # read as ESC + '[' + letter rather than as one key. Fine for vim (-es scripted);
+    # treat pty results for caret keys with suspicion.
+    "<Left>": b"\x1b[D",
+    "<Right>": b"\x1b[C",
 }
 
 
@@ -211,6 +220,18 @@ def run_pty(engine: str, text: str, keys: str, workdir: Path, timeout: float = 1
             os.write(fd, bytes([byte]))
             time.sleep(0.02)
         _pump(fd, time.time() + 0.25)
+        # ESC FIRST, and in its OWN write. Two separate traps, both measured:
+        #   * a case that ends in INSERT mode is still in insert when we ask the editor
+        #     to write, so ":wq" would be TYPED INTO the buffer and the file never
+        #     written — the case then reports "file unchanged", which reads as "the
+        #     command did nothing" (this is what made busybox look like it had an
+        #     insert-mode C-w);
+        #   * busybox treats ESC immediately followed by more bytes as an escape
+        #     SEQUENCE and swallows the next character, so writing "\x1b:wq\r" as one
+        #     chunk lost the ":" and left the editor running.
+        # In NORMAL mode an extra ESC is a no-op.
+        os.write(fd, b"\x1b")                 # leave insert mode
+        _pump(fd, time.time() + 0.15)
         os.write(fd, b":wq\r")                # write and quit
         _pump(fd, time.time() + 1.5)
         try:
