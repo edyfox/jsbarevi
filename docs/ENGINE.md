@@ -804,14 +804,31 @@ suite: a case that asserts a divergence would ossify it.
 | IME composition mid-insert | untouched: the key never reaches the engine | composition is the host's; a rewrite during composition is not a deletion |
 | a host that rewrites the buffer mid-insert | the replace snapshot rebases on the next host edit, and C-w then acts on what the host left | no measurement covers "reflow *then* C-w" — unmeasured rather than wrong |
 
-### Replace mode: the deletion UN-types
+### Replace mode: the one corner that cannot be dropped
 
-`R` reconstructs the buffer from a snapshot, so a deletion there is not a plain deletion:
-`RXY<C-w>` over `cd` gives `abcdef` back — the typed characters displaced the snapshot's,
-so removing them restores it. A deletion that would reach past the typed run does nothing
-rather than eating pre-existing text. Both directions of that reconstruction share one copy
-of the rule (`_replaceConsumed`), because a second copy is how the write and the un-write
-of a replacement come to disagree.
+`R` reconstructs its buffer from a snapshot, so anything that edits text inside it has to
+go through that reconstruction. C-w/C-u therefore cannot be "left out" of replace mode —
+they either un-type (correct) or they corrupt (a plain deletion leaves the snapshot
+disagreeing with the screen, and the next keystroke re-inserts the text the user just
+deleted). The un-typing is ~12 lines and shares its rule with the write path
+(`_replaceConsumed`, extracted from `applyHostEdit`), so it is the cheapest correct answer
+and it removes a duplication instead of adding a surface:
+
+| keys | input | vim = ours |
+|---|---|---|
+| `RXY<C-w>` — C-w over typed text puts the displaced characters back | `abcdef` | `abcdef` |
+| `RXY<C-w><C-w>` — and a deletion past the typed run does nothing | `abc def` | `abc def` |
+| `llRXY<C-u>Z` — C-u un-typed, then typing replaces again | `abcdef` | `abZdef` |
+
+Everything else about replace mode already existed; this only teaches it to un-type.
+
+`<C-r>{register}` inside replace mode is a different story and is recorded only so nobody
+re-derives it: it needs **no** code at all, because a register insert goes through the same
+host-insert path as typing, and the snapshot reconstruction makes it overwrite. It matches
+vim (`"aywjR<C-r>a` on `XY\nabcdef` gives `XY\nXYcdef`). As Edward put it on
+2026-11-15 - after 20 years of vim - he first noticed the combination *today*: a corner of
+a corner, pinned by a case because measuring it cost one line, not because it was worth
+building.
 
 ## Divergences: closed (2026-11-14)
 

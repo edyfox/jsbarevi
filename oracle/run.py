@@ -271,13 +271,25 @@ def run_pty(engine: str, text: str, keys: str, workdir: Path, timeout: float = 1
 ENGINES = ("vim", "busybox", "nvi")
 
 
+def normalise(text: str) -> str:
+    """Strip ONE trailing newline, exactly as test/lib/engine-driver.mjs does.
+
+    Both sides of a comparison are file text, and both editors write a newline after the
+    last line, so the terminator cannot distinguish anything. Without this the python
+    oracle disagreed with the JS harness on 20 case expectations that were authored
+    against the normalising one - 19 cases red for a trailing byte, which is exactly the
+    noise that hides a real regression. One convention, both harnesses.
+    """
+    return text[:-1] if text.endswith("\n") else text
+
+
 def check(expect: dict, res: Result) -> tuple[bool, str]:
     """Text-only engines cannot report a position. A position-only expectation
     is therefore SKIP, not FAIL; a mixed one asserts the text and says so."""
     if "text" not in expect and res.line is None:
         return True, "position not observable on this engine (SKIP)"
     bad = []
-    if "text" in expect and res.text is not None and res.text != expect["text"]:
+    if "text" in expect and res.text is not None and normalise(res.text) != normalise(expect["text"]):
         bad.append(f"text {res.text!r} != {expect['text']!r}")
     if "line" in expect:
         if res.line is None:

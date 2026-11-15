@@ -507,6 +507,71 @@
         "line": 1,
         "col": 8
       }
+    },
+    {
+      "name": "replace mode: <C-r>{register} overwrites instead of inserting",
+      "input": "XY\nabcdef\n",
+      "keys": "\"aywjR<C-r>a<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XY\nXYcdef\n",
+        "line": 2,
+        "col": 2
+      }
+    },
+    {
+      "name": "replace mode: typing after <C-r> keeps replacing",
+      "input": "XY\nabcdef\n",
+      "keys": "\"aywjR<C-r>aZ<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XY\nXYZdef\n",
+        "line": 2,
+        "col": 3
+      }
+    },
+    {
+      "name": "replace mode: C-w after <C-r> un-types the whole insertion",
+      "input": "XY\nabcdef\n",
+      "keys": "\"aywjR<C-r>a<C-w><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XY\nabcdef\n",
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "replace mode: Backspace after <C-r> restores one character",
+      "input": "XY\nabcdef\n",
+      "keys": "\"aywjR<C-r>a<BS><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XY\nXbcdef\n",
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "replace mode: <C-r> at the last character appends",
+      "input": "XY\nabc\n",
+      "keys": "\"aywj$R<C-r>a<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XY\nabXY\n",
+        "line": 2,
+        "col": 4
+      }
     }
   ]
 }

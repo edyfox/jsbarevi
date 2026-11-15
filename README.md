@@ -352,9 +352,28 @@ Three options existed and none fit:
 3. **This** — port the *traditional vi* surface, which is small and settled, and
    hand anything complicated to a real editor.
 
-The scope is **88 vi-mode commands** plus an 18-command `:` line. It is not a Vim
-clone: no Vim script, no plugins, no ex mode, no `:g`/`:v`. See
-`docs/DECISIONS.md` for what is in, out, and why.
+The scope is **88 vi-mode commands** plus an 18-command `:` line — every command busybox
+vi implements, and that goal is complete. It is not a Vim clone: no Vim script, no plugins,
+no ex mode, no `:g`/`:v`. A small number of Vim conveniences are included on purpose (text
+objects, marks, registers, the clipboard, insert-mode `C-w`/`C-u`); each one has to pay for
+itself. See `docs/DECISIONS.md` for what is in, out, and why.
+
+## Contributing — and why the scope is decided first
+
+Scope here is deliberate and it is capped, so **please open an issue before writing a patch
+that adds a command, an option, a key binding or a mode**. That is not gate-keeping: a good
+patch declined for scope wastes your evening, and we would rather discuss the surface with
+you for five minutes first. Bug fixes, differential cases and doc corrections need no
+proposal at all.
+
+The short version of the rule: *muscle memory first* (an operation done without thinking
+must land exactly as vim lands it), *a corner is kept only when it falls out of the same
+primitive*, and anything else is **documented and dropped** rather than approximated. New
+options are the last resort, because every flag multiplies the test matrix rather than
+adding to it.
+
+`CONTRIBUTING.md` has the full charter — what is always welcome, what will be declined and
+how the answer is worded, and the five checks a feature patch is reviewed against.
 
 ## Design in one page
 
