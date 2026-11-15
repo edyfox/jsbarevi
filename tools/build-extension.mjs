@@ -50,8 +50,21 @@ async function main() {
   const build = currentBuild({ cwd: ROOT });
   const versionName = `${pkg.version}+${build.stamp}`;
 
+  // Artifacts that OTHER tools put in dist/ are not this build's to delete. `--no-zip` is
+  // used by test:ext and by the Lark payload builder (which bundles into a temp dir), and
+  // wiping the whole directory silently removed the Web Store zip `npm run ship` had just
+  // produced — the symptom was "the zip is not where you said it is" after a successful
+  // ship. They are carried across; a stale one is caught by the version in its filename
+  // and by ship, which rebuilds both.
+  const carriedArtifact = /(\.zip$|^lark-payload\.js$)/;
+  const carried = fs.existsSync(OUT)
+    ? fs.readdirSync(OUT)
+      .filter((f) => carriedArtifact.test(f))
+      .map((f) => [f, fs.readFileSync(path.join(OUT, f))])
+    : [];
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
+  for (const [name, bytes] of carried) fs.writeFileSync(path.join(OUT, name), bytes);
 
   const banner = `/* jsbarevi ${versionName} — built ${new Date().toISOString()}\n`
     + ` * one classic script: the engine (src/) bundled for a content script.\n`

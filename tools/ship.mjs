@@ -56,10 +56,17 @@ if (manifest.version !== pkg.version) {
   process.exit(1);
 }
 const build = JSON.parse(fs.readFileSync(path.join(DIST, "build.json"), "utf8"));
-const zip = fs.readdirSync(DIST).find((f) => f.endsWith(".zip"));
+// The zip must be THIS version's. A carried-over zip from a previous release is worse than
+// no zip at all, because it looks like the artifact you asked for.
+const zipName = `jsbarevi-${pkg.version}.zip`;
+const zip = fs.existsSync(path.join(DIST, zipName)) ? zipName : null;
 console.log(`  manifest   ${manifest.version} (${manifest.version_name})`);
 console.log(`  build      ${build.stamp ?? build.build ?? JSON.stringify(build).slice(0, 60)}`);
-console.log(`  zip        ${zip ? path.join("dist", zip) : "MISSING"}`);
+if (!zip) {
+  console.error(`  zip        MISSING: dist/${zipName} was not produced`);
+  process.exit(1);
+}
+console.log(`  zip        dist/${zip} (${(fs.statSync(path.join(DIST, zip)).size / 1024).toFixed(0)} KiB)`);
 
 // 3. Sync the desktop extension directory: move the old one aside, copy the new one in.
 if (sync) {
