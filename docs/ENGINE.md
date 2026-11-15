@@ -456,7 +456,8 @@ and the visual form cannot disagree. Measured against vim 9.2 in
 | doubled | `gUU`, `guu`, `g~~` — and vim's long spellings `gUgU`, `gugu`, `g~g~` | the whole line, `2gUU` = two lines (a count on either side works: `2gUgU` and `gU2gU`) |
 | count | `3gUw` and `gU2w` | both sides work (before the `g`, after the operator) |
 | g-motion | `gUG`, `gUgg` | to the end / to the start of the buffer |
-| visual | `U`, `u`, `~` | the selection |
+| visual | `U`, `u`, `~`, `g?` | the selection |
+| rot13 | `g?w`, `g??`, `g?g?`, `g?iw` | letters only, case preserved; applying it twice is the identity |
 
 Four rules, all measured:
 
@@ -469,6 +470,14 @@ Four rules, all measured:
    `_applyOperatorRange` rather than beside it.
 4. **No change → no undo step.** `gUiw` on text that is already upper leaves the buffer
    alone, so `u` afterwards undoes something else.
+
+**`g?` is the fourth member, and it is here because of a rule rather than a need.** It is
+rot13: a letter map, so it reuses `_caseChar` instead of being a new command — 11 lines in
+total, including the visual form. It was first refused by the maintainer *on taste*
+("I would reject rot13 hard"), and then admitted anyway, because the evidence said the cost
+was trivial and a reference implements it. That is the decision rule in `docs/DECISIONS.md`
+working on its own author: **evidence first, personal taste second.** A command nobody here
+uses can still be right, and it is 11 lines to find out.
 
 **The one rule that is not obvious: a case mapping may not change the character COUNT.**
 vim's default `'casemap'` is `internal`, which preserves the length — measured: `gUiw` on

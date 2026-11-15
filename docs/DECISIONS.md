@@ -154,25 +154,38 @@ Added 2026-11-15, after the freeze, for two reasons that are not taste:
 
 ### The scope rule, stated once (Edward, 2026-11-15)
 
-Three priorities, in this order, for any beyond-baseline command:
+**Evidence first, personal taste second.** Two separate questions, and mixing them is how
+a good command gets refused for the wrong reason:
 
-1. **Muscle memory wins.** An operation done without thinking must land exactly as the
-   tool the hand already knows. This is not negotiable and not a place to be creative:
-   "delete what I just typed with Ctrl-W" has to behave like vim, or the feature is worse
-   than absent.
-2. **A corner is kept when it falls out of the same primitive.** If faithful behaviour
-   costs no new rule - it is the same word scan, the same wall, the same deletion - keep
-   it. Cheapest examples here: C-w *inside a pre-existing word* (both "delete the typed
-   insertion only" and "delete back to the word start when nothing was typed") came out of
-   `wordBack` plus the insert-start wall with **zero** case-specific code.
-3. **Otherwise the gap is documented and the corner dropped.** Not silently, not
-   "approximately": written down in `docs/ENGINE.md` with the mechanism that would be
-   needed, so it is a decision and not folklore.
+**A. Which features to accept** — an evidence question, decided before any code:
 
-A useful calibration from outside this repo: **VsVim** - a famous Vim emulator, written by
-Microsoft engineers - does not handle the pre-existing-word case correctly. That is the
-class of corner where "faithful if free, dropped if not" is the right policy, because even
-a well-funded emulator with a large team leaves it behind.
+| Evidence that COUNTS | Evidence that does NOT |
+|---|---|
+| a reference implements it, and we measured what it does in the corners | "I would use it" / "I would never use it" — anybody's, including the maintainer's |
+| the cost, measured: seams touched, lines, cases | "it looks like a few lines" (it was 7× that for the case operators) |
+| it reuses a primitive we already have (one rule, no new state) | "vim has it" on its own — vim has ~600 commands |
+| an independent emulator's behaviour as calibration (VsVim *fails* the pre-existing-word case; it *has* the operator forms) | popularity guesses, blog posts |
+| observed demand: a bug report, a workflow that cannot be expressed otherwise, a host that needs it | "it would be nice to be complete" |
+
+**B. How an accepted feature behaves** — a fidelity question, and here taste genuinely has
+no vote: muscle memory wins, because an operation done without thinking must land where the
+hand expects. Corners are then kept only when they fall out of the same primitive, and
+documented when they do not.
+
+The two are independent: a feature nobody here uses can be accepted if the evidence for it
+is good (that is how `gUgU`/`gugu`/`g~g~` came in — vim's own long spellings, 7 lines, the
+same primitive), and a feature everybody likes can be refused if the measured cost is a
+subsystem (that is `gq`/`gw`).
+
+**Every refusal is recorded with its MEASURED cost, so it can be overturned with data**
+rather than re-argued from taste:
+
+| Refused (or accepted) | Measured cost of the version we would accept | What would change our mind |
+|---|---|---|
+| `gq` / `gw` (format) | a text-width model, a paragraph reflow, `'textwidth'`, and an interaction with every insertion point | demand for formatting *inside a chat field*, which is unlikely but is evidence, not taste |
+| `g<C-a>` / `g<C-x>` (increment) | a sequenced-pattern engine (find the *next* number, then the one after it) — new state | a report from a host that needs it |
+| `g?` (rot13) | **11 lines** on the case primitive we already have | **it is IN** (2026-11-15). It was refused on taste first — the maintainer's own words: "I would reject rot13 hard" — and admitted anyway because the measured cost was 11 lines and the reference implements it. The taste objection is kept here on purpose: it is the clearest case of the rule overriding its author |
+| the twelve insert-mode neighbours (`C-o`, `C-n`, …) | see the table above; `C-o` is the expensive one (a temporary mode switch with the caret in two owners' hands) | any of them, with a use case — the cost is already written down |
 
 Scope is capped on purpose, following that rule (2026-11-15): *implement it, do not chase completeness
 — most people use a few happy paths, and the corners are not worth their code.* The

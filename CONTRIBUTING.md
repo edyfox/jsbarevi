@@ -26,11 +26,15 @@ the first place to look, and the first place a decision gets recorded.
 **Please open an issue before writing a patch that adds a command, an option, a key
 binding, a mode, or a host integration.** One paragraph is enough:
 
-- what operation it makes possible, and how often a hand reaches for it;
-- which reference editor it comes from (busybox / vim / nvi) and what that reference does
-  in the corners;
-- what it costs in *our* shape: new state, a new option, a new host capability, or just
-  more of a rule that already exists.
+- **what operation it makes possible** — not who would use it. "I'd use this every day"
+  and "nobody uses this" are both non-arguments here; we decide on evidence, not taste;
+- **which reference implements it** (busybox / vim / nvi) and, if it is vim-only, that you
+  accept that it lands beyond the busybox baseline;
+- **what it costs in our shape**: new state, a new option, a new host capability, or just
+  more of a rule that already exists;
+- **how it behaves in the corners** — the parts that look free and are not (a good example:
+  `gU` on `ß`, where the obvious JavaScript mapping changes the character count and shifts
+  every offset after it).
 
 If it is a bug in something we already implement, skip the proposal and send the fix.
 
@@ -40,15 +44,20 @@ value" we will offer the smaller version that we *would* take.
 
 ## How the decision is made
 
-Three priorities, in this order:
+Two questions, kept apart on purpose:
 
-1. **Muscle memory wins.** An operation performed without thinking must land exactly as the
-   reference lands it. This is not a place to be creative or "close enough".
-2. **A corner is kept when it falls out of the same primitive.** If faithful behaviour costs
-   no new rule — the same word scan, the same edit, the same deletion — keep it. If it needs
-   its own state machine, it is not free, whatever it looks like.
-3. **Otherwise: document and drop.** The gap goes into `docs/ENGINE.md` with the mechanism
-   it would have needed, so it stays a decision instead of becoming folklore.
+**Which features to accept — evidence first, taste second.** A reference implementing it,
+a *measured* cost (not an estimate), and a primitive we already have. Personal usage is not
+evidence in either direction: a command nobody here uses can be accepted if it is cheap and
+a reference has it, and a command everybody likes can be refused if it needs a subsystem.
+`docs/DECISIONS.md` records every refusal **with its measured cost**, so a decision can be
+overturned with data instead of re-argued.
+
+**How an accepted feature behaves — muscle memory wins.** An operation performed without
+thinking must land exactly as the reference lands it; this is not a place to be creative or
+"close enough". A corner is kept when it falls out of the same primitive (the same word
+scan, the same edit, the same deletion), and otherwise the gap goes into `docs/ENGINE.md`
+with the mechanism it would have needed — documented and dropped rather than approximated.
 
 And two standing constraints:
 

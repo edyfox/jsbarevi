@@ -418,7 +418,7 @@ export class Engine {
       // `dgg`) is unchanged, which is the whole reason they are accepted here: the
       // operator machinery already knows how to resolve a motion, a text object and a
       // count, so none of it needs to be taught about case.
-      if (key === "u" || key === "U" || key === "~") {
+      if (key === "u" || key === "U" || key === "~" || key === "?") {
         p.op = `g${key}`;
         p.opCount = p.count;
         p.count = "";
@@ -1844,6 +1844,15 @@ export class Engine {
     const one = (s) => ([...s].length === 1 ? s : c);
     if (op === "gU") return one(c.toUpperCase());
     if (op === "gu") return one(c.toLowerCase());
+    // `g?` is rot13: a letter map like the other three, so it reuses this rule instead of
+    // being a fourth command. Letters only (digits and punctuation are untouched), case
+    // preserved, and applying it twice is the identity — all measured.
+    if (op === "g?") {
+      const code = c.codePointAt(0);
+      if (code >= 0x61 && code <= 0x7a) return String.fromCodePoint(((code - 0x61 + 13) % 26) + 0x61);
+      if (code >= 0x41 && code <= 0x5a) return String.fromCodePoint(((code - 0x41 + 13) % 26) + 0x41);
+      return c;
+    }
     // `g~` toggles: lower if it is upper, upper if it is lower, unchanged if neither.
     const lower = one(c.toLowerCase());
     if (lower !== c) return lower;
@@ -2355,6 +2364,16 @@ export class Engine {
     if (key === "m") { p.awaiting = "mark"; return { handled: true }; }
     if (p.gPending) {
       p.gPending = false;
+      // `g?` in visual mode is the same rot13 map over the selection (measured: `Vg?`
+      // rotates the line). The other three case ops are bare keys here, so this is the
+      // one that needs the prefix.
+      if (key === "?") {
+        const range = this._visualRange();
+        this.mode = Mode.NORMAL;
+        this.visual = null;
+        this.pending = this._emptyPending();
+        return this._applyCaseRange("g?", range.from, range.to);
+      }
       const gmotion = G_MOTIONS[key];
       if (gmotion) {
         const m = this._motion(gmotion, this._takeCount(1), {});
