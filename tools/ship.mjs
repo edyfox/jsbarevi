@@ -92,5 +92,12 @@ if (lark) {
 
 stamp("next");
 if (sync) console.log("  · restart the OpenCode desktop app (the extension loads at startup, into its persistent session)");
-if (lark) console.log("  · close Lark, then: _local/bin/lark-ext-patch patch   (then reopen Lark)");
+if (lark) {
+  // The env var is not optional: without it the installer assembles the LEGACY Input Vim
+  // payload and quietly skips ours ("no Input Vim extension ... this path assembles the
+  // legacy payload"), which reads as a successful no-op.
+  console.log("  · close Lark, then:");
+  console.log(`      LARK_PAYLOAD_FROM=${path.join(ROOT, "dist", "lark-payload.js")} \\`);
+  console.log("        ../../_local/bin/lark-ext-patch patch        (then reopen Lark)");
+}
 console.log("  · Chromebook / other Chrome: chrome://extensions → Developer mode → Load unpacked → dist/");
