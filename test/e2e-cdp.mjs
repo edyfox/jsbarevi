@@ -612,6 +612,38 @@ async function main() {
     await typeKeys(session, "x");
     await typeKeys(session, "u");
     check("an empty insert leaves no undo step for u to waste", await field(), BUFFER);
+
+    // ---------------------------------------------------------------------
+    // Insert-mode C-w / C-u. These two cannot be dispatched as REAL keys here:
+    // Chrome owns Ctrl-W as "close tab" and Ctrl-U as "view source" at the browser
+    // level, so a real key event would act on the browser before the page answered —
+    // which is exactly why they are only useful in a PWA, an Electron app, or a host
+    // that does not reserve them (OpenCode's composer, the primary home). What IS
+    // ours to prove is the half the page controls: the handler runs, it edits the
+    // field through the adapter, and it calls preventDefault so a host dispatching
+    // the key itself does not also act on it.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1minsert-mode C-w and C-u\x1b[0m");
+    const synthCtrlKey = (key) => evaluate(session, `(() => {
+      const ev = new KeyboardEvent('keydown', {
+        key: ${JSON.stringify(key)}, bubbles: true, cancelable: true, composed: true, ctrlKey: true,
+      });
+      document.activeElement.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    })()`);
+    await resetField();
+    await typeKeys(session, "ggA!");
+    check("typed a character at the end of line 1", await field(), "alpha beta gamma!\ndelta epsilon\nzeta eta theta");
+    check("C-w is consumed, not left to the browser", await synthCtrlKey("w"), true);
+    check("...and deleted the typed run only", await field(), "alpha beta gamma\ndelta epsilon\nzeta eta theta");
+    check("a second C-w is consumed too", await synthCtrlKey("w"), true);
+    check("...and deleted the previous word", await field(), "alpha beta \ndelta epsilon\nzeta eta theta");
+    check("C-u is consumed, not left to the browser", await synthCtrlKey("u"), true);
+    check("...and cleared the line it had nothing typed on", await field(), "\ndelta epsilon\nzeta eta theta");
+    await sendKey(session, "Escape");
+    check("Esc still leaves insert mode afterwards", await mode(), "NORMAL");
+    await typeKeys(session, "u");
+    check("one u undoes the whole insert with both deletions", await field(), BUFFER);
     console.log("\n\x1b[1mright click: extends in visual mode, menu suppressed there only\x1b[0m");
     const rightClickAt = async (x, y) => {
       await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "right", buttons: 2, clickCount: 1 });

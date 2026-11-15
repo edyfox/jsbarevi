@@ -11,13 +11,13 @@ import { fromField } from "../../src/engine/buffer.js";
 
 const TOKENS = {
   "<Esc>": "Esc", "<CR>": "CR", "<Tab>": "Tab", "<BS>": "BS",
-  "<C-r>": "C-r", "<C-u>": "C-u", "<C-d>": "C-d", "<C-f>": "C-f", "<C-b>": "C-b",
+  "<C-r>": "C-r", "<C-w>": "C-w", "<C-u>": "C-u", "<C-d>": "C-d", "<C-f>": "C-f", "<C-b>": "C-b",
   "<C-e>": "C-e", "<C-y>": "C-y", "<C-g>": "C-g", "<Space>": " ",
   "<C-a>": "C-a", "<C-x>": "C-x",
 };
 const VIM_TOKENS = {
   "<Esc>": "\\<Esc>", "<CR>": "\\<CR>", "<Tab>": "\\<Tab>", "<BS>": "\\<BS>",
-  "<C-r>": "\\<C-R>", "<C-u>": "\\<C-U>", "<C-d>": "\\<C-D>", "<C-f>": "\\<C-F>",
+  "<C-r>": "\\<C-R>", "<C-w>": "\\<C-W>", "<C-u>": "\\<C-U>", "<C-d>": "\\<C-D>", "<C-f>": "\\<C-F>",
   "<C-b>": "\\<C-B>", "<C-e>": "\\<C-E>", "<C-y>": "\\<C-Y>", "<C-g>": "\\<C-G>",
   "<C-a>": "\\<C-A>", "<C-x>": "\\<C-X>",
   "<Space>": " ",
@@ -57,7 +57,13 @@ export function runVim(input, keys, { options = {} } = {}) {
     timeout: 20000,
   });
   const [line, col] = fs.readFileSync(pos, "utf8").trim().split(":").map(Number);
-  return { text: normalise(fs.readFileSync(file, "utf8")), line, col };
+  // `raw` is the file vim actually wrote; `text` is that file with one terminator
+  // removed, which is what the comparison uses. They differ whenever the buffer's last
+  // line is empty (vim writes one newline per line), and case files hold the RAW form,
+  // so `tools/gen-expect.mjs` needs it to write an expectation the engine test can
+  // normalise the same way the differential does.
+  const raw = fs.readFileSync(file, "utf8");
+  return { text: normalise(raw), raw, line, col };
 }
 
 // The host's edit, exactly as the textarea adapter performs it: applyHostEdit, not

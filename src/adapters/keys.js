@@ -22,6 +22,11 @@ export function tokenFor(e, mode) {
     if (k === "c") return "C-c";
     // `a`/`x` are here because they are vi's increment/decrement: leaving them to the
     // browser means Ctrl-A selects the whole page and Ctrl-X CUTS the field.
+    // `w`/`u` are here for the same reason one step further in: in INSERT mode they are
+    // vi's delete-word / delete-to-insert-start, and the browser's own answers to them
+    // are close-tab (Chrome reserves it, so a page cannot win) and view-source. In
+    // normal mode `u` is still undo and `w` (vim's window prefix) is not implemented, so
+    // it falls through to the host — the engine decides, not this table.
     if (["a", "x", "r", "w", "u", "d", "f", "b", "e", "y", "g"].includes(k)) return `C-${k}`;
     return null;
   }

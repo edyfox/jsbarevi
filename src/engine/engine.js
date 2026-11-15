@@ -34,6 +34,18 @@ export class Engine {
       flash: true,
       tabstop: 4,
       shiftwidth: 4,
+      // vim's own 'backspace' flags, as the string vim uses. Two of them decide what
+      // insert-mode C-w / C-u may delete (measured against vim 9.2 on 2026-11-15 —
+      // `oracle/cases/insert-backspace.json`):
+      //   'start' — may delete text that existed before this insert began;
+      //   'eol'   — may delete the line break at column 1. That break also needs
+      //             'start', because the break sits before the insert start.
+      // 'indent' is accepted and has no work to do here: this engine never inserts
+      // an automatic indent, so there is never one to take back. A string option is
+      // deliberately outside `:set` (which is boolean/numeric only).
+      // The default is vim 9.2's effective one, so the differential harness compares
+      // like with like instead of testing our default against another one.
+      backspace: "indent,eol,start",
       ...opts.options,
     };
     this.registers = new Registers({ clipboard: opts.clipboard || null });
@@ -154,12 +166,8 @@ export class Engine {
       this.replaceSession = { at: Math.min(hostCursor, B.hostText(this.text).length), snap: B.hostText(this.text), typed: "" };
       return;
     }
-    let consumed = 0;
-    const snap = session.snap;
-    while (consumed < session.typed.length
-      && session.at + consumed < snap.length
-      && snap[session.at + consumed] !== "\n") consumed++;
-    this.setText(snap.slice(0, session.at) + session.typed + snap.slice(session.at + consumed), hostCursor);
+    const consumed = this._replaceConsumed();
+    this.setText(session.snap.slice(0, session.at) + session.typed + session.snap.slice(session.at + consumed), hostCursor);
     this._resetWishes();
   }
 
@@ -1900,7 +1908,15 @@ export class Engine {
     }
     // capture the baseline AFTER the entry's own edit, otherwise the newline that
     // `o`/`O` create looks like typed text
-    this.insertEntry = { kind, start: cur, textBefore: this.state.text, cursorBefore: cur, count };
+    // `insStart` is where the insertion begins RIGHT NOW: the entry motion's landing
+    // point for i/a/I/A, the new line for o/O, the start of the deletion for s/c.
+    // Insert-mode C-w / C-u never reach behind it once something has been typed, and
+    // that one position is the whole difference between "delete what I just typed"
+    // and "delete the document" (measured; see _insertBackspaceWord).
+    this.insertEntry = {
+      kind, start: cur, textBefore: this.state.text, cursorBefore: cur, count,
+      insStart: this.state.cursor,
+    };
     return { handled: true, edit: true, enterInsert: true, mode: Mode.INSERT };
   }
 
@@ -1940,8 +1956,169 @@ export class Engine {
       if (!repeated) this.state.cursor = C.left(this.text, this.state.cursor);
       return { handled: true };
     }
+    // The two insert-mode backspace commands. Both are ALWAYS consumed, even when
+    // there is nothing to delete: an unconsumed Ctrl-W closes the tab (or the PWA
+    // window, or the Electron app) and an unconsumed Ctrl-U is the browser's own
+    // action - the same reasoning that makes the first `<C-r>` unconditional.
+    if (key === "C-w") return this._insertBackspaceWord();
+    if (key === "C-u") return this._insertBackspaceLine();
     // insert mode belongs to the host
     return { handled: false };
+  }
+
+  /** Where this insert began — the wall C-w / C-u may not cross once text is typed. */
+  _insertStart() {
+    return this.insertEntry ? this.insertEntry.insStart : this.state.cursor;
+  }
+
+  /** The 'backspace' flags as a Set; see the option's comment in the constructor. */
+  _backspaceFlags() {
+    return new Set(
+      String(this.options.backspace ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+  }
+
+  /**
+   * INSERT `<C-w>`: delete back to the start of the word before the cursor.
+   *
+   * Measured against vim 9.2 (`oracle/cases/insert-backspace.json`), and three of
+   * its rules are not guessable from the documentation:
+   *
+   *   1. **It never crosses a line start.** `ji<C-w>` at column 1 of line 2 on
+   *      "abc\ndef" gives "abcdef" — it deletes the line BREAK and nothing behind
+   *      it, not the word "abc" (a word scan that crossed the newline would give
+   *      "def").
+   *   2. **Once anything is typed, the insert start is a wall.** `AXY<C-w>` on
+   *      "foo bar" gives "foo bar", not "foo ": the typed run goes, the word does
+   *      not. A SECOND C-w then has nothing typed before it and deletes "bar".
+   *      This holds with 'backspace' containing 'start' too, so it is not a
+   *      'backspace' rule — it is what "delete what I typed" means.
+   *   3. **Whitespace before the cursor goes with the word** (`A<C-w>` on "foo   "
+   *      empties the line), but typed whitespace is still the typed run and still
+   *      stops at the insert start.
+   *
+   * The remaining two decisions belong to 'backspace' and are measured in
+   * ENGINE.md: deleting text from before this insert needs 'start', and deleting
+   * the line break needs 'eol' as well.
+   */
+  _insertBackspaceWord() {
+    const t = this.text;
+    const cur = this.state.cursor;
+    const ins = this._insertStart();
+    const ls = B.lineStart(t, cur);
+    // At column 1 there is no word before the cursor, only the line break — and that
+    // is the one case where the deletion may span lines (rule 1).
+    if (cur === ls) return this._insertJoinLine();
+    let from = B.wordBack(t, cur, false, ls);
+    if (from < ins) {
+      if (cur > ins) from = Math.max(ins, ls);          // rule 2: the typed run is the limit
+      else if (!this._backspaceFlags().has("start")) from = cur; // pre-insert text is untouchable
+    }
+    if (from >= cur) return { handled: true };
+    return this._insertDelete(from, cur);
+  }
+
+  /**
+   * INSERT `<C-u>`: delete everything before the cursor on this line, down to where
+   * this insert began — or, when nothing has been typed yet, down to the start of
+   * the line.
+   *
+   * That two-part rule is vim's, and both halves are measured: `AXY<C-u>` on
+   * "foo bar" leaves "foo bar" (the typed run goes, the line does not), while
+   * `A<C-u>` on the same buffer empties the line. `A<CR>XY<C-u>` deletes only the
+   * typed run on the NEW line, because the entered characters on this line are
+   * exactly that run.
+   *
+   * At column 1 there is nothing on the line, so the line break is the only thing
+   * behind the cursor: with 'eol' and 'start' it is deleted and the lines join,
+   * which is the same 'backspace' pair C-w obeys.
+   */
+  _insertBackspaceLine() {
+    const t = this.text;
+    const cur = this.state.cursor;
+    const ins = this._insertStart();
+    const ls = B.lineStart(t, cur);
+    const stop = cur > ins ? Math.max(ins, ls) : ls;
+    if (stop >= cur) return this._insertJoinLine();
+    if (stop < ins && !this._backspaceFlags().has("start")) return { handled: true };
+    return this._insertDelete(stop, cur);
+  }
+
+  /**
+   * Column 1 of a line: nothing on this line sits before the cursor, so the line
+   * break is the only thing behind it — and deleting that break is the one move both
+   * C-w and C-u make, at any line but the first.
+   *
+   * 'backspace' decides whether it may happen, and the two flags split by AGE, which
+   * is the part that is easy to get wrong: a break this insert typed (an `A<CR>`) is
+   * typed text and needs only 'eol'; a break that was already there is pre-insert
+   * text and needs 'start' as well. Measured both ways (see the `options` cases in
+   * `oracle/cases/insert-backspace.json`).
+   */
+  _insertJoinLine() {
+    const cur = this.state.cursor;
+    if (cur === 0) return { handled: true };
+    const flags = this._backspaceFlags();
+    if (!flags.has("eol")) return { handled: true };
+    if (cur - 1 < this._insertStart() && !flags.has("start")) return { handled: true };
+    return this._insertDelete(cur - 1, cur);
+  }
+
+  /**
+   * Delete [from, to) as an insert-mode edit, leaving the cursor where the deletion
+   * began.
+   *
+   * In REPLACE mode this is not a plain deletion: the typed text is what displaced the
+   * snapshot's characters, so un-typing it has to put them BACK. Measured:
+   * `RXY<C-w>` over "cd" restores "cd" (the text is "abXYef" -> "abcdef"), and a
+   * deletion that would reach past the typed run does nothing at all rather than
+   * eating pre-existing text. Both fall out of trimming `typed` and rebuilding from
+   * the snapshot — the same reconstruction applyHostEdit() runs in the other
+   * direction, which is why they share one copy of it.
+   */
+  _insertDelete(from, to) {
+    const text = this.text;
+    const session = this.replaceSession;
+    this._pushUndo({ text, cursor: this.state.cursor });
+    if (session) {
+      if (from < session.at) from = session.at;      // pre-insert text is out of reach
+      if (from >= to) return { handled: true };
+      session.typed = session.typed.slice(0, Math.max(0, session.typed.length - (to - from)));
+      this._rebuildReplace();
+    } else {
+      this._setText(text.slice(0, from) + text.slice(to));
+      this.state.cursor = from;
+    }
+    this._setDesiredCol();
+    return { handled: true, edit: true };
+  }
+
+  /**
+   * Rebuild a replace-mode buffer from its snapshot: the typed run overwrites the
+   * front of the snapshot, and only up to a line break — typing past the end of a
+   * line appends (measured). One copy, because a second one is how the write and the
+   * un-write of a replacement come to disagree.
+   */
+  _replaceConsumed() {
+    const session = this.replaceSession;
+    if (!session) return 0;
+    const snap = session.snap;
+    let consumed = 0;
+    while (consumed < session.typed.length
+      && session.at + consumed < snap.length
+      && snap[session.at + consumed] !== "\n") consumed++;
+    return consumed;
+  }
+
+  _rebuildReplace() {
+    const session = this.replaceSession;
+    if (!session) return;
+    const consumed = this._replaceConsumed();
+    this.setText(session.snap.slice(0, session.at) + session.typed + session.snap.slice(session.at + consumed),
+      session.at + session.typed.length);
   }
 
   /**

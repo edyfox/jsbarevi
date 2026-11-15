@@ -249,6 +249,46 @@ async function main() {
     check("...and NORMAL still works after Esc", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
 
     // ---------------------------------------------------------------------
+    // Insert-mode C-w / C-u in a rich composer.
+    //
+    // The same two commands one layer up. A real Ctrl-W is the BROWSER's close-tab and
+    // Ctrl-U its view-source, so no browser test can press them and still be running —
+    // that is why these only earn their keep in a PWA, an Electron window, or a host
+    // that dispatches the key itself (OpenCode's composer is exactly that). So the
+    // event under test is a cancelable keydown the page dispatches itself, and two
+    // things must hold that the textarea test cannot show: the composer's OWN keymap
+    // never sees the key, and the host model (rebuilt on `input`) follows the edit.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1minsert-mode C-w and C-u in a rich composer\x1b[0m");
+    await evaluate(page, `(() => {
+      const el = document.getElementById('editor');
+      el.textContent = "hello world";
+      el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+      return true;
+    })()`);
+    await sleep(60);
+    await focus();
+    await sleep(30);
+    const synthCtrl = (key) => evaluate(page, `(() => {
+      window.hostLog.keys.length = 0;
+      const ev = new KeyboardEvent('keydown', {
+        key: ${JSON.stringify(key)}, bubbles: true, cancelable: true, composed: true, ctrlKey: true,
+      });
+      document.activeElement.dispatchEvent(ev);
+      return { prevented: ev.defaultPrevented, hostSaw: window.hostLog.keys.slice() };
+    })()`);
+    const inputsBefore = (await host()).inputs;
+    await typeKeys(page, "A!");
+    check("typed at the end of the composer", await text(), "hello world!");
+    check("C-w is consumed and the host keymap never sees it", await synthCtrl("w"), { prevented: true, hostSaw: [] });
+    check("...and the composer's model follows the edit", await text(), "hello world");
+    check("C-u is consumed the same way", await synthCtrl("u"), { prevented: true, hostSaw: [] });
+    check("...and with nothing typed it clears the line", await text(), "");
+    check("the host was told through an input event", (await host()).inputs > inputsBefore, true);
+    await sendKey(page, "Escape");
+    check("NORMAL after the deletions", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
+
+    // ---------------------------------------------------------------------
     // `ciw` in a rich composer: a CHANGE command, so it deletes and enters insert in
     // one keystroke combination — the shape that broke in Lark, while plain deletes
     // were fine. Here it is pinned, so a regression in either half is caught.

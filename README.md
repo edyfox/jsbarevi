@@ -168,6 +168,14 @@ search via `/ ? n N * #`, the `:` line
 (`s d y = list set version features file e w q x`) with ranges and the
 translate/refuse regex contract, and the viewport capability.
 
+Insert mode has two deletions of its own, because the browser's answer to both is
+destructive: `C-w` deletes back to the start of the word before the cursor and `C-u`
+deletes back to where the insert began (both measured against vim — see
+"C-w and C-u inside insert mode" in `docs/ENGINE.md`). They are consumed in every
+host, but they only *earn* their keep where the browser does not own the key: Chrome
+itself reserves Ctrl-W as close-tab, while a PWA window, an Electron app and a page
+that dispatches its own keymap (an OpenCode composer) do not.
+
 Registers: the unnamed `""`, one-character names `"a`-`"z` with the Vim append form
 `"A`-`"Z`, the black hole `"_`, and the system clipboard as `"+` — with `"*` aliased to
 it, because a browser has one clipboard and inventing a second one we cannot fill would

@@ -45,7 +45,10 @@ function position(engine) {
 }
 
 function runCase(c) {
-  const engine = new Engine();
+  // The case's own options, because test/differential.mjs and the python oracle both
+  // honour them: without this the engine half of a case would assert a DIFFERENT
+  // configuration than the case declares, and both halves could pass while disagreeing.
+  const engine = new Engine({ options: c.options || {} });
   engine.setText(c.input, 0);
   drive(engine, c.keys);
   const pos = position(engine);

@@ -58,6 +58,10 @@ TOKEN_TO_VIM = {
     # redo: vim only (nvi's `u` toggles, busybox has no redo), but the token has
     # to exist or a redo case aborts the whole run
     "<C-r>": "\\<C-R>",
+    # insert-mode delete-word / delete-to-insert-start. Not in this table until
+    # 2026-11-15, which made a C-w case ERROR instead of measuring anything.
+    "<C-w>": "\\<C-W>",
+    "<C-u>": "\\<C-U>",
 }
 TOKEN_TO_BYTES = {
     "<Esc>": b"\x1b",
@@ -65,6 +69,8 @@ TOKEN_TO_BYTES = {
     "<Tab>": b"\t",
     "<BS>": b"\x7f",
     "<C-r>": b"\x12",
+    "<C-w>": b"\x17",
+    "<C-u>": b"\x15",
 }
 
 

@@ -168,16 +168,25 @@ export function wordForward(text, i, big = false) {
   return k;
 }
 
-export function wordBack(text, i, big = false) {
+/**
+ * The start of the word before `i`.
+ *
+ * `lo` is a floor the scan may not cross. The word-CLASS rule stays here (one
+ * definition, used by `b`, `db` and insert-mode C-w); what changes with a floor is
+ * only how far back it is allowed to look. Insert C-w passes the line start, because
+ * it never crosses one — see `_insertBackspaceWord` in engine.js for the measurement
+ * that pins that down.
+ */
+export function wordBack(text, i, big = false, lo = 0) {
   let k = prevChar(text, i);
-  while (k > 0 && classify(charAt(text, k), big) === "space") {
+  while (k > lo && classify(charAt(text, k), big) === "space") {
     // the mirror of `w`: an empty line is a word stop, so `b` from "b" in
     // "a\n\nb" stops on the blank line instead of on "a".
     if (k === lineStart(text, k) && isLineEmpty(text, k)) return k;
     k = prevChar(text, k);
   }
   const kind = classify(charAt(text, k), big);
-  while (k > 0) {
+  while (k > lo) {
     const p = prevChar(text, k);
     if (classify(charAt(text, p), big) !== kind) break;
     k = p;

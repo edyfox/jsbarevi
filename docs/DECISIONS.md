@@ -119,6 +119,30 @@ actually needs. (`g^` joined them on 2026-11-13, because with `'wrap'` off it is
 only way to reach the first non-blank of the *visible* window, which is a real place in a
 horizontally scrolling field.)
 
+## Insert-mode `C-w` / `C-u`, and the one new option
+
+Added 2026-11-15, after the freeze, for a reason that is not taste: in a browser field
+the browser's own answer to both keys is destructive (Ctrl-W closes the tab, Ctrl-U is
+view-source), so an editor that leaves them alone is an editor you lose work in. They are
+the only two insert-mode edits the engine performs itself — insert mode belongs to the
+host, but a deletion has no host API to ride.
+
+That brought one new option, and it is the shape that matters rather than the feature:
+
+- **`backspace` is a vim FLAG STRING** (`"indent,eol,start"`), not a boolean, because
+  what it governs is not one behaviour: `start` allows deleting text from before this
+  insert and `eol` allows deleting a line break, and vim needs `eol` *and* `start` for a
+  break that was already there while `eol` alone suffices for one the insert typed.
+  Flattening that into a boolean would produce three states of wrong.
+- **It stays out of `:set`**, which is boolean/numeric only (`applySet`), exactly like
+  `'joinspaces'`. A second option syntax for one option is a cost nothing here earns.
+- **The default is vim 9.2's own** (`indent,eol,start`), so the differential harness
+  measures our behaviour against the reference's, not against a second opinion. A host
+  that wants vi-strict behaviour sets `backspace: ""`.
+- **`indent` is accepted and inert**: this engine never inserts an automatic indent, so
+  there is never one to take back. Accepting a flag in vim's option and doing nothing
+  with it is correct here; silently *rejecting* it would make a pasted vimrc look broken.
+
 ## The `:` line: busybox parity
 
 18 commands: `delete` `edit` `file` `features` `list` `quit` `next` `prev`

@@ -1,0 +1,676 @@
+{
+  "about": "Insert-mode C-w and C-u. Three rules here are not guessable from the documentation and were measured before the engine was written: C-w never crosses a line start (it deletes the break and stops), the insert start becomes a wall as soon as anything is typed, and 'backspace' decides the two cross-line cases. Each case is Esc-terminated so vim reports a normal-mode position - inside insert mode vim's col('.') is the insertion offset, which is one more than the character under the cursor.",
+  "cases": [
+    {
+      "name": "C-w deletes the word before the cursor",
+      "input": "foo bar\n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "foo \n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "a second C-w deletes the word before that",
+      "input": "foo bar\n",
+      "keys": "A<C-w><C-w><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w with nothing typed crosses the insert start",
+      "input": "foo bar\n",
+      "keys": "wi<C-w><Esc>",
+      "expect": {
+        "text": "bar\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w stops at the insert start once text is typed",
+      "input": "foo bar\n",
+      "keys": "AXY<C-w><Esc>",
+      "expect": {
+        "text": "foo bar\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w then typing continues at the insert start",
+      "input": "foo bar\n",
+      "keys": "AXY<C-w>Z<Esc>",
+      "expect": {
+        "text": "foo barZ\n",
+        "line": 1,
+        "col": 8
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "typed whitespace is still the typed run",
+      "input": "ab\n",
+      "keys": "A   <C-w><Esc>",
+      "expect": {
+        "text": "ab\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w takes trailing whitespace with the word",
+      "input": "foo   \n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w on a whitespace-only line empties it",
+      "input": "    \n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "punctuation is its own word for C-w",
+      "input": "foo.bar\n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "foo.\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "underscore is a keyword character",
+      "input": "foo_bar_baz\n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "slash separates words",
+      "input": "a/b/c\n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "a/b/\n",
+        "line": 1,
+        "col": 4
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "dash separates words",
+      "input": "foo-bar-baz\n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "foo-bar-\n",
+        "line": 1,
+        "col": 8
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "tab separates words",
+      "input": "a\tb\n",
+      "keys": "A<C-w><Esc>",
+      "expect": {
+        "text": "a\t\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w mid-word with nothing typed reaches the word start",
+      "input": "foobar\n",
+      "keys": "li<C-w><Esc>",
+      "expect": {
+        "text": "oobar\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w mid-word on a longer word",
+      "input": "abcdef\n",
+      "keys": "llli<C-w><Esc>",
+      "expect": {
+        "text": "def\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w mid-word is still walled by typed text",
+      "input": "abcdef\n",
+      "keys": "llliXY<C-w><Esc>",
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w at column 1 of the first line does nothing",
+      "input": "abc\n",
+      "keys": "0i<C-w><Esc>",
+      "expect": {
+        "text": "abc\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w at column 1 joins the previous line and nothing more",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-w><Esc>",
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w joins into an empty previous line",
+      "input": "abc\n\ndef\n",
+      "keys": "jji<C-w><Esc>",
+      "expect": {
+        "text": "abc\ndef\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w on the line `o` just created joins it back",
+      "input": "abc\n",
+      "keys": "o<C-w><Esc>",
+      "expect": {
+        "text": "abc\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w then C-w from column 1 joins, then deletes a word",
+      "input": "abc\ndef\nghi\n",
+      "keys": "jji<C-w><C-w><Esc>",
+      "expect": {
+        "text": "abc\nghi\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w joins a line whose previous line ends in spaces",
+      "input": "abc  \ndef\n",
+      "keys": "ji<C-w><Esc>",
+      "expect": {
+        "text": "abc  def\n",
+        "line": 1,
+        "col": 5
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w on a single-character second line",
+      "input": "abc\nx\n",
+      "keys": "ji<C-w><Esc>",
+      "expect": {
+        "text": "abcx\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w takes typed text and restores what it replaced",
+      "input": "abcdef\n",
+      "keys": "llRXY<C-w>Z<Esc>",
+      "expect": {
+        "text": "abZdef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w in replace mode with nothing typed changes no text",
+      "input": "abc def\n",
+      "keys": "RXY<C-w><C-w><Esc>",
+      "expect": {
+        "text": "abc def\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w then Esc then u undoes the whole insert",
+      "input": "abc def\n",
+      "keys": "AXY<C-w><Esc>u",
+      "expect": {
+        "text": "abc def\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "two C-w then Esc then u undoes the whole insert",
+      "input": "foo bar\n",
+      "keys": "A<C-w><C-w><Esc>u",
+      "expect": {
+        "text": "foo bar\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w across a line join then u undoes it",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-w><Esc>u",
+      "expect": {
+        "text": "abc\ndef\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w needs 'start' to delete pre-insert text",
+      "input": "foo bar\n",
+      "keys": "A<C-w><Esc>",
+      "options": {
+        "backspace": ""
+      },
+      "expect": {
+        "text": "foo bar\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w cannot join without 'eol'",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-w><Esc>",
+      "options": {
+        "backspace": "indent,start"
+      },
+      "expect": {
+        "text": "abc\ndef\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w joins with 'eol' and a typed line break",
+      "input": "abc\n",
+      "keys": "A<CR><C-w><Esc>",
+      "options": {
+        "backspace": "eol"
+      },
+      "expect": {
+        "text": "abc\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-w needs 'start' as well as 'eol' for an existing line break",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-w><Esc>",
+      "options": {
+        "backspace": "eol"
+      },
+      "expect": {
+        "text": "abc\ndef\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u with nothing typed deletes the whole line",
+      "input": "foo bar\n",
+      "keys": "A<C-u><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u deletes only the typed run",
+      "input": "foo bar\n",
+      "keys": "AXY<C-u><Esc>",
+      "expect": {
+        "text": "foo bar\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u then typing continues at the insert start",
+      "input": "foo bar\n",
+      "keys": "AXY<C-u>Z<Esc>",
+      "expect": {
+        "text": "foo barZ\n",
+        "line": 1,
+        "col": 8
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "two C-u empty a line that had nothing typed",
+      "input": "abc\n",
+      "keys": "AXY<C-u><C-u><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u mid-line with nothing typed reaches the line start",
+      "input": "abcdef\n",
+      "keys": "llli<C-u><Esc>",
+      "expect": {
+        "text": "def\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u mid-line is walled by typed text",
+      "input": "abcdef\n",
+      "keys": "llliXY<C-u><Esc>",
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u leaves an indented line's indent alone when nothing is typed",
+      "input": "    abc\n",
+      "keys": "A<C-u><Esc>",
+      "expect": {
+        "text": "\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u after a typed line break only clears the new line",
+      "input": "abc\n",
+      "keys": "A<CR>XY<C-u><Esc>",
+      "expect": {
+        "text": "abc\n\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u at column 1 joins the previous line",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-u><Esc>",
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u at column 1 of a whitespace-only line joins it",
+      "input": "abc\n   \ndef\n",
+      "keys": "ji<C-u><Esc>",
+      "expect": {
+        "text": "abc   \ndef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u twice from column 1 joins then clears a word",
+      "input": "abc\ndef\nghi\n",
+      "keys": "jji<C-u><C-u><Esc>",
+      "expect": {
+        "text": "abc\nghi\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u mid-line deletes to the line start",
+      "input": "abc\ndef\n",
+      "keys": "jlli<C-u><Esc>",
+      "expect": {
+        "text": "abc\nf\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u clears the first line only",
+      "input": "abc\ndef\n",
+      "keys": "A<C-u><Esc>",
+      "expect": {
+        "text": "\ndef\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u in replace mode restores what it replaced",
+      "input": "abcdef\n",
+      "keys": "llRXY<C-u>Z<Esc>",
+      "expect": {
+        "text": "abZdef\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u then Esc then u undoes the whole insert",
+      "input": "abc def\n",
+      "keys": "AXY<C-u><Esc>u",
+      "expect": {
+        "text": "abc def\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u cannot join without 'eol'",
+      "input": "abc\ndef\n",
+      "keys": "ji<C-u><Esc>",
+      "options": {
+        "backspace": "start"
+      },
+      "expect": {
+        "text": "abc\ndef\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u joins a typed line break with 'eol' alone",
+      "input": "abc\n",
+      "keys": "A<CR><C-u><Esc>",
+      "options": {
+        "backspace": "eol"
+      },
+      "expect": {
+        "text": "abc\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim"
+      ]
+    },
+    {
+      "name": "C-u needs 'start' to clear pre-insert text",
+      "input": "foo bar\n",
+      "keys": "A<C-u><Esc>",
+      "options": {
+        "backspace": ""
+      },
+      "expect": {
+        "text": "foo bar\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim"
+      ]
+    }
+  ]
+}

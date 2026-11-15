@@ -602,7 +602,7 @@ recording would have to reconstruct host-owned typing), and **`=`** (see below).
 `docs/DECISIONS.md` carries the same table as a decision record; this file carries the
 evidence.
 
-### `<C-r>{register}`: the one insert-mode edit the engine performs indirectly
+### `<C-r>{register}`: the one insert-mode edit the engine performs INDIRECTLY
 
 `<C-r>` in INSERT mode is not a convenience, it is a hazard: an unconsumed Ctrl-R is a
 page reload, which loses whatever the user had typed. So the FIRST `<C-r>` is always
@@ -611,6 +611,7 @@ Esc. The engine then answers the next key with `{insertText}`, and the **adapter
 it — `setRangeText` plus an `input` event for a textarea, `execCommand("insertText")` for
 a contenteditable, which keeps the host's undo entry and cannot delete a chip the text
 ends inside. Insert mode belongs to the host; this is that rule applied, not broken.
+(`C-w` and `C-u` are the two insert-mode edits the engine does itself — see above.)
 
 A linewise register inserts its lines without the trailing newline: the newline in the
 register says "this is whole line(s)", it is not a character to type. Measured against
@@ -666,6 +667,114 @@ when it translates vim's regex instead of emulating POSIX. It runs what the user
 typed, in the page, which is the only thing that makes it useful; a page whose CSP
 forbids `new Function` gets an explicit status line, and `options.expressionRegister:
 false` turns it off for a host that wants no eval at all.
+
+## C-w and C-u inside insert mode (2026-11-15)
+
+Insert mode belongs to the host, so these two are the only insert-mode edits the engine
+performs itself: it deletes, and the adapter commits the field. Both are measured against
+vim 9.2 (`oracle/cases/insert-backspace.json`, 50 cases) because neither is
+reconstructable from the documentation — the docs describe *what* is deleted, not where
+the deletion is allowed to stop.
+
+### The three rules C-w obeys, none of them guessable
+
+| Situation | vim | Why |
+|---|---|---|
+| `A<C-w>` on `foo bar` | `foo ` | the word before the cursor, whitespace included |
+| `A<C-w>` on `foo   ` | `` (empty) | the trailing whitespace goes WITH the word, in one command |
+| `A<C-w>` on `a   b` | `a   ` | …but only forwards: the space between two words is not consumed unless the cursor is in it |
+| `AXY<C-w>` on `foo bar` | `foo bar` | **the insert start is a wall once anything is typed** |
+| `A<C-w><C-w>` on `foo bar` | `foo ` | with nothing left typed, the wall is behind the cursor and the word before it goes |
+| `llliXY<C-w>` on `abcdef` | `abcdef` | same wall, mid-line: it deletes `XY`, not `abc` |
+| `llli<C-w>` on `abcdef` | `def` | nothing typed → the whole word before the insert start |
+| `ji<C-w>` on `abc\ndef` | `abcdef` | **column 1 deletes the line break and NOTHING behind it** — not the word, not the previous line |
+| `jji<C-w>` on `abc\n\ndef` | `abc\ndef` | one break at a time, so an empty line disappears rather than merging two lines |
+| `A<C-w>` on `café` | `` | Latin-1 letters are keyword characters in vim (`iskeyword` 192-255) |
+
+The wall in the third and fourth rows is not a `'backspace'` rule: it holds with
+`backspace=indent,eol,start` too. It is what "delete what I just typed" has to mean when
+the alternative is reaching into the document.
+
+### C-u is two rules in one command
+
+"Delete all entered characters before the cursor in the current line. If there are no
+entered characters, delete all characters before the cursor in the current line." Both
+halves measured:
+
+| Situation | vim |
+|---|---|
+| `A<C-u>` on `foo bar` | `` — nothing entered, so the whole line prefix goes |
+| `AXY<C-u>` on `foo bar` | `foo bar` — the entered run goes, the line does not |
+| `AXY<C-u><C-u>` on `abc` | `` — the second one has nothing entered |
+| `llli<C-u>` on `abcdef` | `def` |
+| `llliXY<C-u>` on `abcdef` | `abcdef` |
+| `A<CR>XY<C-u>` on `abc` | `abc\n` — the entered characters on THIS line are `XY`, so the line above is untouched |
+
+### `'backspace'` decides exactly two things
+
+Everything above is option-independent. The option only governs the two deletions that
+leave the region the insert typed, and the flags split by **age** — which is the part
+that is easy to get wrong:
+
+| Deletion | Needs |
+|---|---|
+| text that existed before this insert began (`A<C-w>` on `foo bar`) | `start` |
+| a line break that existed before (`ji<C-w>`) | `eol` **and** `start` — the break is pre-insert text as well |
+| a line break this insert typed (`A<CR><C-w>`) | `eol` only |
+
+So `backspace=eol` alone cannot join (`abc\ndef` stays), and neither can
+`backspace=start` alone. `indent` is accepted and has no work here: this engine never
+inserts an automatic indent, so there is never one to take back. The engine's default is
+vim 9.2's effective default (`indent,eol,start`) so the differential compares like with
+like; `'backspace'` is a string option and deliberately outside the boolean/numeric
+`:set` surface.
+
+### Replace mode: the deletion UN-types
+
+`R` reconstructs the buffer from a snapshot, so a deletion there is not a plain deletion:
+`RXY<C-w>` over `cd` gives `abcdef` back — the typed characters displaced the snapshot's,
+so removing them restores it. A deletion that would reach past the typed run does
+nothing rather than eating pre-existing text. Both directions of that reconstruction
+share one copy of the rule (`_replaceConsumed`), because a second copy is how the write
+and the un-write of a replacement come to disagree.
+
+### Three divergences, all recorded rather than hidden
+
+- **Replace mode with nothing typed**: vim changes no text but moves its cursor back to
+  the previous word's start (`llR<C-w>` then `Z` overwrites `a`, not `c`). This engine
+  leaves the cursor where it is, which makes the command inert instead of
+  inert-but-surprising. Text is identical either way.
+- **`.` after a deletion-only insert.** `.` replays an insert by diffing the snapshot
+  (`_contiguousInsert`), so it can replay the text you typed but not the commands you
+  pressed: `A<C-w><Esc>j.` deletes a word per line in vim, while here it repeats an
+  insert that inserted nothing. Measured, and left alone for the reason `"0`-`"9`
+  were refused — a real fix is a second recording surface (a key/command buffer the
+  host does not own), which is a subsystem, not a bug fix. `.` after an insert that
+  DID type something then delete part of it still matches vim, because the net effect
+  and the replay agree.
+- **Latin-1 letters are punctuation here.** `A<C-w>` on `café` deletes `é` alone, where
+  vim deletes the whole word: vim's default `iskeyword` includes 192-255 and our word
+  class is `[A-Za-z0-9_]` (`buffer.js`, shared by `w`, `b`, `db` and `iw`). Fixing it
+  means modelling `iskeyword`, which is a word-motion change, not an insert-mode one —
+  so it is out of scope HERE and stays visible in this list rather than fixed halfway.
+
+### The references disagree here, and the option is the fork
+
+Measured on this box (`busybox vi`, `nvi` 1.81.6, vim 9.2), on `foo bar` and `abc\ndef`:
+
+| Keys | vim 9.2 default | busybox | nvi | this engine with `backspace: ""` |
+|---|---|---|---|---|
+| `Axy<C-w>` | `foo bar` | `foo bar` | `foo bar` | `foo bar` |
+| `A<C-w>` (nothing typed) | `foo ` | `foo bar` (no change) | `foo bar` | `foo bar` |
+| `Axy<C-w><C-w>` | `foo ` | `foo bar` | `foo bar` | `foo bar` |
+| `ji<C-w>` (join) | `abcdef` | `abc\ndef` | `abc\ndef` | `abc\ndef` |
+
+So both other references implement both commands — the scope question is settled by busybox —
+but they behave as vim does with **`backspace=""`**: they cannot delete text from before the
+insert and never join a line. The vim behaviour we default to is the modern-vim one
+(`indent,eol,start`), and the vi-compatible branch is not a guess either: it is exactly these
+two references, which is what `options: { backspace: "" }` switches on. The `'backspace'`
+option is therefore a real fork between references rather than a preference.
 
 ## Divergences: closed (2026-11-14)
 

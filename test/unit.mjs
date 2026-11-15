@@ -715,6 +715,75 @@ console.log("\n\x1b[1mreplace mode: R\x1b[0m");
   eq("...and g^ the first non-blank of the line", noWindow.cursor, 0);
 }
 
+console.log("\n\x1b[1minsert-mode C-w and C-u: what a keystroke differential cannot see\x1b[0m");
+{
+  // Consumption. The differential compares text and cursor, so it cannot see the one
+  // property that decides whether the browser acts on the key at all: both commands
+  // must be HANDLED even when there is nothing to delete. An unconsumed Ctrl-W closes
+  // the tab (or the PWA window, or the Electron app) and an unconsumed Ctrl-U is the
+  // browser's own command - the same reasoning that makes the first `<C-r>`
+  // unconditional. A no-op that returns handled:false is a data-loss bug.
+  const e = mk("abc\n");
+  e.feed("i");
+  eq("C-w at column 1 of the first line is consumed", e.feed("C-w").handled, true);
+  eq("...and changed nothing", e.hostText, "abc");
+  eq("C-u at column 1 of the first line is consumed", e.feed("C-u").handled, true);
+  eq("...and changed nothing either", e.hostText, "abc");
+
+  const empty = mk("");
+  empty.feed("i");
+  eq("C-w in an empty buffer is consumed", empty.feed("C-w").handled, true);
+  eq("C-u in an empty buffer is consumed", empty.feed("C-u").handled, true);
+
+  const strict = mk("foo bar\n", 0, { options: { backspace: "" } });
+  strict.feed("A");
+  eq("C-w that 'backspace' forbids is still consumed", strict.feed("C-w").handled, true);
+  eq("...and leaves the text alone", strict.hostText, "foo bar");
+
+  // Undo granularity: the deletion belongs to the INSERT, so Esc then one `u` puts the
+  // whole thing back - it must not become its own step. (An insert whose net effect is
+  // nothing is not a step at all, which is why this one types again after the C-w.)
+  const u = mk("abc def\n");
+  u.feed("A");
+  u.feed("x"); u.applyHostEdit("abc defx", 8);
+  u.feed("C-w");
+  u.feed("Z"); u.applyHostEdit("abc defZ", 8);
+  u.feed("Esc");
+  eq("a C-w inside an insert is one undo step, not two", u.undoStack.length, 1);
+  u.feed("u");
+  eq("one u restores the line", u.hostText, "abc def");
+}
+{
+  // REPLACE mode: the deletion has to UN-type, which means the snapshot's characters
+  // come back - and the session must be left consistent, because the next host edit is
+  // reconstructed from it. A session that still thinks "XY" was typed rebuilds a buffer
+  // containing text the user deleted, which is how a "delete" turns into an insert.
+  const e = mk("abcdef\n");
+  const type = (ch) => {
+    const v = e.hostText;
+    const c = Math.min(e.cursor, v.length);
+    e.applyHostEdit(v.slice(0, c) + ch + v.slice(c), c + 1);
+  };
+  e.feed("l"); e.feed("l");
+  e.feed("R");
+  type("X"); type("Y");
+  eq("R over 'cd' writes 'XY' over it", e.hostText, "abXYef");
+  e.feed("C-w");
+  eq("C-w un-types them and restores what they displaced", e.hostText, "abcdef");
+  eq("...leaving the cursor where the deletion began", e.cursor, 2);
+  type("Z");
+  eq("typing after it still replaces in place", e.hostText, "abZdef");
+
+  // Nothing typed yet: there is nothing to un-type, so pre-existing text is OUT of
+  // reach rather than deleted. vim leaves no text change here either (it does move its
+  // cursor; that one pixel of divergence is recorded in ENGINE.md).
+  const r = mk("abc def\n");
+  r.feed("l"); r.feed("l");
+  r.feed("R");
+  r.feed("C-w");
+  eq("C-w in replace mode with nothing typed deletes nothing", r.hostText, "abc def");
+}
+
 console.log("\n\x1b[1mthe :e / :w / :q session commands\x1b[0m");
 {
   // The ex layer drives the editor transport. Nothing had ever run these three together,
