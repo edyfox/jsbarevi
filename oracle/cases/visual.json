@@ -7,7 +7,12 @@
       "keys": "vld",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "cdef\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v $ d deletes to end of line",
@@ -15,7 +20,12 @@
       "keys": "lv$d",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "a\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v w d deletes to the next word",
@@ -23,7 +33,12 @@
       "keys": "vwd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "wo three\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v e d deletes through the word end",
@@ -31,7 +46,12 @@
       "keys": "ved",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": " two\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v j d spans a line break",
@@ -39,7 +59,12 @@
       "keys": "vjd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "d\nef\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v j y then p pastes the block back (text only: cursor after a multi-line put differs)",
@@ -48,7 +73,10 @@
       "engines": [
         "vim"
       ],
-      "noPosition": true
+      "noPosition": true,
+      "expect": {
+        "text": "aab\ncb\ncd\n"
+      }
     },
     {
       "name": "v with a count extends",
@@ -56,7 +84,12 @@
       "keys": "v3ld",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "ef\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v o swaps ends then deletes",
@@ -64,7 +97,12 @@
       "keys": "lvllohd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "ef\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v ~ flips the selection",
@@ -72,7 +110,12 @@
       "keys": "lvll~",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "aBCDef\n",
+        "line": 1,
+        "col": 2
+      }
     },
     {
       "name": "v J joins the selection",
@@ -80,7 +123,12 @@
       "keys": "Vjd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "V d removes whole lines",
@@ -88,7 +136,12 @@
       "keys": "Vjd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "c\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "V > shifts whole lines",
@@ -101,6 +154,11 @@
         "expandtab": false,
         "shiftwidth": 8,
         "tabstop": 8
+      },
+      "expect": {
+        "text": "\ta\n\tb\n",
+        "line": 1,
+        "col": 2
       }
     },
     {
@@ -109,7 +167,12 @@
       "keys": "VjyGp",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "a\nb\na\nb\n",
+        "line": 3,
+        "col": 1
+      }
     },
     {
       "name": "v c changes the selection",
@@ -117,7 +180,12 @@
       "keys": "vllcXY<Esc>",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "XYdef\n",
+        "line": 1,
+        "col": 2
+      }
     },
     {
       "name": "Esc leaves visual without editing",
@@ -125,7 +193,12 @@
       "keys": "vll<Esc>",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 3
+      }
     },
     {
       "name": "v i w selects the inner word",
@@ -133,7 +206,12 @@
       "keys": "lviwd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": " two\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v a w selects the word and a space",
@@ -141,7 +219,12 @@
       "keys": "vawd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "two\n",
+        "line": 1,
+        "col": 1
+      }
     },
     {
       "name": "v i ( selects inside the parens",
@@ -149,7 +232,12 @@
       "keys": "fxlvi(d",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "f() z\n",
+        "line": 1,
+        "col": 3
+      }
     },
     {
       "name": "v a \" selects the quoted string",
@@ -157,7 +245,12 @@
       "keys": "fhlva\"d",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "say ok\n",
+        "line": 1,
+        "col": 5
+      }
     },
     {
       "name": "v i p selects the paragraph",
@@ -165,7 +258,181 @@
       "keys": "vipd",
       "engines": [
         "vim"
-      ]
+      ],
+      "expect": {
+        "text": "\nc\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual r replaces every selected character",
+      "input": "abcdef\n",
+      "keys": "vllrX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XXXdef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual r on a one-character selection",
+      "input": "abcdef\n",
+      "keys": "vrX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "Xbcdef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual r over a whole line",
+      "input": "abcdef\n",
+      "keys": "v$rX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XXXXXX\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual r is charwise across lines and leaves the break alone",
+      "input": "abcdef\nghijkl\n",
+      "keys": "vjllrX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XXXXXX\nXXXjkl\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "linewise r replaces each character, not the line",
+      "input": "abcdef\n",
+      "keys": "VrX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XXXXXX\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "linewise r over two lines",
+      "input": "abcdef\nghijkl\n",
+      "keys": "VjrX<Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "XXXXXX\nXXXXXX\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "visual r with <Esc> aborts and keeps the text",
+      "input": "abcdef\n",
+      "keys": "vllr<Esc><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 3
+      }
+    },
+    {
+      "name": "visual r with a tab",
+      "input": "abc\n",
+      "keys": "vllr<Tab><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "\t\t\t\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "u after a visual r returns the cursor to the range start",
+      "input": "abcdef\n",
+      "keys": "vllrX<Esc>u",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "u after a BACKWARD visual d returns to the smaller offset",
+      "input": "abcdef\n",
+      "keys": "llvhd<Esc>u",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 2
+      }
+    },
+    {
+      "name": "u after a visual > returns to the range start",
+      "input": "abcdef\n",
+      "keys": "vll><Esc>u",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "u after a visual ~ returns to the range start",
+      "input": "abcdef\n",
+      "keys": "vll~<Esc>u",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      }
+    },
+    {
+      "name": "u after a linewise d returns to the line start",
+      "input": "abc\ndef\n",
+      "keys": "Vd<Esc>u",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "abc\ndef\n",
+        "line": 1,
+        "col": 1
+      }
     }
   ]
 }

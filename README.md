@@ -158,7 +158,7 @@ these should ever surface as a bare status code again.
 Implemented: modes (normal/insert/visual/visual-line), counts, operators with
 motions and text objects (bracket objects follow Vim's `current_block()`: the
 cursor does **not** need to be inside — a backwards search for an unmatched opener,
-then a forwards search for the next one), insert entries, replace mode (`R`), `r x X s S C D Y ~ J < > p P u U .`,
+then a forwards search for the next one), insert entries, replace mode (`R`), `r x X s S C D Y ~ J < > p P u U .`, and visual `r` (replace every selected character — vim replaces the characters of a linewise selection too, and leaves the line breaks alone),
 marks (as motions too: a plain jump, under an operator — `d`a` — and extending a
 visual selection), registers, `C-a` / `C-x` (increment/decrement with counts — the
 number under the cursor or the next one on the line, decimal/hex/binary/octal, `.`

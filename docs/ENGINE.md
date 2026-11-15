@@ -442,6 +442,47 @@ set. A motion implemented on one path is two features missing - once is a bug, t
 times is a rule: when adding a motion, wire it through the dispatch, never straight to
 the cursor.
 
+## Visual `r`, and where `u` puts the cursor after a visual change (2026-11-15)
+
+`vllrX` — replace every selected character — is one range-shaped edit, which is why it is
+in: the visual operators already compute a range (`_visualRange()`) and already mutate it,
+so this is the smallest possible addition to a mode that is *itself* beyond baseline
+(busybox has no visual mode at all).
+
+Measured against vim 9.2 (`oracle/cases/visual.json`):
+
+| keys | input | result |
+|---|---|---|
+| `vllrX` | `abcdef` | `XXXdef` |
+| `vrX` | `abcdef` | `Xbcdef` (a one-character selection still replaces) |
+| `v$rX` | `abcdef` | `XXXXXX` |
+| `vjllrX` | `abcdef\nghijkl` | `XXXXXX\nXXXjkl` — line breaks are NOT replaced |
+| `VrX` / `VjrX` | `abcdef\nghijkl` | `XXXXXX` / `XXXXXX\nXXXXXX` — a linewise selection also means "each character" |
+| `vllr<Esc>` | `abcdef` | unchanged: `r<Esc>` aborts |
+
+Two bugs came out of implementing it, both pre-existing and both fixed here:
+
+1. **`r<CR>` inserted the two characters "CR".** `CR` and `Tab` are TOKENS in this
+   engine's key notation, and `r` is a command that puts its argument into the buffer, so
+   it has to translate them (`_typedChar`). Measured: `3r<Tab>` really is three tabs,
+   while `3r<CR>` breaks the line **once** — "abcdef" becomes "\ndef", not "\n\n\ndef" —
+   because `r<CR>` means "split here", not "put a break per character". The cursor lands on
+   the first character of the new line either way (`r<CR>` at column 1 reports 2:1).
+2. **`u` after ANY visual change restored the cursor to the selection HEAD.** vim records
+   the START of the changed range, and the two are on opposite ends whenever the selection
+   was made backwards: `vll` + `d`/`~`/`>` + `u` returns to 1:1, and `llvhd` + `u` returns
+   to 1:2 (the min of the range). It affected visual `d`, `c`, `y`, `~` and `>`, not just
+   the new `r`, so `_applyOperatorRange` now takes the snapshot cursor explicitly instead
+   of reading `state.cursor` (which holds the head while a selection is live).
+
+**One deliberate divergence.** In *visual* mode vim's `r<CR>` stores literal `^M` bytes in
+the buffer (measured: `vllr<CR>` yields `b"\r\r\rdef"`). We replace the characters with
+real line breaks instead. A stray control character in a text field is a wart, not muscle
+memory — nobody types `^M` on purpose — so this is broken on purpose and recorded here.
+
+`.` does not replay a visual `r`: the last-change record for `r` is a count from the
+cursor, which describes a range pointing the other way. A gap, not an approximation.
+
 ## Where a put leaves the cursor, and what a visual selection covers
 
 The reported bug ("paste lands the cursor on the wrong character") was one rule; the

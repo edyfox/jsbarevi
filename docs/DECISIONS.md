@@ -94,6 +94,12 @@ can report a viewport.
 - **`. ` repeat, `U`, `R`** are in because both references have them. `.` is the
   highest-value single addition and the hardest: insert mode belongs to the host,
   so the typed text is captured by diffing snapshots, not by recording keys.
+- **Visual `r`** (2026-11-15) is the cheapest kind of exception: busybox has no visual
+  mode at all, so the mode is already beyond baseline, and replacing every selected
+  character is the same range-shaped edit the other visual operators perform. No new state,
+  ~15 lines, and it fixed two pre-existing bugs in the same rule (`r<CR>` inserting the
+  text "CR", and `u` restoring a visual change to the selection head instead of the range
+  start) — see `docs/ENGINE.md`.
 - **Text objects** (`iw aw i" a( a{` …) are in even though *neither* reference has
   them: they are Vim lineage, already implemented, and `ciw` is most of what makes
   insert-mode editing usable.

@@ -5,57 +5,172 @@
       "name": "R overwrites the characters under the cursor",
       "input": "abcdef\n",
       "keys": "RXY<Esc>",
-      "expect": { "text": "XYcdef\n", "line": 1, "col": 2 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "XYcdef\n",
+        "line": 1,
+        "col": 2
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "Backspace in replace mode restores the replaced character",
       "input": "abcdef\n",
       "keys": "RX<BS><Esc>",
-      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "two backspaces restore two characters",
       "input": "abcdef\n",
       "keys": "RXY<BS><BS><Esc>",
-      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "R past the end of the line appends",
       "input": "abcdef\n",
       "keys": "$RZW<Esc>",
-      "expect": { "text": "abcdeZW\n", "line": 1, "col": 7 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "abcdeZW\n",
+        "line": 1,
+        "col": 7
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "R typing past the end of the only line appends",
       "input": "ab\n",
       "keys": "RXYZ<Esc>",
-      "expect": { "text": "XYZ\n", "line": 1, "col": 3 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "XYZ\n",
+        "line": 1,
+        "col": 3
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "R with nothing typed changes nothing",
       "input": "abcdef\n",
       "keys": "R<Esc>",
-      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "R on a later line replaces there",
       "input": "ab\ncd\n",
       "keys": "jRZ<Esc>",
-      "expect": { "text": "ab\nZd\n", "line": 2, "col": 1 },
-      "engines": ["vim", "busybox", "nvi"]
+      "expect": {
+        "text": "ab\nZd\n",
+        "line": 2,
+        "col": 1
+      },
+      "engines": [
+        "vim",
+        "busybox",
+        "nvi"
+      ]
     },
     {
       "name": "the whole replace session is one undo step",
       "input": "abcdef\n",
       "keys": "RXY<Esc>u",
-      "expect": { "text": "abcdef\n", "line": 1, "col": 1 },
-      "engines": ["vim", "nvi"]
+      "expect": {
+        "text": "abcdef\n",
+        "line": 1,
+        "col": 1
+      },
+      "engines": [
+        "vim",
+        "nvi"
+      ]
+    },
+    {
+      "name": "r<CR> breaks the line once, not once per count",
+      "input": "abcdef\n",
+      "keys": "3r<CR><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "\ndef\n",
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "r<CR> at column 1",
+      "input": "abc\n",
+      "keys": "r<CR><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "\nbc\n",
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "r<CR> at the last character",
+      "input": "abc\n",
+      "keys": "$r<CR><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "ab\n\n",
+        "line": 2,
+        "col": 1
+      }
+    },
+    {
+      "name": "r<Tab> really inserts tabs, one per count",
+      "input": "abcdef\n",
+      "keys": "3r<Tab><Esc>",
+      "engines": [
+        "vim"
+      ],
+      "expect": {
+        "text": "\t\t\tdef\n",
+        "line": 1,
+        "col": 3
+      }
     }
   ]
 }

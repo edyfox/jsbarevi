@@ -1315,13 +1315,18 @@ export class Engine {
     return this._applyOperatorRange(op, from, to, false, true, false, reg);
   }
 
-  _applyOperatorRange(op, from, to, linewise, record, keepCursor = false, reg = null, inclusive = false) {
+  _applyOperatorRange(op, from, to, linewise, record, keepCursor = false, reg = null, inclusive = false, undoCursor = null) {
     const text = this.text;
     from = Math.max(0, Math.min(from, text.length));
     to = Math.max(from, Math.min(to, text.length));
     if (inclusive) to = Math.min(text.length, B.nextChar(text, to));
     const slice = text.slice(from, to);
-    const before = { text, cursor: this.state.cursor };
+    // The undo snapshot's cursor is where vim puts the cursor after `u`: the START of the
+    // changed range, not wherever the cursor happened to be. A visual selection carries
+    // the HEAD in `state.cursor`, and a backward one is on the wrong side entirely —
+    // measured (`vll` then `d`/`~`/`>` then `u` returns to 1:1, and a backward `llvhd`
+    // returns to 1:2, i.e. the min of the range, every time).
+    const before = { text, cursor: undoCursor == null ? this.state.cursor : undoCursor };
 
     if (op === "y") {
       this._storeRegister(slice, linewise, reg);
@@ -1559,9 +1564,25 @@ export class Engine {
     return { handled: true, edit: true };
   }
 
+  /**
+   * The character a key argument means when it has to become TEXT rather than act.
+   *
+   * `CR`, `Tab` and `BS` are TOKENS in this engine's key notation (`r<CR>`, `i<CR>`), so a
+   * command that puts the key into the buffer must translate them. It did not: `r<CR>`
+   * inserted the two characters "CR", and `r<Tab>` inserted "Tab" — measured 2026-11-15,
+   * fixed here because the visual form needs the same translation and two copies of a
+   * rule is how one of them gets forgotten.
+   */
+  _typedChar(key) {
+    if (key === "CR") return "\n";
+    if (key === "Tab") return "\t";
+    return key;
+  }
+
   _replaceChars(count, ch) {
     const text = this.text;
     const cur = this.state.cursor;
+    ch = this._typedChar(ch);
     // nothing to replace: empty buffer, or the cursor sits on an empty line
     if (text.length === 0 || B.isLineEmpty(text, cur)) return { handled: true };
     const last = B.lastCharOffset(text, cur);
@@ -1571,10 +1592,17 @@ export class Engine {
       to = B.nextChar(text, to);
     }
     const n = [...text.slice(cur, to)].length;
-    const repl = ch.repeat(Math.max(1, n));
+    // A line break is not repeated: `2r<CR>` and `3r<CR>` each break the line ONCE and
+    // delete the count characters (measured — "abcdef" with `3r<CR>` is "\ndef", not
+    // "\n\n\ndef"), because r-with-CR means "split here", not "put n breaks here".
+    // Every other character does repeat, and `3r<Tab>` really is three tabs.
+    const repl = ch === "\n" ? "\n" : ch.repeat(Math.max(1, n));
     this._pushUndo({ text, cursor: cur });
     this._setText(text.slice(0, cur) + repl + text.slice(to));
-    this.state.cursor = Math.max(cur, Math.min(cur + repl.length - 1, this.state.text.length - 1));
+    // The cursor stays on the replaced character — except for a line break, which nobody
+    // can stand on, so it lands on the first character of the new line (measured:
+    // `r<CR>` at column 1 of "abc" reports 2:1, and at the last character 2:1 as well).
+    this.state.cursor = Math.max(cur, Math.min(cur + repl.length - (repl === "\n" ? 0 : 1), this.state.text.length - 1));
     this._noteChange({ kind: "replace", count, ch });
     return { handled: true, edit: true };
   }
@@ -2170,6 +2198,40 @@ export class Engine {
     return { from, to, linewise: false };
   }
 
+  /**
+   * VISUAL `r`: every selected character becomes the typed character.
+   *
+   * Measured against vim (`vllrX`, `v$rX`, `vjllrX`, `VrX`, `VjrX`):
+   *
+   *   * charwise AND linewise both mean "each character in the range" — a linewise `VjrX`
+   *     turns every character of both lines into X, it does not shorten a line to one X;
+   *   * line breaks inside the selection are NOT replaced (`vjllrX` on "abcdef\nghijkl"
+   *     gives "XXXXXX\nXXXjkl"), so a selection can never lose a line this way;
+   *   * `r<CR>` therefore replaces each character with a newline and splits the selection
+   *     into lines — it falls out of the same rule, so it needs no special case;
+   *   * `r<Esc>` aborts and leaves the text alone, and the cursor lands at the start of
+   *     the range with the whole replacement as ONE undo step.
+   *
+   * `.` does not replay it: the last-change record for `r` is a count from the cursor,
+   * which describes a range going the other way. Recorded as a gap in docs/ENGINE.md
+   * rather than approximated into something wrong.
+   */
+  _visualReplaceChars(key) {
+    const ch = this._typedChar(key);
+    const text = this.text;
+    const range = this._visualRange();
+    const slice = text.slice(range.from, range.to);
+    const out = [...slice].map((c) => (c === "\n" ? c : ch)).join("");
+    this._pushUndo({ text, cursor: range.from });
+    this._setText(text.slice(0, range.from) + out + text.slice(range.to));
+    this.state.cursor = Math.min(range.from, Math.max(0, this.state.text.length - 1));
+    this.mode = Mode.NORMAL;
+    this.visual = null;
+    this.pending = this._emptyPending();
+    this._setDesiredCol();
+    return { handled: true, edit: true };
+  }
+
   _visualKey(key) {
     const p = this.pending;
     if (key === "Esc") { this.mode = Mode.NORMAL; this.visual = null; this.pending = this._emptyPending(); return { handled: true }; }
@@ -2189,6 +2251,12 @@ export class Engine {
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) { p.count += key; return { handled: true }; }
     // a mark jump extends the selection here exactly as a motion would: the visual
     // head IS the cursor, so the same motion object serves both
+    // `r` collects the replacement character exactly as normal-mode `r` does, and then
+    // applies it to the SELECTION instead of to a count of characters.
+    if (p.awaiting === "visualReplaceChar") {
+      p.awaiting = null;
+      return this._visualReplaceChars(key);
+    }
     if (p.awaiting) return this._consumeArgument(p.awaiting, key);
     if (key === "'" || key === "`") { p.awaiting = key; return { handled: true }; }
     if (key === "m") { p.awaiting = "mark"; return { handled: true }; }
@@ -2220,6 +2288,7 @@ export class Engine {
 
     if (key === ">" || key === "<") {
       const range = this._visualRange();
+      this.state.cursor = range.from;   // vim records the range start for `u` (see _applyOperatorRange)
       const res = this._shiftLines(range.from, range.to, key === ">");
       this.mode = Mode.NORMAL;
       this.visual = null;
@@ -2234,15 +2303,16 @@ export class Engine {
       this.mode = Mode.NORMAL;
       this.visual = null;
       this.pending = this._emptyPending();
-      const res = this._applyOperatorRange(op, range.from, range.to, range.linewise, true, false, reg);
+      const res = this._applyOperatorRange(op, range.from, range.to, range.linewise, true, false, reg, false, range.from);
       if (op === "y") this.state.cursor = range.from;   // vim parks at the start
       return res;
     }
+    if (key === "r") { p.awaiting = "visualReplaceChar"; return { handled: true }; }
     if (key === "~") {
       const range = this._visualRange();
       const slice = this.text.slice(range.from, range.to);
       const flipped = [...slice].map((c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())).join("");
-      this._pushUndo({ text: this.text, cursor: this.state.cursor });
+      this._pushUndo({ text: this.text, cursor: range.from });
       this._setText(this.text.slice(0, range.from) + flipped + this.text.slice(range.to));
       this.state.cursor = range.from;
       this.mode = Mode.NORMAL; this.visual = null;
