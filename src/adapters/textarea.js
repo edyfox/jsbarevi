@@ -26,6 +26,7 @@ import { fromField } from "../engine/buffer.js";
 import { BlockCaret } from "./caret.js";
 import { attachSession } from "./session.js";
 import { tokenFor } from "./keys.js";
+import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import { SelectionHighlight } from "./highlight.js";
 
 export class TextareaAdapter {
@@ -68,6 +69,8 @@ export class TextareaAdapter {
     this._expectedCaret = null;
     this._mouseDown = false;
     this._beforeClick = null;
+    // The mode to come back in after a blur (see focus-mode.js).
+    this._returnMode = null;
     this._bound = {
       keydown: (e) => this._onKeydown(e),
       input: () => this.syncFromHost(),
@@ -87,13 +90,22 @@ export class TextareaAdapter {
         // path so the cursor still steps one character left, as vim does — a bare
         // reset leaves it at the insertion point, which draws the block on the
         // character AFTER the beam.
+        // What the field was doing is remembered first: an editor you come back to
+        // should still be the editor you left (see focus-mode.js).
+        this._returnMode = modeToReturn(this.engine);
         if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
         this.engine.reset();
         this.caret?.hide();
         this.highlight.clear();
         this.onModeChange?.(this.engine.mode, "");
       },
-      focus: () => { this.el.style.caretColor = ""; this._emitMode(); },
+      focus: () => {
+        this.el.style.caretColor = "";
+        const remembered = this._returnMode;
+        this._returnMode = null;
+        applyReturnedMode(this.engine, remembered);
+        this._emitMode();
+      },
     };
     this._bound.scroll = () => this._updateCaret();
     this._bound.resize = () => { this.caret?.invalidate(); this.highlight.invalidate(); this._updateCaret(); };
@@ -517,6 +529,9 @@ export class TextareaAdapter {
    * Returns true when it changed something.
    */
   handleEscape() {
+    // An Escape always wins over the mode the field would have come back in: the user
+    // asked to leave insert, so a focus regain must not undo that.
+    this._returnMode = null;
     if (this.engine.mode === Mode.NORMAL && !this.engine.prompt) return false;
     const r = this.engine.feed("Esc");
     this._emitMode();

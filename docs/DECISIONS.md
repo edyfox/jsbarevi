@@ -318,6 +318,41 @@ test was shown to be able to fail.
 Also fixed at the same time: the guard's scope test. `escape-blocker.js` was already
 idempotent (`HTMLElement.prototype.blur.__jsbareviBlocked`); `content.js` was not.
 
+## Mode survives a focus loss
+
+Decided 2026-11-16. vi has no "unfocused" mode, so what a field should be doing while it
+is not focused has to be a decision, not a side effect. The decision: **the field comes
+back the way it was left.**
+
+Blur still leaves the engine in NORMAL, and still takes vim's step to the left (a blur is
+often the only Escape we ever see, and stopping the cursor at the insertion point draws the
+block on the character *after* the beam). What is new is that the adapters remember
+`INSERT` and the focus handler restores it — otherwise the first keystroke aimed at the
+text (`a`, `x`, a letter) is quietly a command, which is the "I cannot type" report's
+quieter sibling.
+
+Not restored, and why:
+
+| Mode at blur | Comes back as | Why |
+|---|---|---|
+| `NORMAL` | `NORMAL` | nothing to do |
+| `INSERT` | `INSERT` | the rule |
+| `REPLACE` (`R`) | `NORMAL` | `R` rebuilds the buffer from the snapshot taken when the key was pressed; a blur is time the host can use to change the text under it. Coming back in plain `INSERT` would silently turn `R` into `i`. |
+| `VISUAL` | `NORMAL` | the selection the user made is gone; visual mode without a selection lies about what the next operator acts on |
+
+**An explicit Escape wins over the restore.** Both adapters clear the memory in
+`handleEscape`, so the swallowed-Escape shape (a host key driver eats the keydown, blurs
+the field, and the content script's focus guard reclaims it) still comes back in NORMAL —
+that is what the user asked for by pressing Escape. The restore is also a *fresh* insert
+session (`insertEntry = null`), exactly like `startMode: "insert"` at attach time, so
+insert-mode `C-w` treats the cursor as the wall instead of reaching into text typed before
+the blur.
+
+The rule lives in one file, `src/adapters/focus-mode.js`, because both adapters need it and
+the first divergence would be a mode only one host restores. Pinned by `e2e-cdp` (textarea:
+restore, badge, next keystroke is text, Escape wins, NORMAL stays NORMAL, `R` → NORMAL) and
+`contenteditable-e2e` (rich composer: same, plus the blur's step to the left).
+
 ## Non-goals, permanently
 
 - Vim script, plugins, autocommands, `:g`/`:v`, folds, tags, sessions.

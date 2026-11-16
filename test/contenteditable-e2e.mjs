@@ -208,8 +208,18 @@ async function main() {
     await evaluate(page, "document.activeElement.blur()");
     const afterBlur = await evaluate(page, "JSON.stringify({ mode: window.handle.engine.mode, cursor: window.handle.engine.cursor, under: window.handle.engine.hostText[window.handle.engine.cursor] })");
     check("a blur while inserting steps the cursor left", JSON.parse(afterBlur), { mode: "NORMAL", cursor: beforeBlur - 1, under: "Z" });
+    // ...and the field comes back the way it was left: INSERT. A composer that returns
+    // in NORMAL turns the next keystroke aimed at the text into a command.
     await evaluate(page, "document.getElementById('editor').focus()");
+    await sleep(150);
+    check("the mode the field was left in is restored", await evaluate(page, "window.handle.engine.mode"), "INSERT");
+    await typeKeys(page, "<Esc>");
+    check("an explicit Escape still wins over the restore", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
+    await evaluate(page, "document.getElementById('editor').blur()");
     await sleep(120);
+    await evaluate(page, "document.getElementById('editor').focus()");
+    await sleep(150);
+    check("a field left in NORMAL comes back in NORMAL", await evaluate(page, "window.handle.engine.mode"), "NORMAL");
 
     // ---- visual line ------------------------------------------------------
     await typeKeys(page, "gg");

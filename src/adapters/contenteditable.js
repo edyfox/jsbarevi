@@ -23,6 +23,7 @@ import { BlockCaret } from "./caret.js";
 import { SelectionHighlight } from "./highlight.js";
 import { attachSession } from "./session.js";
 import { tokenFor } from "./keys.js";
+import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import {
   getFlatText, flatOffsetAt, flatOffsetFromSelection, setCursorAt,
   deleteRange, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
@@ -88,6 +89,8 @@ export class ContenteditableAdapter {
     this._mouseDown = false;
     this._beforeClick = null;
     this._typing = false;
+    // The mode to come back in after a blur (see focus-mode.js).
+    this._returnMode = null;
 
     this._bound = {
       // Keydown on the DOCUMENT in the capture phase: the host's own handler may be
@@ -100,7 +103,7 @@ export class ContenteditableAdapter {
       selectionchange: () => this._onSelectionChange(),
       contextmenu: (e) => this._onContextMenu(e),
       blur: () => this._onBlur(),
-      focus: () => this._emitMode(),
+      focus: () => this._onFocus(),
       scroll: () => this._updateCaret(),
       resize: () => { this.highlight.invalidate(); this._updateCaret(); },
     };
@@ -300,12 +303,21 @@ export class ContenteditableAdapter {
     const active = document.activeElement;
     if (this.engine.prompt || active?.classList?.contains("jsbarevi-prompt")) return;
     // See textarea.js: leaving insert on a blur must still take vim's step to the left,
-    // or the block lands on the character after where the beam was.
+    // or the block lands on the character after where the beam was. The mode is
+    // remembered first, so the field comes back the way it was left (focus-mode.js).
+    this._returnMode = modeToReturn(this.engine);
     if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
     this.engine.reset();
     this.caret?.hide();
     this.highlight.clear();
     this.onModeChange?.(this.engine.mode, "");
+  }
+
+  _onFocus() {
+    const remembered = this._returnMode;
+    this._returnMode = null;
+    applyReturnedMode(this.engine, remembered);
+    this._emitMode();
   }
 
   // -------------------------------------------------------------------------
@@ -374,6 +386,9 @@ export class ContenteditableAdapter {
    * Returns true when it changed something.
    */
   handleEscape() {
+    // An Escape always wins over the mode the field would have come back in (see
+    // focus-mode.js): the user asked to leave insert, a focus regain must not undo it.
+    this._returnMode = null;
     if (this.engine.mode === Mode.NORMAL && !this.engine.prompt) return false;
     const r = this.engine.feed("Esc");
     this._emitMode();

@@ -1197,6 +1197,65 @@ async function main() {
     await sendKey(session, "Escape");
 
     // ---------------------------------------------------------------------
+    // Mode survives a focus loss (focus-mode.js).
+    //
+    // The composer case: leave the field while inserting, come back, and the next
+    // keystroke must still be text. Coming back in NORMAL silently turns `a`, `x` or
+    // any letter into a command.
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1mmode survives a focus loss\x1b[0m");
+    await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText("alpha beta", 0);
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+    await typeKeys(session, "iX");
+    check("typing while inserting", await field(), "Xalpha beta");
+    check("...and the engine says INSERT", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "INSERT");
+    await evaluate(session, "document.getElementById('field').blur()");
+    await sleep(80);
+    check("a blur still leaves the engine in NORMAL", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "NORMAL");
+    check("...and says so on the badge",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').style.display"), "none");
+    await evaluate(session, "document.getElementById('field').focus()");
+    await sleep(120);
+    check("regaining focus restores INSERT", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "INSERT");
+    check("...the badge says INSERT too",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').textContent"), "-- INSERT --");
+    const beforeTypingAfterFocus = (await field()).length;
+    await typeKeys(session, "Y");
+    check("...so the next keystroke is TEXT, not a command", (await field()).length, beforeTypingAfterFocus + 1);
+
+    // Escape wins over the restore: the user asked to leave insert.
+    await sendKey(session, "Escape");
+    check("Escape leaves insert", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "NORMAL");
+    await evaluate(session, "document.getElementById('field').blur()");
+    await sleep(80);
+    await evaluate(session, "document.getElementById('field').focus()");
+    await sleep(120);
+    check("a field left in NORMAL comes back in NORMAL", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "NORMAL");
+
+    // REPLACE is deliberately not restored: R rebuilds from a snapshot the host may
+    // have invalidated while the field was unfocused, so it comes back as NORMAL.
+    await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText("abc", 0);
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+    await typeKeys(session, "R");
+    check("R enters REPLACE", await evaluate(session, "!!window.jsbarevi.textarea.adapter.engine.replaceSession"), true);
+    await evaluate(session, "document.getElementById('field').blur()");
+    await sleep(80);
+    await evaluate(session, "document.getElementById('field').focus()");
+    await sleep(120);
+    check("REPLACE comes back as NORMAL, never as a stale R", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "NORMAL");
+    await sendKey(session, "Escape");
+
+    // ---------------------------------------------------------------------
     // The system clipboard, through the host cache.
     //
     // The engine is synchronous and the clipboard API is not, so the host keeps a
