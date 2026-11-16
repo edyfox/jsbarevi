@@ -55,6 +55,14 @@ const PAGE = `<!doctype html>
 </div>
 <!-- an editable that is neither: a comment box somewhere in the workbench. NOT ours. -->
 <div class="comment-widget"><div id="stray" contenteditable="true">a stray editable</div></div>
+<!-- the AGENT panel's composer: same UI kit, but no "composer" in its class. -->
+<div class="agent-prompt-input-root">
+  <div id="agentComposer" class="ProseMirror" contenteditable="true" role="textbox">ask the agent</div>
+</div>
+<!-- the detached Agent window's composer shape (molten/dist/renderer: prompt-input kit). -->
+<div class="ui-prompt-input__container">
+  <div id="moltenComposer" class="ui-prompt-input-editor" contenteditable="true" role="textbox">detached agent</div>
+</div>
 <script src="/cursor-payload.js"></script>
 </body></html>`;
 
@@ -107,7 +115,7 @@ async function main() {
     check("there is no chrome.storage to lean on (the workbench situation)",
       await evaluate(page, "typeof globalThis.chrome?.storage?.local?.get"), "undefined");
     check("it left a disk-side breadcrumb", await evaluate(page, "(localStorage.getItem('cursorExtProof') || '').startsWith('cursor-')"), true);
-    check("it reports its engine stamp", await evaluate(page, "!!globalThis.__cursorVimCfg && globalThis.__cursorVimCfg.gateSelector"), "[class*=composer]");
+    check("it reports the gate it will use", await evaluate(page, "(globalThis.__cursorVimCfg || {}).gateSelector || ''"), "[class*=composer], .agent-prompt-input-root, [class*=prompt-input]");
     check("the edit-failure sink is wired", await evaluate(page, "typeof globalThis.__jsbareviReport"), "function");
 
     console.log("\n\x1b[1mthe gate: composer yes, Monaco no\x1b[0m");
@@ -151,8 +159,36 @@ async function main() {
     await typeKeys(page, "u");
     check("u restores it", await evaluate(page, "document.getElementById('composer').innerText"), before);
 
+    console.log("\n\x1b[1mthe Agent surfaces: same kit, other containers\x1b[0m");
+    // The Agent panel inside the workbench window carries `agent-prompt-input-root` and
+    // no "composer" class; the detached Agent window uses the `prompt-input` kit. Both are
+    // the SAME component as the chat box, so both must be ours - and the editor still is
+    // not, which the Monaco checks above already proved.
+    for (const [label, selector] of [
+      ["the Agent panel composer", "#agentComposer"],
+      ["the detached Agent window's composer", "#moltenComposer"],
+    ]) {
+      await evaluate(page, `document.querySelector(${JSON.stringify(selector)}).focus()`);
+      await sleep(250);
+      const st = await evaluate(page, `(() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        return { marker: el.getAttribute('data-jsbarevi-mode'), badges: document.querySelectorAll('.jsbarevi-badge').length };
+      })()`);
+      check(`${label} is attached, starting in INSERT`, st.marker, "INSERT");
+      await typeKeys(page, "<Esc>");
+      const before = await evaluate(page, `document.querySelector(${JSON.stringify(selector)}).innerText`);
+      await typeKeys(page, "dw");
+      const after = await evaluate(page, `document.querySelector(${JSON.stringify(selector)}).innerText`);
+      check(`...and a vi command edits its DOM (${label})`, after !== before, true);
+      await typeKeys(page, "u");
+      check(`...and u restores it (${label})`, await evaluate(page, `document.querySelector(${JSON.stringify(selector)}).innerText`), before);
+      await typeKeys(page, "i<Esc>");
+    }
+
     // A programmatic blur() is a function call, so no key handler can stop it: the
     // payload's page-world patch is the only thing that can.
+    await evaluate(page, "document.getElementById('composer').focus()");
+    await sleep(150);
     await evaluate(page, "document.getElementById('composer').blur()");
     check("a programmatic blur() cannot take the field away",
       await evaluate(page, "document.activeElement === document.getElementById('composer')"), true);

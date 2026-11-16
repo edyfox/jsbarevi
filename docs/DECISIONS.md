@@ -353,6 +353,27 @@ the first divergence would be a mode only one host restores. Pinned by `e2e-cdp`
 restore, badge, next keystroke is text, Escape wins, NORMAL stays NORMAL, `R` → NORMAL) and
 `contenteditable-e2e` (rich composer: same, plus the blur's step to the left).
 
+## No ProseMirror transaction adapter (the DOM is the contract)
+
+Decided 2026-11-16, when Cursor's Agent window came up. Input Vim carried a
+ProseMirror-*transaction* adapter and bridged into the editor's `EditorView` by patching
+`createNodeViews` in Cursor's (content-hashed) bundles. Porting that would have meant
+re-inventing the engine's edit path for one host family, and re-anchoring a minified
+bundle on every Cursor release.
+
+Not ported, deliberately: **this engine edits the host's DOM and reads it back**, which is
+what it already does in the IDE composer — and that is the same prompt-input component the
+Agent surfaces use. One edit path, one set of invariants, no host-specific transaction
+model. The cost of being wrong is bounded by design: when a host refuses an edit, the
+contenteditable adapter reports `edit-refused` / `edit-mismatch` through
+`globalThis.__jsbareviReport` (wired to the beacon), so "this host needs a transaction
+adapter after all" arrives as a measurement, not as a mystery.
+
+The bundle bridges Input Vim needed (Glass/Molten anchors) are therefore skipped whenever
+the jsbarevi payload is the engine: the Agent window gets the same sibling-script seam the
+workbench gets, and a Cursor update can no longer break the patch by renaming a hashed
+asset.
+
 ## Non-goals, permanently
 
 - Vim script, plugins, autocommands, `:g`/`:v`, folds, tags, sessions.

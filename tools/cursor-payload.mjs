@@ -42,7 +42,17 @@ const OUT = path.join(ROOT, "dist", "cursor-payload.js");
 // The same file `_local/bin/cursor-ext-patch` reads: one config, two readers.
 const CONFIG = path.join(ROOT, "..", "..", "_local", "scratchpad", "ext-injection", "config", "cursor.json");
 const BEACON = "http://127.0.0.1:8765";
-const DEFAULT_CONFIG = { enabled: true, gateSelector: "[class*=composer]", logFocus: true, startMode: "insert" };
+/**
+ * What counts as a composer.
+ *
+ * Cursor ships the SAME prompt-input UI kit in three places — the IDE chat box, the
+ * Agent panel inside the workbench window (`.agent-prompt-input-root`, which carries no
+ * "composer" in its class), and the detached Agent window (`molten/dist/renderer`, whose
+ * classes are `prompt-input*`). One list covers all three, because they are one
+ * component; the editor (Monaco) is refused separately and never by accident.
+ */
+const GATE = "[class*=composer], .agent-prompt-input-root, [class*=prompt-input]";
+const DEFAULT_CONFIG = { enabled: true, gateSelector: GATE, logFocus: true, startMode: "insert" };
 
 const args = process.argv.slice(2);
 const printInstall = args.includes("--print-install");
@@ -87,7 +97,7 @@ function gate(cfg) {
       if (el.closest && el.closest(".monaco-editor")) return false;
       if (el.classList && el.classList.contains("inputarea")) return false;
     } catch (e) { return false; }
-    var selector = CFG.gateSelector || "[class*=composer]";
+    var selector = CFG.gateSelector || ${JSON.stringify(GATE)};
     var host = null;
     try { host = el.closest ? el.closest(selector) : null } catch (e) { host = null }
     if (CFG.logFocus) {

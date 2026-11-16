@@ -53,11 +53,13 @@ npm run cursor:payload   # dist/cursor-payload.js → _local/bin/cursor-ext-patc
 ```
 
 Each payload carries a **gate**: Lark accepts only its chat composer (Docs/Bitable are
-contenteditable too), Cursor accepts only its composer and refuses the code editor — its
-hidden `.inputarea` inside `.monaco-editor` is Monaco's, and Cursor ships its own vim mode
-for the editor anyway. Gate tuning is a config file plus a restart, never a re-patch.
-Cursor's detached Agent renderers (Glass/Molten) are **not** covered yet: they need the
-ProseMirror transaction adapter that this engine does not have.
+contenteditable too), Cursor accepts its three chat surfaces — IDE chat box, Agent panel,
+detached Agent window — and refuses the code editor: its hidden `.inputarea` inside
+`.monaco-editor` is Monaco's, and Cursor ships its own vim mode for the editor anyway. Gate
+tuning is a config file plus a restart, never a re-patch.
+
+The **Claude Code / Codex extension panels** are a third, different seam (VS Code
+webviews, `chat-webview-ext-patch`) and are not covered by this payload.
 
 ### Turning it off in one field: `:q`
 
