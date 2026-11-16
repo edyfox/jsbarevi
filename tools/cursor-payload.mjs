@@ -110,9 +110,8 @@ function gate(cfg) {
 
 function main() {
   const cfg = config();
-  const { content, blocker } = bundleContentScripts();
+  const { content, blocker, build } = bundleContentScripts();
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
-  const build = JSON.parse(fs.readFileSync(path.join(ROOT, "dist", "build.json"), "utf8"));
   const stamp = `${pkg.version}+${build.stamp ?? build.build ?? "unknown"}`;
 
   const payload = `/* cursor-ext-patch — injected — engine jsbarevi ${stamp} · see _repos/jsbarevi/tools/cursor-payload.mjs */

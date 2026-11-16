@@ -32,7 +32,11 @@ export function bundleContentScripts() {
       if (/^\s*(import|export)\s/m.test(source)) throw new Error(`${name} is not a classic script`);
       return source;
     };
-    return { content: read("content.js"), blocker: read("escape-blocker.js") };
+    // The stamp of the build that was JUST made, not of whatever is in dist/: this
+    // bundle goes to a temp dir, so `dist/build.json` can be older than the code inlined.
+    let build = {};
+    try { build = JSON.parse(fs.readFileSync(path.join(tmp, "build.json"), "utf8")); } catch { /* older packager */ }
+    return { content: read("content.js"), blocker: read("escape-blocker.js"), build };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
