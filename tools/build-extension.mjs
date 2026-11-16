@@ -69,6 +69,34 @@ async function main() {
     + ` * one classic script: the engine (src/) bundled for a content script.\n`
     + ` * source: https://github.com/edyfox/jsbarevi — MIT */`;
 
+  // ONE ENGINE PER DOCUMENT.
+  //
+  // This file can arrive twice in ONE JS scope, and a second copy is not harmless. The
+  // concrete host is OpenCode desktop: its loader concatenates the content scripts of
+  // every directory under `opencode-desktop-extensions/` into a single page-world
+  // bundle for its own `oc://` window. A retired copy of this extension sitting next to
+  // the current one therefore installs a SECOND engine on the composer: two `active`
+  // maps, two key dispatchers, two badges. The first-registered dispatcher eats every
+  // key (it calls `stopImmediatePropagation`), while the badge on screen belongs to
+  // another copy — which reads exactly as "-- INSERT --, but every key is a normal-mode
+  // command, I cannot type".
+  //
+  // The duplicate is a packaging error (two copies of one extension in one scope), and
+  // its consequence must not be a second editor: the first copy owns the document and
+  // everything after it stands down. The guard is generated here, not written in
+  // `extension/src/content.js`, because it is a property of the ARTIFACT — every path
+  // that can deliver this bundle (content script, oc:// injection, Lark payload) goes
+  // through this packager, and an ESM module cannot bail out of its own body.
+  const ONCE = "jsbareviContentLoaded";
+  const onceGuard = {
+    banner: {
+      js: `${banner}\nif (globalThis.${ONCE}) {\n`
+        + `  try { console.warn("[jsbarevi] a second copy of this script was loaded into the same page; the first copy owns it (duplicate extension directories?). This copy stands down."); } catch (e) {}\n`
+        + `} else {\n  globalThis.${ONCE} = true;`,
+    },
+    footer: { js: "\n}" },
+  };
+
   await esbuild.build({
     entryPoints: [path.join(EXT, "src", "content.js")],
     outfile: path.join(OUT, "content.js"),
@@ -78,7 +106,7 @@ async function main() {
     target: ["chrome110"],
     charset: "utf8",
     legalComments: "none",
-    banner: { js: banner },
+    ...onceGuard,
     logLevel: "warning",
   });
 

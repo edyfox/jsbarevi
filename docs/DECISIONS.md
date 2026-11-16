@@ -279,6 +279,45 @@ mandatory (`-u NONE` alone is *compatible* mode), and `nomodeline` closes the
 `+call cursor(l,c)` (not `+l:c`, which is not vim syntax) and returns via a
 `VimLeavePre` sidecar.
 
+## One engine per document (a duplicate delivery stands down)
+
+Decided 2026-11-16, after the "`-- INSERT --` but every key is a normal-mode command"
+report. The packaged bundle can arrive in **one JS scope twice**, and a second copy is
+not harmless: two `active` maps, two key dispatchers, two badges on the same field. Only
+the first-registered dispatcher sees a key (it calls `stopImmediatePropagation`), while
+the badge on screen can belong to another copy — so the mode you read and the mode the
+keystrokes obey are different programs.
+
+The concrete host is OpenCode desktop. Its loader cannot use content scripts for its own
+`oc://` window (Electron rejects a custom scheme in a match pattern), so it concatenates
+the content scripts of **every** directory under `opencode-desktop-extensions/` into one
+page-world bundle. A retired copy of this extension kept next to the live one — which is
+what `npm run ship` used to do — therefore ran a second engine on the composer.
+
+Two rules, in this order:
+
+1. **Packaging must not create duplicates.** `npm run ship` retires the previous copy
+   under `~/.local/state/jsbarevi/ships/`, never beside the live directory, moves any
+   stray `jbarevi*` directory out of the loader's root, and then asserts that exactly one
+   loadable directory is left.
+2. **A duplicate that arrives anyway must not become a second editor.** The packager
+   wraps the bundle in a one-shot guard (`globalThis.jsbareviContentLoaded`): the first
+   copy owns the document, every later copy logs one warning and stands down. It lives in
+   `tools/build-extension.mjs` rather than `extension/src/content.js` because it is a
+   property of the artifact — the content script, the `oc://` injection and the Lark
+   payload all pass through that packager — and an ESM module cannot bail out of its own
+   body.
+
+First copy wins, deliberately: a duplicate is a configuration error, and picking the
+winner by version would need a copy that already failed to install itself to be able to
+uninstall. `test/duplicate-injection.mjs` (`npm run test:dup`) pins the behaviour: one
+badge, one active root, and `Esc i <text>` still types after the field loses and regains
+focus. Pointing it at a pre-guard build (`JSBAREVI_DIST=…`) goes red, which is how the
+test was shown to be able to fail.
+
+Also fixed at the same time: the guard's scope test. `escape-blocker.js` was already
+idempotent (`HTMLElement.prototype.blur.__jsbareviBlocked`); `content.js` was not.
+
 ## Non-goals, permanently
 
 - Vim script, plugins, autocommands, `:g`/`:v`, folds, tags, sessions.

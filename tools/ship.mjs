@@ -26,7 +26,20 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
-const DESKTOP_EXT = path.join(os.homedir(), ".local", "share", "opencode-desktop-extensions", "jbarevi");
+const DESKTOP_ROOT = path.join(os.homedir(), ".local", "share", "opencode-desktop-extensions");
+const DESKTOP_EXT = path.join(DESKTOP_ROOT, "jbarevi");
+/**
+ * Where a replaced copy goes.
+ *
+ * NOT next to the live one. The desktop loader treats every subdirectory holding a
+ * `manifest.json` as an extension and — for the app's own `oc://` window, which no
+ * content-script match pattern can reach — concatenates ALL of their content scripts
+ * into ONE page-world bundle. A backup kept beside the live copy therefore loads as a
+ * second, older copy of this extension on every page: two engines on one composer, one
+ * of them eating the keys while the other shows the badge. That is the "the badge says
+ * -- INSERT -- but every key is a normal-mode command" report (2026-11-16).
+ */
+const RETIRED = path.join(os.homedir(), ".local", "state", "jsbarevi", "ships");
 // Built for Lark's page world, not part of a browser extension.
 const NOT_AN_EXTENSION_FILE = new Set(["lark-payload.js"]);
 
@@ -73,9 +86,28 @@ if (sync) {
   if (!fs.existsSync(DESKTOP_EXT)) {
     console.log(`  desktop    ${DESKTOP_EXT} does not exist — not an OpenCode install? skipped`);
   } else {
+    // Anything else named jbarevi* in that root is a copy the loader will ALSO load —
+    // including every `<dir>.<timestamp>` a previous ship left behind. Move them out
+    // first (never delete: they stay recoverable under RETIRED), or the app runs several
+    // engines on the same field and the keystrokes go to whichever loaded first.
+    const strays = fs.readdirSync(DESKTOP_ROOT)
+      .filter((name) => /^jbarevi([.-]|$)/.test(name) && name !== "jbarevi")
+      .map((name) => path.join(DESKTOP_ROOT, name))
+      .filter((dir) => fs.existsSync(path.join(dir, "manifest.json")));
+    if (strays.length) {
+      fs.mkdirSync(RETIRED, { recursive: true });
+      for (const dir of strays) {
+        const target = path.join(RETIRED, path.basename(dir));
+        fs.rmSync(target, { recursive: true, force: true });
+        fs.renameSync(dir, target);
+        console.log(`  retired    ${path.basename(dir)} -> ${target}  (a duplicate the loader would have run)`);
+      }
+    }
+
     const previous = fs.readFileSync(path.join(DESKTOP_EXT, "manifest.json"), "utf8");
     const previousVersion = JSON.parse(previous).version;
-    const retired = `${DESKTOP_EXT}.${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const retired = path.join(RETIRED, `jbarevi.${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    fs.mkdirSync(RETIRED, { recursive: true });
     fs.renameSync(DESKTOP_EXT, retired);
     fs.mkdirSync(DESKTOP_EXT, { recursive: true });
     for (const entry of fs.readdirSync(DIST)) {
@@ -83,9 +115,18 @@ if (sync) {
       fs.cpSync(path.join(DIST, entry), path.join(DESKTOP_EXT, entry), { recursive: true });
     }
     const after = JSON.parse(fs.readFileSync(path.join(DESKTOP_EXT, "manifest.json"), "utf8"));
-    console.log(`  desktop    ${previousVersion} -> ${after.version}  (previous kept at ${path.basename(retired)})`);
+    console.log(`  desktop    ${previousVersion} -> ${after.version}  (previous kept at ${retired})`);
     if (after.version !== pkg.version) {
       console.error("copy did not take: the desktop manifest still disagrees");
+      process.exit(1);
+    }
+    // Verify the invariant, not the intention: the loader sees directories, so exactly
+    // one of them may be ours after this run.
+    const stillLoaded = fs.readdirSync(DESKTOP_ROOT)
+      .filter((name) => /^jbarevi([.-]|$)/.test(name))
+      .filter((name) => fs.existsSync(path.join(DESKTOP_ROOT, name, "manifest.json")));
+    if (stillLoaded.length !== 1) {
+      console.error(`  desktop    ${stillLoaded.length} loadable jbarevi directories in ${DESKTOP_ROOT}: ${stillLoaded.join(", ")}`);
       process.exit(1);
     }
   }
