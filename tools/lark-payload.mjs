@@ -32,10 +32,10 @@
 //   node tools/lark-payload.mjs --print-install       # …and print the install command
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { bundleContentScripts } from "./bundle-content.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "dist", "lark-payload.js");
@@ -58,31 +58,6 @@ function config() {
     }
   }
   return cfg;
-}
-
-/**
- * Bundle the content script with the PACKAGER, not a second copy of its esbuild options.
- * A payload built from a `dist/` that is older than the source is the exact failure the
- * Lark seam already paid for once ("INSTALLED (STALE)" in `lark-ext-patch status`), so
- * the bundle is regenerated on every build.
- */
-function bundleContentScripts() {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "jsbarevi-lark-"));
-  try {
-    execFileSync(process.execPath, [
-      path.join(ROOT, "tools", "build-extension.mjs"), "--no-zip", "--out", tmp,
-    ], { cwd: ROOT, stdio: ["ignore", "ignore", "inherit"] });
-    const read = (name) => {
-      const file = path.join(tmp, name);
-      if (!fs.existsSync(file)) throw new Error(`build-extension produced no ${name}`);
-      const source = fs.readFileSync(file, "utf8");
-      if (/^\s*(import|export)\s/m.test(source)) throw new Error(`${name} is not a classic script`);
-      return source;
-    };
-    return { content: read("content.js"), blocker: read("escape-blocker.js") };
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
 }
 
 /**

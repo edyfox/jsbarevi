@@ -39,6 +39,26 @@ Everything about the package — why it is one bundled classic script, how `:e` 
 around CORS without a server patch, what attaches to which field, and the store
 publishing checklist — is in [`docs/EXTENSION.md`](docs/EXTENSION.md).
 
+### Hosts with no extension system
+
+Two of the hosts in the list above cannot run a content script at all: **Lark** (the
+extension machinery is compiled out of `liblark.so`) and **Cursor** (an Electron
+workbench whose CSP allows a sibling `<script>` file but not a dynamic one). Both get
+the same engine as a *page-world payload* — one classic script, built by the same
+packager the extension ships through:
+
+```bash
+npm run lark:payload     # dist/lark-payload.js   → _local/bin/lark-ext-patch patch
+npm run cursor:payload   # dist/cursor-payload.js → _local/bin/cursor-ext-patch patch --no-agents
+```
+
+Each payload carries a **gate**: Lark accepts only its chat composer (Docs/Bitable are
+contenteditable too), Cursor accepts only its composer and refuses the code editor — its
+hidden `.inputarea` inside `.monaco-editor` is Monaco's, and Cursor ships its own vim mode
+for the editor anyway. Gate tuning is a config file plus a restart, never a re-patch.
+Cursor's detached Agent renderers (Glass/Molten) are **not** covered yet: they need the
+ProseMirror transaction adapter that this engine does not have.
+
 ### Turning it off in one field: `:q`
 
 A host's editor can be more trouble than it is worth (a composer that eats keys, a field
