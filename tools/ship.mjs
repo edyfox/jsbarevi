@@ -5,11 +5,18 @@
  *     node tools/ship.mjs               # build + sync the OpenCode desktop extension
  *     node tools/ship.mjs --no-sync     # build (and the zip) only
  *     node tools/ship.mjs --lark        # …and rebuild the Lark payload, print the patch
+ *     node tools/ship.mjs --patch       # …and re-patch OpenCode's loader (one command)
  *
  * Why this exists: the same three steps (build, zip, copy into the desktop's extension
  * directory) were done by hand four times, and hand-copies drift — one of them left a
  * stale `content.js` next to an updated `manifest.json`, which reads as "the new feature
  * does not work" rather than as a bad copy.
+ *
+ * `--patch` closes the other hand-off: the seam that loads these extensions lives in an
+ * extracted app/ directory, which a fresh app.asar silently overshadows after an app
+ * update. `_local/bin/opencode-ext-patch patch` now ships first and patches second, so
+ * this flag is the same two steps with the build already done (`--no-ship` on that side).
+ * Either command brings OpenCode fully current.
  *
  * What it does NOT do: restart anything. The desktop app loads the extension into its
  * persistent session at startup, and the Lark seam is an asar patch that needs Lark
@@ -46,6 +53,11 @@ const NOT_AN_EXTENSION_FILE = new Set(["lark-payload.js"]);
 const args = process.argv.slice(2);
 const sync = !args.includes("--no-sync");
 const lark = args.includes("--lark");
+const patch = args.includes("--patch");
+if (patch && !sync) {
+  console.error("--patch needs the desktop sync it just verified — drop --no-sync");
+  process.exit(1);
+}
 
 function run(file, argv, opts = {}) {
   execFileSync(file, argv, { cwd: ROOT, stdio: "inherit", ...opts });
@@ -136,6 +148,20 @@ if (sync) {
 if (lark) {
   run(process.execPath, [path.join(ROOT, "tools", "lark-payload.mjs")]);
   console.log(`  lark       payload rebuilt: dist/lark-payload.js`);
+}
+
+// 5. The OpenCode seam itself. Our loader lives in an extracted `app/` directory that a
+//    fresh `app.asar` quietly outranks, so an app update leaves the extension dir
+//    perfectly healthy and completely unused. `--no-ship` stops the patcher rebuilding
+//    what this run just built; it still patches and verifies.
+if (patch) {
+  const patcher = path.resolve(ROOT, "..", "..", "_local", "bin", "opencode-ext-patch");
+  if (!fs.existsSync(patcher)) {
+    console.error(`  patch      MISSING: ${patcher}`);
+    process.exit(1);
+  }
+  console.log(`  patch      ${patcher} patch --no-ship`);
+  run(patcher, ["patch", "--no-ship"], { cwd: path.resolve(ROOT, "..", "..") });
 }
 
 stamp("next");

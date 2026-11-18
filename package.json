@@ -11,6 +11,7 @@
     "test:dup": "node tools/build-extension.mjs --no-zip && node test/duplicate-injection.mjs",
     "build:ext": "node tools/build-extension.mjs",
     "ship": "node tools/ship.mjs",
+    "ship:patch": "node tools/ship.mjs --patch",
     "icons": "python3 tools/make-icons.py",
     "test:oracle": "python3 oracle/run.py",
     "gen:expect": "node tools/gen-expect.mjs",
