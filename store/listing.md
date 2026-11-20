@@ -3,9 +3,14 @@
 Everything below is the exact text for the store form. The build artifact is
 `dist/jbarevi-<version>.zip` (from `npm run build:ext`).
 
-> **Status: package and listing are ready; nothing has been uploaded.** The upload
-> needs the store developer account (a one-off US$5 registration) and a public
-> privacy-policy URL — see `PRIVACY.md`.
+> **Status (2026-11-20): 0.1.0 is published and its review has PASSED.** The next
+> upload ships **0.5.0**, which adds one permission the approved build never had —
+> **`clipboardRead`** (added 2026-11-14, `76383b1`) — so that justification is the
+> one a reviewer will actually read, and users will see Chrome's
+> *"Read data you copy and paste"* warning for the first time.
+>
+> Upload needs `npm run build:ext` → `dist/jsbarevi-<version>.zip`, and the
+> privacy-policy URL in `PRIVACY.md` must be public.
 
 ---
 
@@ -94,11 +99,15 @@ tab URLs are read at any other time.
 
 **`clipboardRead`**
 ```
-Used only when the user explicitly asks for the clipboard: the "+ register
-("+y / "+p) and Ctrl-R + in insert mode. Without it the browser can only offer
-the clipboard through a per-site permission prompt, so the read would fail on
-most pages. Nothing is read at any other time, and nothing is read at all
-unless one of those commands is typed.
+The clipboard is read for one feature: the vi "+ register ("+y to copy, "+p to
+paste, Ctrl-R + in insert mode). The engine is synchronous and the browser's
+clipboard API is asynchronous, so the one synchronous read path is
+document.execCommand("paste") into a detached, invisible textarea whose focus
+and selection are restored immediately — the only path that needs no per-site
+permission prompt. Reads happen when the user types one of those commands, plus
+one non-blocking cache refresh when a text field takes focus (the result is
+discarded if the browser refuses it). Nothing is read in the background, logged,
+stored or transmitted.
 ```
 
 **Host permissions `http://127.0.0.1/*` and `http://localhost/*`**
