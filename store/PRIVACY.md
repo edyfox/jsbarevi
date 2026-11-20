@@ -1,6 +1,6 @@
 # jsbarevi — privacy policy
 
-_Last updated: 2026-11-13_
+_Last updated: 2026-11-20_
 
 jsbarevi is a browser extension that gives text fields traditional vi
 keybindings. It runs entirely inside your browser.
@@ -41,6 +41,7 @@ all.
 | Content script on all sites | The product is editing text fields on the pages you visit. It attaches to a field only after you focus it, and touches only that field's text. |
 | `storage` | Holds the three settings above. |
 | `activeTab` | Lets the popup identify the current site when you click the toolbar icon, so you can turn the extension off for that site. |
+| `clipboardRead` | The vi `"+` register: `"+y` copies, `"+p` pastes, `Ctrl-R +` inserts. Read only for those, plus a non-blocking refresh when a field takes focus. |
 | `http://127.0.0.1/*`, `http://localhost/*` | The `:e` request to your own local editor server. |
 
 ## Limited Use disclosure

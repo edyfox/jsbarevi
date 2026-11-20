@@ -99,15 +99,11 @@ tab URLs are read at any other time.
 
 **`clipboardRead`**
 ```
-The clipboard is read for one feature: the vi "+ register ("+y to copy, "+p to
-paste, Ctrl-R + in insert mode). The engine is synchronous and the browser's
-clipboard API is asynchronous, so the one synchronous read path is
-document.execCommand("paste") into a detached, invisible textarea whose focus
-and selection are restored immediately — the only path that needs no per-site
-permission prompt. Reads happen when the user types one of those commands, plus
-one non-blocking cache refresh when a text field takes focus (the result is
-discarded if the browser refuses it). Nothing is read in the background, logged,
-stored or transmitted.
+Used only for the vi "+ register: "+y copies, "+p pastes, and Ctrl-R + inserts
+the register in insert mode. The read is synchronous (execCommand("paste") into
+a hidden field with the focus restored) because the browser's clipboard API is
+asynchronous and a per-site prompt would fail on most pages. A field taking
+focus also refreshes it without blocking. Nothing else is read or transmitted.
 ```
 
 **Host permissions `http://127.0.0.1/*` and `http://localhost/*`**
