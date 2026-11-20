@@ -47,8 +47,9 @@ const DESKTOP_EXT = path.join(DESKTOP_ROOT, "jbarevi");
  * -- INSERT -- but every key is a normal-mode command" report (2026-11-16).
  */
 const RETIRED = path.join(os.homedir(), ".local", "state", "jsbarevi", "ships");
-// Built for Lark's page world, not part of a browser extension.
-const NOT_AN_EXTENSION_FILE = new Set(["lark-payload.js"]);
+// Built for host page worlds, not part of a browser extension: each one is a payload its
+// own installer injects. Never copy them into the desktop extension directory.
+const NOT_AN_EXTENSION_FILE = new Set(["lark-payload.js", "cursor-payload.js", "webview-payload.js"]);
 
 const args = process.argv.slice(2);
 const sync = !args.includes("--no-sync");
@@ -144,13 +145,32 @@ if (sync) {
   }
 }
 
-// 4. Lark's payload is a different artifact (page world, no extension machinery).
+// 4. The page-world payloads. `build-extension.mjs` clears dist/ because it knows only
+//    about the extension itself, and each Cursor / chat-webview installer installs exactly
+//    one of these artifacts. A ship that skips them leaves those installers with nothing:
+//    they fall back to the retired Input Vim builder and FAIL on a manifest that no longer
+//    exists (`opencode-desktop-extensions/input-vim`) — an error that names the wrong
+//    problem. Build them here, so the build and the seam stay one operation.
+for (const [tool, artifact] of [
+  ["cursor-payload.mjs", "cursor-payload.js"],
+  ["webview-payload.mjs", "webview-payload.js"],
+]) {
+  run(process.execPath, [path.join(ROOT, "tools", tool)]);
+  const built = path.join(DIST, artifact);
+  if (!fs.existsSync(built)) {
+    console.error(`  ${artifact.padEnd(18)} MISSING: nothing was produced`);
+    process.exit(1);
+  }
+  console.log(`  ${artifact.padEnd(18)} dist/${artifact} (${(fs.statSync(built).size / 1024).toFixed(0)} KiB)`);
+}
+
+// 5. Lark's payload is a different artifact (page world, no extension machinery).
 if (lark) {
   run(process.execPath, [path.join(ROOT, "tools", "lark-payload.mjs")]);
   console.log(`  lark       payload rebuilt: dist/lark-payload.js`);
 }
 
-// 5. The OpenCode seam itself. Our loader lives in an extracted `app/` directory that a
+// 6. The OpenCode seam itself. Our loader lives in an extracted `app/` directory that a
 //    fresh `app.asar` quietly outranks, so an app update leaves the extension dir
 //    perfectly healthy and completely unused. `--no-ship` stops the patcher rebuilding
 //    what this run just built; it still patches and verifies.
@@ -166,6 +186,8 @@ if (patch) {
 
 stamp("next");
 if (sync) console.log("  · restart the OpenCode desktop app (the extension loads at startup, into its persistent session)");
+console.log("  · Cursor:    ../../_local/bin/cursor-ext-patch patch          (needs sudo; then restart Cursor)");
+console.log("  · webviews:  ../../_local/bin/chat-webview-ext-patch patch    (no sudo; then restart the editor)");
 if (lark) {
   // The env var is not optional: without it the installer assembles the LEGACY Input Vim
   // payload and quietly skips ours ("no Input Vim extension ... this path assembles the
