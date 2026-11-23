@@ -317,6 +317,7 @@ export class ContenteditableAdapter {
   _onMouseDown(e) {
     const target = e.composedPath?.()[0] ?? e.target;
     if (!(target === this.el || this.el.contains(target))) return;
+    this._menuProjection = false;
     this._mouseDown = true;
     this._pressPoint = { x: e.clientX, y: e.clientY };
     this._beforeClick = {
@@ -386,9 +387,23 @@ export class ContenteditableAdapter {
     }, 0);
   }
 
-  _onContextMenu(e) {
-    if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) return;
-    e.preventDefault();
+  /**
+   * See textarea.js: charwise visual already has a real native selection, so the menu needs
+   * no suppressing; VISUAL LINE projects its range just before the menu opens (a native
+   * range cannot paint its bar, so it normally stays collapsed) and the overlay steps
+   * aside.
+   */
+  _onContextMenu() {
+    if (this.engine.mode !== Mode.VISUAL_LINE) return;
+    const sel = this.engine.visualSelection();
+    if (!sel) return;
+    const flat = getFlatText(this.el).length;
+    const from = Math.max(0, Math.min(sel.from, flat));
+    const to = Math.max(from, Math.min(sel.to, flat));
+    this._expectedSel = { anchor: from, focus: to };
+    projectRange(this.el, from, to);
+    this._menuProjection = true;
+    this.highlight.clear();
   }
 
   _onBlur() {
@@ -431,6 +446,7 @@ export class ContenteditableAdapter {
     }
     // See textarea.js: Shift+caret is the host's everywhere except VISUAL LINE, which has
     // no native selection to extend.
+    this._menuProjection = false;
     const key = shiftMotionFor(e, this.engine.mode) ?? tokenFor(e, this.engine.mode);
     if (key == null) return;
 
@@ -674,7 +690,7 @@ export class ContenteditableAdapter {
     // The browser paints charwise visual now; we paint the linewise bar, and everything
     // when this field has fallen back off the projection.
     const sel = this.engine.visualSelection();
-    if (sel && (sel.linewise || this._projectionOff)) {
+    if (sel && (sel.linewise || this._projectionOff) && !this._menuProjection) {
       this.highlight.paint(rangeRects(this.el, sel.from, sel.to, { linewise }));
     } else this.highlight.clear();
   }

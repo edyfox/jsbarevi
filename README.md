@@ -290,10 +290,12 @@ behaviour, and the answer has two halves:
   and **right-click** adjust it instead — the boundary nearest the click moves to
   it and the far one stays, so a click outside the selection grows it and a click
   inside cuts it down (`mouse.c:753`, `mouse.c:934`). In NORMAL mode Shift+click
-  starts a selection anchored at the cursor. While a selection is active the
-  browser's context menu is suppressed: its Copy would copy the collapsed native
-  selection and its Paste would bypass the engine's registers and undo. Pressing
-  `Esc` leaves visual mode and brings the menu back.
+  starts a selection anchored at the cursor. The browser's **context menu is not
+  suppressed**: in charwise visual the native selection IS the range, so its Copy, Cut and
+  Paste act on exactly what is painted, and in VISUAL LINE the range is projected just
+  before the menu opens (that is the one moment it needs a native selection) with the
+  overlay stepping aside. Anything the menu then changes is a host edit, which ends visual
+  mode and becomes an undoable step.
 
 - **The Shift-modified caret keys are the host's**, outside `V`. vi has no Shift-modified
   motions, and in a browser field that gesture *is* the native select. A selection the host

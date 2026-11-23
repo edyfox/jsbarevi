@@ -809,9 +809,19 @@ async function main() {
     await rightClickAt(atZero.x, atZero.y);              // outside, before it
     check("right click extends the selection like shift+click", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha beta ");
     check("right click keeps visual mode", await mode(), "VISUAL");
-    check("the context menu is suppressed while selecting", await menuSuppressed(), true);
+    check("the context menu is NOT suppressed in charwise visual (the range is real)",
+      await menuSuppressed(), false);
     await sendKey(session, "Escape");
-    check("...and comes back outside visual mode, which is the escape hatch", await menuSuppressed(), false);
+    check("...and still is not outside it", await menuSuppressed(), false);
+    // VISUAL LINE has no native range, so the handler projects one for the menu instead.
+    await resetField();
+    await typeKeys(session, "gg");
+    await typeKeys(session, "V");
+    const vMenu = await menuSuppressed();
+    const vMenuSel = await domSel();
+    check("VISUAL LINE does not suppress the menu either", vMenu, false);
+    check("...and hands the menu a real range", [vMenuSel.start, vMenuSel.end !== vMenuSel.start], [0, true]);
+    await sendKey(session, "Escape");
     await rightClickAt(atSix.x, atSix.y);
     check("a right click in normal mode leaves normal mode", await mode(), "NORMAL");
     await sendKey(session, "Escape");

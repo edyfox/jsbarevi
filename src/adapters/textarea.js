@@ -91,6 +91,7 @@ export class TextareaAdapter {
       contextmenu: (e) => this._onContextMenu(e),
       mousedown: (e) => {
         if (!this.el.contains(e.target)) return;
+        this._menuProjection = false;
         this._mouseDown = true;
         this._pressPoint = { x: e.clientX, y: e.clientY };
         this._rememberBeforeClick();
@@ -539,15 +540,26 @@ export class TextareaAdapter {
   }
 
   /**
-   * The browser's menu is useless while WE own the selection: its Copy would copy
-   * the collapsed native selection (nothing), and its Paste would bypass the
-   * engine's registers and undo. So it is suppressed in visual mode only - in
-   * normal mode it belongs to the host, and Esc (which leaves visual) is the
-   * escape hatch to get it back.
+   * The browser's menu belongs to the host again.
+   *
+   * Charwise visual has a REAL native selection now, so there is nothing to suppress: the
+   * menu's Copy, Cut and Paste act on exactly what is painted. VISUAL LINE has no native
+   * range (its look is our full-width bar), so the engine's range is projected just before
+   * the menu opens — otherwise Copy would only see a collapsed caret — and the overlay
+   * steps aside so the two do not double-paint. Whatever the menu then does is a host
+   * edit, which the adapter already turns into an ended visual mode and an undoable step.
    */
-  _onContextMenu(e) {
-    if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) return;
-    e.preventDefault();
+  _onContextMenu() {
+    if (this.engine.mode !== Mode.VISUAL_LINE) return;
+    const sel = this.engine.visualSelection();
+    if (!sel) return;
+    const len = this.el.value.length;
+    const from = Math.max(0, Math.min(sel.from, len));
+    const to = Math.max(from, Math.min(sel.to, len));
+    this._expectedSel = { start: from, end: to, dir: "forward" };
+    this.el.setSelectionRange(from, to);
+    this._menuProjection = true;
+    this.highlight.clear();
   }
 
   /** Remember where the caret and the selection were before the click lands. */
@@ -617,7 +629,7 @@ export class TextareaAdapter {
     // The browser paints charwise visual now, so we paint only what it cannot: the
     // linewise bar, and everything when this field has fallen back off the projection.
     const sel = this.engine.visualSelection();
-    if (sel && (sel.linewise || this._projectionOff)) {
+    if (sel && (sel.linewise || this._projectionOff) && !this._menuProjection) {
       this.highlight.update(sel.from, sel.to, this.engine.text, { linewise: sel.linewise });
     } else this.highlight.clear();
   }
@@ -642,6 +654,7 @@ export class TextareaAdapter {
     const key = shiftMotionFor(e, this.engine.mode) ?? this._token(e);
     if (key == null) return;
 
+    this._menuProjection = false;
     const wasInsert = this.engine.mode === Mode.INSERT || !!this.engine.replaceSession;
     const r = this.engine.feed(key);
     // `v`/`V` pressed from normal mode starts a NEW selection: forget where an older one

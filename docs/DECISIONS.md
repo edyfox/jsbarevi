@@ -386,11 +386,13 @@ output are in the session's scratchpad):
 **Two limitations in NORMAL/VISUAL, deliberately out of scope.** Both were found by
 measuring, and they share one root cause:
 
-1. **`Shift+→` does not accumulate.** After adopting a host selection the adapter
-   `_commit()`s, which collapses the native selection to the engine cursor — the head
-   *character*. A one-character extension therefore rewinds the caret to where it started,
-   and the next press extends one character again. Keys that move far in a single event
-   (`Shift+End`, `Shift+PageDown`) look correct and hide it.
+1. **`Shift+→` does not accumulate — FIXED 2026-11-23** by the projection below. It used
+   to: after adopting a host selection the adapter `_commit()`ed, collapsing the native
+   selection to the engine cursor (the head *character*), so a one-character extension
+   rewound the caret to where it started and the next press extended one character again.
+   Keys that move far in a single event (`Shift+End`, `Shift+PageDown`) looked correct and
+   hid it. Charwise visual now holds the range between keystrokes, so the browser's own
+   anchor survives and the extension accumulates.
 2. **In VISUAL, the anchor is replaced.** `v` `ll` then `Shift+→` gives a one-character
    selection anchored at the head, discarding the original span.
 
@@ -474,6 +476,18 @@ selection is treated as a host rewrite: the engine's range is re-asserted, bound
 from before this change. A host edit that changes the text ends visual mode outright (the
 anchor's referent is gone), which is the accepted cost of letting the browser perform
 `Ctrl-X`/`Ctrl-V`.
+
+### The context menu
+
+Suppressing it was the original reason any of this work happened: while the native
+selection was collapsed, the menu's Copy copied nothing and its Paste bypassed the
+engine's registers and undo, so `preventDefault()` was the honest thing to do. That reason
+is gone. **The menu is not suppressed any more.** In charwise visual the native range IS
+the selection, so the menu acts on exactly what is painted. VISUAL LINE keeps its
+collapsed native selection for the bar's sake, so its `contextmenu` handler projects the
+engine's range first (the one moment `V` needs a native one) and hides the overlay while
+the menu is up. Whatever the menu then does is a host edit: it ends visual mode, returns to
+the mode the selection was made in, and is recorded as one undoable step.
 
 ### Known deviations, recorded not chased
 
