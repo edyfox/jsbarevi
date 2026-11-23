@@ -474,6 +474,12 @@ export class Engine {
       this.pending = this._emptyPending();
       return { ...this._applyCaseLinewise(op, count), handled: true };
     }
+    if (key === "Insert") {
+      // The Insert key opens insert mode from normal mode, exactly like `i`. It is the
+      // first step of the Insert ⇄ Replace cycle the keyboard has always had; the second
+      // half lives in `_insertKey`.
+      return this._enterInsert("i", 1);
+    }
     if (key === "i" || key === "a" || key === "I" || key === "A" || key === "o" || key === "O" || key === "R") {
       if (p.op) {
         p.textObj = key; // `diw` etc: operator + text object prefix
@@ -529,6 +535,17 @@ export class Engine {
     const p = this.pending;
     const count = () => this._takeCount(1);
     switch (key) {
+      // Deliberate refusals, said out loud. Both of these used to fall through: `Ctrl-V`
+      // reached the browser and pasted into the field OUTSIDE the engine's undo (a silent
+      // divergence), and `q`/`@`/`Q` landed on the generic "unmapped" line, which reads
+      // like an accident rather than the recorded decision it is (docs/DECISIONS.md:
+      // block visual and macros are permanently out).
+      case "C-v": case "C-q":
+        this.onStatus("block visual: not implemented", "error");
+        return { handled: true };
+      case "q": case "@": case "Q":
+        this.onStatus("macros: not implemented", "error");
+        return { handled: true };
       case "x": return this._deleteChars(count(), false);
       case "X": return this._deleteChars(count(), true);
       case "D": return this._applyOperatorToEol("d", count());
@@ -2048,6 +2065,19 @@ export class Engine {
       this._insertRegPending = false;
       return this._insertRegister(key);
     }
+    if (key === "Insert") {
+      // INSERT ⇄ REPLACE, the other half of the keyboard's own cycle (`R` and the Insert
+      // key in normal mode are the first half). The host keeps doing the typing; replace
+      // mode only records the snapshot it needs to drop what the browser overwrites, the
+      // same contract as `R`.
+      if (this.replaceSession) {
+        this.replaceSession = null;
+      } else {
+        const host = B.hostText(this.text);
+        this.replaceSession = { at: Math.min(this.state.cursor, host.length), snap: host, typed: "" };
+      }
+      return { handled: true };
+    }
     if (key === "C-r") {
       this._insertRegPending = true;
       return { handled: true };
@@ -2350,6 +2380,15 @@ export class Engine {
     if (key === "v") { this.mode = Mode.VISUAL; return { handled: true }; }
     if (key === "V") { this.mode = Mode.VISUAL_LINE; return { handled: true }; }
     if (key === "o") { const a = this.visual.anchor; this.visual.anchor = this.state.cursor; this.state.cursor = a; return { handled: true }; }
+    // The four native shortcuts. In CHARWISE visual the browser owns them — that is the
+    // point of projecting the range there — so they are let through untouched. In VISUAL
+    // LINE the native selection is collapsed (a native one cannot draw the full-width
+    // bar), so the same keys have nothing to act on and are simulated instead, which is
+    // what keeps "Ctrl-C copies the selection" true in both visual modes.
+    if (key === "C-a" || key === "C-x" || key === "C-v" || key === "C-q" || key === "C-c") {
+      if (this.mode !== Mode.VISUAL_LINE) return { handled: false };
+      return this._visualNativeKey(key);
+    }
     if (/^[1-9]$/.test(key) || (key === "0" && p.count !== "")) { p.count += key; return { handled: true }; }
     // a mark jump extends the selection here exactly as a motion would: the visual
     // head IS the cursor, so the same motion object serves both
@@ -2476,6 +2515,75 @@ export class Engine {
       return { handled: true };
     }
     return { handled: true };
+  }
+
+  /**
+   * VISUAL LINE's own copies of the native shortcuts.
+   *
+   * `V` keeps our paint (its native selection is collapsed, because a native one cannot
+   * draw the full-width bar), so Ctrl-C/X/V/A have nothing to act on there. Leaving them
+   * dead in one visual mode while they work in the other is the kind of per-mode surprise
+   * this project writes decisions about — so the engine performs the same visible action
+   * instead. Charwise visual never reaches here: the browser does it natively.
+   */
+  _visualNativeKey(key) {
+    const range = this._visualRange();
+    switch (key) {
+      case "C-a": {
+        // Select everything, STAYING LINEWISE (what `ggVG` produces). Delegating to the
+        // browser would select natively and the adopted range would be charwise, silently
+        // turning V into v mid-press.
+        const t = this.text;
+        this.visual = { anchor: 0 };
+        this.state.cursor = t.endsWith("\n") ? Math.max(0, t.length - 2) : Math.max(0, t.length - 1);
+        return { handled: true };
+      }
+      case "C-c": {
+        const text = this.text.slice(range.from, range.to);
+        if (!text) return { handled: true };
+        const res = this.registers.write({ text, linewise: true, name: "+" });
+        if (!res.ok) this.onStatus(res.error, "error");
+        else this.onStatus(`copied ${text.length} chars`);
+        return { handled: true };
+      }
+      case "C-x": {
+        const text = this.text.slice(range.from, range.to);
+        if (text) {
+          const res = this.registers.write({ text, linewise: true, name: "+" });
+          if (!res.ok) this.onStatus(res.error, "error");
+        }
+        this.mode = Mode.NORMAL;
+        this.visual = null;
+        this.pending = this._emptyPending();
+        return this._applyOperatorRange("d", range.from, range.to, range.linewise, true, false, null, false, range.from);
+      }
+      case "C-v": case "C-q": {
+        // Paste the system clipboard OVER the selection — what the native key does, and
+        // what vim's visual `p` does. Plain text only: the flat model has no markup.
+        // Measured against vim 9.2: a LINEWISE register replaces the selected lines with
+        // theirs (`yy` then `jVp` doubles the line), while a CHARWISE one replaces the
+        // lines' CONTENTS and keeps the break (`yl` then `jVp` gives "a1\na\n").
+        const reg = this.registers.read("+");
+        if (!reg || reg.text === "") {
+          this.onStatus("system clipboard unavailable in this host", "error");
+          return { handled: true };
+        }
+        const t = this.text;
+        const from = range.from;
+        const to = range.to;
+        const keepFrom = reg.linewise ? to : Math.max(from, to - 1);
+        const insert = reg.linewise ? reg.text + "\n" : reg.text;
+        this._pushUndo({ text: t, cursor: this.state.cursor });
+        this._setText(t.slice(0, from) + insert + t.slice(keepFrom));
+        this.mode = Mode.NORMAL;
+        this.visual = null;
+        this.pending = this._emptyPending();
+        this.state.cursor = Math.max(0, from + insert.length - 1);
+        this._noteChange({ kind: "put", count: 1 });
+        return { handled: true, edit: true };
+      }
+      default: return { handled: true };
+    }
   }
 
   /** Text of the current visual selection (for Ctrl-C). */

@@ -253,6 +253,36 @@ export function setSelectionRange(el, start, end) {
   sel.addRange(range);
 }
 
+/**
+ * Show the engine's selection in the host, direction included.
+ *
+ * Deliberately NOT `setSelectionRange` above: that one is the EDIT primitive (`deleteRange`
+ * uses it, and its ordered `addRange` is what stops an atomic chip from being
+ * half-deleted). This one is only for painting, so it must be able to say which end is the
+ * head — `o` and a leftward drag put the head BEFORE the anchor, and only
+ * `setBaseAndExtent` can express that.
+ */
+export function projectRange(el, anchorFlat, focusFlat) {
+  const a = selectionFromFlatOffset(el, anchorFlat);
+  const f = selectionFromFlatOffset(el, focusFlat);
+  const sel = window.getSelection();
+  if (!sel) return;
+  if (typeof sel.setBaseAndExtent === "function") {
+    try {
+      sel.setBaseAndExtent(a.node, a.offset, f.node, f.offset);
+      return;
+    } catch { /* a host that refuses the node pair: fall through to an ordered range */ }
+  }
+  // No direction on this host: the span is still right, only the head is implied.
+  const lo = selectionFromFlatOffset(el, Math.min(anchorFlat, focusFlat));
+  const hi = selectionFromFlatOffset(el, Math.max(anchorFlat, focusFlat));
+  const range = document.createRange();
+  range.setStart(lo.node, lo.offset);
+  range.setEnd(hi.node, hi.offset);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 function execCmd(cmd, value) {
   try {
     return document.execCommand(cmd, false, value);

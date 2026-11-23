@@ -22,10 +22,10 @@ import { fromField } from "../engine/buffer.js";
 import { BlockCaret } from "./caret.js";
 import { SelectionHighlight } from "./highlight.js";
 import { attachSession } from "./session.js";
-import { tokenFor } from "./keys.js";
+import { tokenFor, shiftMotionFor } from "./keys.js";
 import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import {
-  getFlatText, flatOffsetAt, flatOffsetFromSelection, setCursorAt,
+  getFlatText, flatOffsetAt, flatOffsetFromSelection, setCursorAt, projectRange,
   deleteRange, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
 } from "./contenteditable-dom.js";
 
@@ -85,7 +85,11 @@ export class ContenteditableAdapter {
     // puts the markup back instead. Same idea as Input Vim's innerHTML undo stack,
     // scoped to what we need: the states we have actually seen.
     this._snaps = [];
-    this._expectedOffset = null;
+    // What we last asked the host selection to be (a range in visual mode).
+    this._expectedSel = null;
+    // Projection health (see textarea.js): bounded re-assertion, then paint it ourselves.
+    this._reasserts = [];
+    this._projectionOff = false;
     this._mouseDown = false;
     this._beforeClick = null;
     this._typing = false;
@@ -101,6 +105,11 @@ export class ContenteditableAdapter {
       mouseup: (e) => this._onMouseUp(e),
       mousedown: (e) => this._onMouseDown(e),
       selectionchange: () => this._onSelectionChange(),
+      // See textarea.js: a drag inside the projected range would MOVE TEXT, outside the
+      // engine's undo. In visual mode a drag means "adjust the selection", never "move".
+      dragstart: (e) => {
+        if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) e.preventDefault();
+      },
       contextmenu: (e) => this._onContextMenu(e),
       blur: () => this._onBlur(),
       focus: () => this._onFocus(),
@@ -114,6 +123,7 @@ export class ContenteditableAdapter {
     if (!opts.keysDispatchedByHost) window.addEventListener("keydown", this._bound.keydown, true);
     el.addEventListener("input", this._bound.input);
     el.addEventListener("contextmenu", this._bound.contextmenu);
+    el.addEventListener("dragstart", this._bound.dragstart);
     el.addEventListener("blur", this._bound.blur);
     el.addEventListener("focus", this._bound.focus);
     el.addEventListener("scroll", this._bound.scroll);
@@ -181,11 +191,25 @@ export class ContenteditableAdapter {
   }
 
   syncFromHost() {
+    const before = this.engine.hostText;
     const text = getFlatText(this.el);
     const offset = flatOffsetFromSelection(this.el);
     this.engine.applyHostEdit(fromField(text), offset);
+    this._afterHostEdit(before);
     if (this.engine.hostText !== text) this._commit();
     else { this._lastText = text; this._updateCaret(); }
+  }
+
+  /**
+   * A host edit that changes the text invalidates a visual selection's anchor. Native Cut
+   * and Paste are host edits, which is the accepted cost of letting the browser do them.
+   */
+  _afterHostEdit(before) {
+    if (this.engine.hostText === before) return;
+    if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) {
+      this.engine.mode = Mode.NORMAL;
+      this.engine.visual = null;
+    }
   }
 
   _onInput() {
@@ -212,10 +236,12 @@ export class ContenteditableAdapter {
     if (this.engine.prompt || this._mouseDown) return;
     const sel = this._selection();
     if (!sel) return;
+    if (this._isEcho(sel)) return;
 
     if (sel.collapsed) {
-      if (sel.focus === this._expectedOffset) return;    // our own write echoing back
-      this._expectedOffset = null;
+      // Collapsed while the engine is in charwise visual: our range was taken away.
+      // Put it back, bounded (see textarea.js for why this is not a loop).
+      if (this.engine.mode === Mode.VISUAL && !this._projectionOff) { this._reassert(); return; }
       if (this.engine.mode === Mode.INSERT) {
         // While inserting, the host's insertion point IS the model.
         this.engine.setText(fromField(getFlatText(this.el)), sel.focus);
@@ -228,8 +254,9 @@ export class ContenteditableAdapter {
       return;
     }
 
-    // A selection the host makes IS visual mode — same rule as the textarea adapter,
-    // so a mouse drag or Shift+arrow means the same thing in both.
+    // A selection the host makes IS visual mode — same rule as the textarea adapter, in
+    // every mode: a mouse drag, Shift+arrow, Ctrl-A. The range's own direction decides
+    // which end is the head.
     const [anchor, head] = sel.anchor <= sel.focus
       ? [sel.anchor, sel.focus - 1]
       : [sel.anchor - 1, sel.focus];
@@ -239,10 +266,45 @@ export class ContenteditableAdapter {
     this._emitMode();
   }
 
+  /** Is this event the echo of a selection write we just did? */
+  _isEcho(sel) {
+    const e = this._expectedSel;
+    if (!e) return false;
+    return sel.anchor === e.anchor && sel.focus === e.focus;
+  }
+
+  /** The host took our visual range away — put the engine's back, bounded. */
+  _reassert() {
+    const now = Date.now();
+    this._reasserts = this._reasserts.filter((t) => now - t < 500);
+    this._reasserts.push(now);
+    if (this._reasserts.length > 3) {
+      this._projectionOff = true;
+      this.onStatus?.("this host keeps clearing the selection; painting it ourselves", "error");
+      this._writeSelection();
+      this._updateCaret();
+      return;
+    }
+    this._project();
+    this._updateCaret();
+  }
+
+  /**
+   * The flat offset under a viewport point, or null when the point is elsewhere. Same
+   * reason as the textarea adapter: with a range projected, the browser's shift+click
+   * moves the other end from the one vim moves, so the click must come from the pointer.
+   */
+  _offsetAtPoint(x, y) {
+    const pos = document.caretPositionFromPoint?.(x, y);
+    if (!pos || !this.el.contains(pos.offsetNode)) return null;
+    return Math.max(0, flatOffsetAt(this.el, pos.offsetNode, pos.offset));
+  }
+
   _onMouseDown(e) {
     const target = e.composedPath?.()[0] ?? e.target;
     if (!(target === this.el || this.el.contains(target))) return;
     this._mouseDown = true;
+    this._pressPoint = { x: e.clientX, y: e.clientY };
     this._beforeClick = {
       cursor: this.engine.cursor,
       mode: this.engine.mode,
@@ -260,27 +322,38 @@ export class ContenteditableAdapter {
       if (document.activeElement !== this.el || this.engine.prompt) return;
       const sel = this._selection();
       if (!sel) return;
+      // See textarea.js: a drag can read as collapsed for one task after `mouseup`.
+      const moved = this._pressPoint
+        && (Math.abs(e.clientX - this._pressPoint.x) > 2 || Math.abs(e.clientY - this._pressPoint.y) > 2);
+      if (moved && sel.collapsed && (this._dragRetry = (this._dragRetry || 0) + 1) < 4) {
+        setTimeout(() => this._onMouseUp(e), 0);
+        return;
+      }
+      this._dragRetry = 0;
       this._lastText = getFlatText(this.el);
       const before = this._beforeClick;
 
-      if (this.engine.mode === Mode.INSERT) {
+      if (this.engine.mode === Mode.INSERT && sel.collapsed) {
+        // A click while inserting: the host's insertion point is the model. A drag is a
+        // selection, and a selection means visual mode in every mode.
         this.engine.setText(fromField(this._lastText), sel.focus);
         this._emitMode();
         return;
       }
       if (e.button === 2 && before && (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE)) {
         this.engine.extendVisualToClick(sel.focus, before.anchor, before.cursor);
-      } else if (e.shiftKey && sel.collapsed && before) {
-        if (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE) {
-          this.engine.extendVisualToClick(sel.focus, before.anchor, before.cursor);
-        } else {
-          this.engine.enterVisualFromHost(before.cursor, sel.focus);
-        }
+      } else if (e.shiftKey && before && (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE)) {
+        // See textarea.js: with a projected range the browser extends from its own anchor,
+        // so the vim rule needs the click resolved from the POINTER.
+        const click = this._offsetAtPoint(e.clientX, e.clientY);
+        this.engine.extendVisualToClick(click ?? sel.focus, before.anchor, before.cursor);
       } else if (!sel.collapsed) {
-        const [anchor, head] = sel.anchor <= sel.focus
+        // A drag is adopted from the host's range; the press decides where it is anchored
+        // (see textarea.js — a browser drag restarts even from inside the selection).
+        const [a, h] = sel.anchor <= sel.focus
           ? [sel.anchor, sel.focus - 1]
           : [sel.anchor - 1, sel.focus];
-        this.engine.enterVisualFromHost(anchor, head);
+        this.engine.enterVisualFromHost(a, h);
       } else {
         // A bare click ends visual mode (vim's rule, mouse.c:769).
         if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) {
@@ -308,6 +381,10 @@ export class ContenteditableAdapter {
     this._returnMode = modeToReturn(this.engine);
     if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
     this.engine.reset();
+    // A blurred composer must not keep a selection no mode owns. Dropping the ranges
+    // rather than writing a caret: `setCursorAt` REFOCUSES a contenteditable in Chromium
+    // (measured — the focus handler then restored INSERT and the blur never happened).
+    try { window.getSelection()?.removeAllRanges(); } catch { /* nothing selected */ }
     this.caret?.hide();
     this.highlight.clear();
     this.onModeChange?.(this.engine.mode, "");
@@ -333,20 +410,10 @@ export class ContenteditableAdapter {
       this.onKeyConsumed?.("composing");
       return;
     }
-    const key = tokenFor(e, this.engine.mode);
+    // See textarea.js: Shift+caret is the host's everywhere except VISUAL LINE, which has
+    // no native selection to extend.
+    const key = shiftMotionFor(e, this.engine.mode) ?? tokenFor(e, this.engine.mode);
     if (key == null) return;
-
-    if (key === "C-c") {
-      const text = this.engine.visualText();
-      if (text) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        if (this.clipboard) this.clipboard.write(text);
-        else navigator.clipboard?.writeText(text).catch(() => {});
-        this.onStatus?.(`copied ${text.length} chars`);
-        return;
-      }
-    }
 
     const r = this.engine.feed(key);
     this._emitMode();
@@ -476,7 +543,8 @@ export class ContenteditableAdapter {
       }
       this._remember(prev, html);
     }
-    this._writeSelection();
+    // AFTER the DOM writes above, which drop the range.
+    this._project();
     this._updateCaret();
   }
 
@@ -527,14 +595,32 @@ export class ContenteditableAdapter {
   /** Collapse the native selection onto the engine cursor, remembering that we did. */
   _writeSelection() {
     const offset = Math.min(this.engine.cursor, getFlatText(this.el).length);
+    this._expectedSel = { anchor: offset, focus: offset };
     const current = flatOffsetFromSelection(this.el);
     const sel = window.getSelection();
-    if (sel?.isCollapsed && current === offset && document.activeElement === this.el) {
-      this._expectedOffset = offset;
-      return;
-    }
+    if (sel?.isCollapsed && current === offset && document.activeElement === this.el) return;
     setCursorAt(this.el, offset);
-    this._expectedOffset = offset;
+  }
+
+  /**
+   * Put the engine's selection into the host: the visual range in charwise visual, a caret
+   * everywhere else. The host's two ends are the anchor and the focus, and the focus is
+   * always on the HEAD side, which is where the direction comes from. VISUAL LINE stays
+   * collapsed on purpose — its look is a full-width bar, which is the overlay's job.
+   */
+  _project() {
+    const sel = this._projectionOff ? null : this.engine.visualSelection();
+    if (!sel || this.engine.mode !== Mode.VISUAL) { this._writeSelection(); return; }
+    const flat = getFlatText(this.el).length;
+    const from = Math.max(0, Math.min(sel.from, flat));
+    const to = Math.max(from, Math.min(sel.to, flat));
+    const backward = this.engine.visual.anchor > this.engine.cursor;
+    const anchor = backward ? to : from;
+    const focus = backward ? from : to;
+    this._expectedSel = { anchor, focus };
+    const cur = this._selection();
+    if (cur && !cur.collapsed && cur.anchor === anchor && cur.focus === focus) return;
+    projectRange(this.el, anchor, focus);
   }
 
   _emitMode() {
@@ -562,9 +648,12 @@ export class ContenteditableAdapter {
     const linewise = this.engine.mode === Mode.VISUAL_LINE;
     this._scrollToCaret();
     this.caret?.update(this.engine.cursor, { linewise, rect: caretRect(this.el, this.engine.cursor) });
+    // The browser paints charwise visual now; we paint the linewise bar, and everything
+    // when this field has fallen back off the projection.
     const sel = this.engine.visualSelection();
-    if (sel) this.highlight.paint(rangeRects(this.el, sel.from, sel.to, { linewise }));
-    else this.highlight.clear();
+    if (sel && (sel.linewise || this._projectionOff)) {
+      this.highlight.paint(rangeRects(this.el, sel.from, sel.to, { linewise }));
+    } else this.highlight.clear();
   }
 
   /** Bring the cursor back into the host's viewport, like vim never letting it leave. */

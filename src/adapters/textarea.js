@@ -25,7 +25,7 @@ import * as B from "../engine/buffer.js";
 import { fromField } from "../engine/buffer.js";
 import { BlockCaret } from "./caret.js";
 import { attachSession } from "./session.js";
-import { tokenFor } from "./keys.js";
+import { tokenFor, shiftMotionFor } from "./keys.js";
 import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import { SelectionHighlight } from "./highlight.js";
 
@@ -63,10 +63,15 @@ export class TextareaAdapter {
     // A hairline caret is invisible as a vi cursor: normal/visual get a block.
     this.caret = opts.caret === false ? null : new BlockCaret(el, { enabled: opts.caret !== false });
     this.highlight = new SelectionHighlight(el);
-    // Set while we are writing the selection ourselves: a `selectionchange` event
-    // cannot tell our own write from the user moving the caret, so we record the
-    // caret we asked for and ignore the echo.
-    this._expectedCaret = null;
+    // Set while we are writing the selection ourselves: a `selectionchange` event cannot
+    // tell our own write from the user moving the caret, so we record what we asked for
+    // and ignore the echo. A RANGE in visual mode, a caret everywhere else.
+    this._expectedSel = null;
+    // Projection health. A host that keeps clearing the range gets it put back, and after
+    // a bounded number of attempts in a short window this field falls back to painting the
+    // selection itself — the behaviour from before the projection existed.
+    this._reasserts = [];
+    this._projectionOff = false;
     this._mouseDown = false;
     this._beforeClick = null;
     // The mode to come back in after a blur (see focus-mode.js).
@@ -75,8 +80,21 @@ export class TextareaAdapter {
       keydown: (e) => this._onKeydown(e),
       input: () => this.syncFromHost(),
       mouseup: (e) => this._onMouseUp(e),
+      // A press INSIDE the projected range is a drag-and-drop candidate in Chromium, and
+      // a drag in visual mode must never MOVE TEXT: vim has no such gesture, and the move
+      // happens outside the engine's undo (measured: "al" was relocated by a drag that
+      // began inside the selection). Adjusting a visual selection with the mouse is the
+      // gesture we want; a text move is not.
+      dragstart: (e) => {
+        if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) e.preventDefault();
+      },
       contextmenu: (e) => this._onContextMenu(e),
-      mousedown: (e) => { if (this.el.contains(e.target)) { this._mouseDown = true; this._rememberBeforeClick(); } },
+      mousedown: (e) => {
+        if (!this.el.contains(e.target)) return;
+        this._mouseDown = true;
+        this._pressPoint = { x: e.clientX, y: e.clientY };
+        this._rememberBeforeClick();
+      },
       selectionchange: () => this._onSelectionChange(),
       // Only the focused field may show a caret or a highlight: two fields on one
       // page must not both look active.
@@ -95,6 +113,9 @@ export class TextareaAdapter {
         this._returnMode = modeToReturn(this.engine);
         if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
         this.engine.reset();
+        // Whatever the host still has selected is no longer ours: collapse it, or a
+        // blurred field keeps a highlight no mode owns.
+        this._project();
         this.caret?.hide();
         this.highlight.clear();
         this.onModeChange?.(this.engine.mode, "");
@@ -122,6 +143,7 @@ export class TextareaAdapter {
     el.addEventListener("focus", this._bound.focus);
     el.addEventListener("scroll", this._bound.scroll);
     el.addEventListener("contextmenu", this._bound.contextmenu);
+    el.addEventListener("dragstart", this._bound.dragstart);
     // Capture phase, on the document, like Input Vim: the caret has already moved
     // by the time these fire, and a host page may stop propagation lower down.
     document.addEventListener("mouseup", this._bound.mouseup, true);
@@ -282,9 +304,24 @@ export class TextareaAdapter {
     // browser overwrote, so the field can differ from what the host typed.
     // fromField: a field value ending in a newline has an EMPTY LAST LINE, which
     // the buffer's line-terminated model only sees if one more newline follows.
+    const before = this.engine.hostText;
     this.engine.applyHostEdit(fromField(this.el.value), this.el.selectionStart ?? 0);
+    this._afterHostEdit(before);
     if (this.engine.hostText !== this.el.value) this._commit();
     else this._updateCaret();
+  }
+
+  /**
+   * A host edit that changes the text invalidates a visual selection's anchor: the range
+   * it was measured from is gone. Native Cut and Paste are host edits, which is the
+   * accepted cost of letting the browser perform them.
+   */
+  _afterHostEdit(before) {
+    if (this.engine.hostText === before) return;
+    if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) {
+      this.engine.mode = Mode.NORMAL;
+      this.engine.visual = null;
+    }
   }
 
   /**
@@ -299,20 +336,29 @@ export class TextareaAdapter {
     if (this.engine.prompt) return;
     const start = this.el.selectionStart ?? 0;
     const end = this.el.selectionEnd ?? start;
-    if (start === this._expectedCaret && end === this._expectedCaret) return; // our own write
+    if (this._isEcho(start, end, this.el.selectionDirection || "forward")) return;
+
     if (start !== end) {
-      // A live drag owns the selection until it is released: collapsing it now
-      // would break the drag. Everything else (Shift+arrow, a selection made by
-      // the page) is adopted immediately.
+      // A live drag owns the selection until it is released: collapsing it now would
+      // break the drag. Everything else (Shift+arrow, Ctrl-A, a selection the page
+      // makes) is a visual selection — in EVERY mode, insert included: the host's
+      // selection gesture is what starts visual mode.
       if (this._mouseDown) return;
       const sel = this._selectionFromHost(start, end);
       this.engine.enterVisualFromHost(sel.anchor, sel.head);
-      // Collapse the host selection and let the overlay paint it, so exactly one
-      // of the two is ever visible.
       this._commit();
       this._emitMode();
       return;
     }
+
+    // Collapsed while the engine is in charwise visual: our range was taken away (a
+    // framework rewrite, another script). Put it back — bounded, so a host that keeps
+    // doing it degrades instead of fighting forever.
+    if (this.engine.mode === Mode.VISUAL && !this._projectionOff) {
+      this._reassert();
+      return;
+    }
+
     if (this.engine.mode === Mode.INSERT) {
       // While inserting the host's insertion point IS the model.
       this.engine.setText(fromField(this.el.value), start);
@@ -322,6 +368,36 @@ export class TextareaAdapter {
     this.engine.setCursorFromHost(start);
     this._writeSelection();
     if (this.engine.cursor !== before) this._updateCaret();
+  }
+
+  /** Is this event the echo of a selection write we just did? */
+  _isEcho(start, end, dir) {
+    const e = this._expectedSel;
+    if (!e) return false;
+    if (start !== e.start || end !== e.end) return false;
+    // A collapsed range has no direction (the browser normalises it to "forward").
+    if (start !== end && dir !== e.dir) return false;
+    return true;
+  }
+
+  /**
+   * The host took our visual range away. Put the engine's range back, and give up after a
+   * bounded burst: a field whose host rewrites the selection on every event would
+   * otherwise ping-pong forever.
+   */
+  _reassert() {
+    const now = Date.now();
+    this._reasserts = this._reasserts.filter((t) => now - t < 500);
+    this._reasserts.push(now);
+    if (this._reasserts.length > 3) {
+      this._projectionOff = true;
+      this.onStatus?.("this host keeps clearing the selection; painting it ourselves", "error");
+      this._writeSelection();
+      this._updateCaret();
+      return;
+    }
+    this._project();
+    this._updateCaret();
   }
 
   /**
@@ -339,7 +415,22 @@ export class TextareaAdapter {
       if (this.engine.prompt) return;
       const start = this.el.selectionStart ?? 0;
       const end = this.el.selectionEnd ?? start;
-      if (this.engine.mode === Mode.INSERT) {
+      // A drag whose extension Chrome has not applied yet reads as a collapsed caret on
+      // the first task after `mouseup` (measured: it lands a task later). Retry, bounded,
+      // rather than deciding "that was a click" and ending visual mode on a drag.
+      const moved = this._pressPoint
+        && (Math.abs(e.clientX - this._pressPoint.x) > 2 || Math.abs(e.clientY - this._pressPoint.y) > 2);
+      if (moved && start === end && (this._dragRetry = (this._dragRetry || 0) + 1) < 4) {
+        setTimeout(() => this._onMouseUp(e), 0);
+        return;
+      }
+      this._dragRetry = 0;
+      // The click's OWN character, from the pointer rather than from the selection.
+      const click = this._offsetAtPoint(e.clientX, e.clientY);
+      if (this.engine.mode === Mode.INSERT && start === end) {
+        // A click while inserting: the host's insertion point is the model. A DRAG is a
+        // selection, and a selection means visual mode in every mode (vim does the same:
+        // State & MODE_INSERT + drag + 'mouse' has 'v' → MOUSE_MAY_VIS).
         this.engine.setText(this.el.value, start);
         this._emitMode();
         return;
@@ -352,26 +443,31 @@ export class TextareaAdapter {
       // the caret, and _onSelectionChange synced the model.
       if (e.button === 2) {
         if (before && (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE)) {
-          this.engine.extendVisualToClick(start, before.anchor, before.cursor);
+          this.engine.extendVisualToClick(click ?? start, before.anchor, before.cursor);
         } else {
-          this.engine.setCursorFromHost(start);
+          this.engine.setCursorFromHost(click ?? start);
         }
         this._commit();
         this._emitMode();
         return;
       }
-      // Shift+click: the same adjustment, plus it can start a selection.
-      if (e.shiftKey && start === end && before) {
-        if (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE) {
-          this.engine.extendVisualToClick(start, before.anchor, before.cursor);
-        } else {
-          this.engine.enterVisualFromHost(before.cursor, start);
-        }
+      // Shift+click INSIDE visual mode is vim's adjustment: the click moves the near
+      // boundary. It can no longer be gated on a collapsed native selection — with the
+      // range projected the browser has an anchor of its own to extend from, so it moves
+      // the other end and the vim rule would never be reached.
+      // In NORMAL a shift+click is the browser's own "select from the caret" gesture,
+      // which the adoption branch below already turns into visual mode.
+      if (e.shiftKey && before && (before.mode === Mode.VISUAL || before.mode === Mode.VISUAL_LINE)) {
+        this.engine.extendVisualToClick(click ?? start, before.anchor, before.cursor);
         this._commit();
         this._emitMode();
         return;
       }
       if (start !== end) {
+        // A drag is adopted from the host's own range. The press decides where the new
+        // selection is anchored — a browser drag always starts a fresh one, even when it
+        // begins inside the current selection, where vim would keep the anchor (recorded
+        // as a known deviation in docs/DECISIONS.md).
         const sel = this._selectionFromHost(start, end);
         this.engine.enterVisualFromHost(sel.anchor, sel.head);
       } else {
@@ -384,11 +480,25 @@ export class TextareaAdapter {
           this.engine.mode = Mode.NORMAL;
           this.engine.visual = null;
         }
-        this.engine.setCursorFromHost(start);
+        this.engine.setCursorFromHost(click ?? start);
       }
       this._commit();
       this._emitMode();
     }, 0);
+  }
+
+  /**
+   * The character offset under a viewport point, or null when the point is elsewhere.
+   *
+   * Once a visual range is projected, the browser's own shift+click and right click move
+   * the other end from the one vim moves — so "where did the user click" cannot be read
+   * off the selection any more. In a textarea `caretPositionFromPoint` answers it with the
+   * character offset directly.
+   */
+  _offsetAtPoint(x, y) {
+    const pos = document.caretPositionFromPoint?.(x, y);
+    if (!pos || pos.offsetNode !== this.el) return null;
+    return Math.max(0, Math.min(pos.offset, Math.max(0, this.el.value.length - 1)));
   }
 
   /**
@@ -426,12 +536,34 @@ export class TextareaAdapter {
     };
   }
 
-  /** Write the engine cursor back to the host caret, remembering that we did. */
+  /** Collapse the host selection onto the engine cursor, remembering that we did. */
   _writeSelection() {
     const c = Math.min(this.engine.cursor, this.el.value.length);
+    this._expectedSel = { start: c, end: c, dir: "forward" };
     if (this.el.selectionStart === c && this.el.selectionEnd === c) return;
-    this._expectedCaret = c;
     this.el.setSelectionRange(c, c);
+  }
+
+  /**
+   * Put the ENGINE's selection into the field: the visual range in charwise visual, a
+   * caret everywhere else. One writer — every command, every mode change and every host
+   * sync goes through it — which is what keeps "exactly one of the two is painted" true
+   * now that the browser is the painter in visual mode.
+   *
+   * VISUAL LINE deliberately stays collapsed: a native selection paints the glyphs only,
+   * and the linewise look is a full-width bar, which is the overlay's job.
+   */
+  _project() {
+    const sel = this._projectionOff ? null : this.engine.visualSelection();
+    if (!sel || this.engine.mode !== Mode.VISUAL) { this._writeSelection(); return; }
+    const len = this.el.value.length;
+    const from = Math.max(0, Math.min(sel.from, len));
+    const to = Math.max(from, Math.min(sel.to, len));
+    const dir = this.engine.visual.anchor > this.engine.cursor ? "backward" : "forward";
+    this._expectedSel = { start: from, end: to, dir };
+    if (this.el.selectionStart === from && this.el.selectionEnd === to && this.el.selectionDirection === dir) return;
+    // A range that ends at the buffer's own terminator has nothing after it in the host.
+    this.el.setSelectionRange(from, to, dir);
   }
 
   _emitMode() {
@@ -459,9 +591,12 @@ export class TextareaAdapter {
     // blinking) outside the field whenever the caret was scrolled away.
     const rect = this.caret ? this._scrollToCaret(this.caret.measure(this.engine.cursor)) : null;
     this.caret?.update(this.engine.cursor, { linewise, rect });
+    // The browser paints charwise visual now, so we paint only what it cannot: the
+    // linewise bar, and everything when this field has fallen back off the projection.
     const sel = this.engine.visualSelection();
-    if (sel) this.highlight.update(sel.from, sel.to, this.engine.text, { linewise: sel.linewise });
-    else this.highlight.clear();
+    if (sel && (sel.linewise || this._projectionOff)) {
+      this.highlight.update(sel.from, sel.to, this.engine.text, { linewise: sel.linewise });
+    } else this.highlight.clear();
   }
 
   _onKeydown(e) {
@@ -478,20 +613,11 @@ export class TextareaAdapter {
       this.onKeyConsumed?.("composing");
       return;
     }
-    const key = this._token(e);
+    // Shift+caret is the host's in every mode (docs/DECISIONS.md) — except in VISUAL
+    // LINE, which has no native selection to extend, where those six keys are the
+    // engine's own motions so the selection stays linewise.
+    const key = shiftMotionFor(e, this.engine.mode) ?? this._token(e);
     if (key == null) return;
-
-    if (key === "C-c") {
-      const text = this.engine.visualText();
-      if (text) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.clipboard) this.clipboard.write(text);
-        else navigator.clipboard?.writeText(text).catch(() => {});
-        this.onStatus?.(`copied ${text.length} chars`);
-        return;
-      }
-    }
 
     const r = this.engine.feed(key);
     this._emitMode();
@@ -598,11 +724,9 @@ export class TextareaAdapter {
     // field would append a phantom line on every command.
     const host = this.engine.hostText;
     if (this.el.value !== host) this.el.value = host;
-    // The overlay paints the selection; the native selection stays collapsed so
-    // the two never double-paint (and the OS highlight is too weak to rely on).
-    const c = Math.min(this.engine.cursor, this.el.value.length);
-    this._expectedCaret = c;
-    this.el.setSelectionRange(c, c);
+    // AFTER the value write, which would otherwise drop the range: the projection is the
+    // only thing that puts a selection into the field.
+    this._project();
     this._updateCaret();
   }
 

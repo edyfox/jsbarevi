@@ -982,5 +982,84 @@ console.log("\n\x1b[1mtheme detection (adapters/theme.js)\x1b[0m");
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// The native-shortcut contract: refused, delegated, or simulated.
+// ---------------------------------------------------------------------------
+console.log("\n\x1b[1mnative shortcuts: refused, delegated, or simulated\x1b[0m");
+{
+  const msgs = [];
+  const e = mk("alpha beta\n", 0, { onStatus: (m, k) => msgs.push([m, k]) });
+  e.feed("C-v");
+  eq("Ctrl-V in NORMAL is refused, not pasted", msgs.at(-1), ["block visual: not implemented", "error"]);
+  e.feed("C-q");
+  eq("Ctrl-Q (vim's alias) gets the same refusal", msgs.at(-1), ["block visual: not implemented", "error"]);
+  eq("...and neither touched the text", e.text, "alpha beta\n");
+}
+{
+  const msgs = [];
+  const e = mk("alpha beta\n", 0, { onStatus: (m, k) => msgs.push([m, k]) });
+  for (const k of ["q", "@", "Q"]) {
+    e.feed(k);
+    eq(`${k} is refused as a macro`, msgs.at(-1), ["macros: not implemented", "error"]);
+  }
+}
+{
+  // Charwise visual delegates to the browser: the adapter must NOT consume these.
+  const e = mk("alpha beta\n", 0);
+  e.feed("v");
+  for (const k of ["C-a", "C-x", "C-v", "C-c"]) {
+    eq(`${k} is the browser's in charwise visual`, e.feed(k).handled, false);
+  }
+}
+{
+  // VISUAL LINE has no native selection to act on, so the same keys are simulated.
+  const writes = [];
+  const e = mk("a1\nb2\nc3\n", 0, { clipboard: { read: () => null, write: (t) => writes.push(t) } });
+  e.feed("V"); e.feed("C-a");
+  eq("Ctrl-A in VISUAL LINE selects every line", e.visualText(), "a1\nb2\nc3\n");
+  eq("...and stays linewise", e.mode, Mode.VISUAL_LINE);
+}
+{
+  const writes = [];
+  const e = mk("a1\nb2\nc3\n", 0, { clipboard: { read: () => null, write: (t) => writes.push(t) } });
+  e.feed("V"); e.feed("C-c");
+  eq("Ctrl-C in VISUAL LINE copies the line with its break", writes.at(-1), "a1\n");
+  eq("...and leaves the text alone", e.text, "a1\nb2\nc3\n");
+}
+{
+  const writes = [];
+  const e = mk("a1\nb2\nc3\n", 0, { clipboard: { read: () => null, write: (t) => writes.push(t) } });
+  e.feed("V"); e.feed("C-x");
+  eq("Ctrl-X in VISUAL LINE cuts the line out", e.text, "b2\nc3\n");
+  eq("...onto the clipboard", writes.at(-1), "a1\n");
+  eq("...and leaves visual mode", e.mode, Mode.NORMAL);
+}
+{
+  const e = mk("a1\nb2\n", 0, { clipboard: { read: () => "ZZ", write: () => {} } });
+  e.feed("V"); e.feed("C-v");
+  eq("Ctrl-V in VISUAL LINE pastes over the selected line", e.text, "ZZ\nb2\n");
+}
+{
+  // The Insert key's own cycle: normal -> insert -> replace -> insert.
+  const e = mk("ab\n", 0);
+  e.feed("Insert");
+  eq("Insert in normal mode enters insert", e.mode, Mode.INSERT);
+  eq("...with no replace session", e.replaceSession, null);
+  e.feed("Insert");
+  eq("Insert in insert mode starts replace", typeof e.replaceSession, "object");
+  e.feed("Insert");
+  eq("Insert again returns to plain insert", e.replaceSession, null);
+  eq("...still inserting", e.mode, Mode.INSERT);
+}
+{
+  const { shiftMotionFor } = await import("../src/adapters/keys.js");
+  const ev = (key) => ({ key, shiftKey: true, altKey: false, ctrlKey: false, metaKey: false });
+  eq("shift+Down in VISUAL LINE is the engine's j", shiftMotionFor(ev("ArrowDown"), Mode.VISUAL_LINE), "j");
+  eq("shift+End in VISUAL LINE is g$", shiftMotionFor(ev("End"), Mode.VISUAL_LINE), "g$");
+  eq("...and in charwise visual it stays the host's", shiftMotionFor(ev("ArrowDown"), Mode.VISUAL), null);
+  eq("...as it does in normal mode", shiftMotionFor(ev("ArrowDown"), Mode.NORMAL), null);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

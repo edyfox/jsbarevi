@@ -291,6 +291,7 @@ async function main() {
     check("native caret returns in insert mode", await evaluate(session, "getComputedStyle(document.getElementById('field')).caretColor"), "rgb(238, 238, 238)");
     await sendKey(session, "Escape");
 
+    const domSel = () => evaluate(session, `(() => { const el = document.getElementById('field'); return { start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection }; })()`);
     // --- visual mode must PAINT a highlight, not just hold a range --------
     await typeKeys(session, "gg");
     const boxes = () => evaluate(session, `(() => {
@@ -308,22 +309,30 @@ async function main() {
     })()`);
     const plain = await pixelAt(session, box.x, box.y);
     await typeKeys(session, "v");
-    const one = await boxes();
-    check("v repaints a visible highlight box", one.length >= 1 && one[0].w > 0 && one[0].h > 8, true);
+    const afterV = await domSel();
+    check("v projects the range onto the NATIVE selection", [afterV.start, afterV.end], [0, 1]);
+    check("...with a forward direction", afterV.dir, "forward");
+    check("...and paints no overlay of its own", (await boxes()).length, 0);
     const highlighted = await pixelAt(session, box.x, box.y);
-    check("the highlight pixel is not the background any more", JSON.stringify(highlighted) !== JSON.stringify(plain), true);
-    const widthOne = one[0].w;
+    check("the native selection is not the background any more", JSON.stringify(highlighted) !== JSON.stringify(plain), true);
     await typeKeys(session, "lll");
-    const four = await boxes();
-    check("the highlight grows with the selection", four[0].w > widthOne, true);
+    const grown = await domSel();
+    check("the native selection grows with the selection", [grown.start, grown.end], [0, 4]);
     await typeKeys(session, "j");
-    check("the highlight follows across lines", (await boxes()).length >= 2, true);
+    const across = await domSel();
+    check("the native range spans exactly what the engine selects",
+      across.end - across.start,
+      (await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()")).length);
     await sendKey(session, "Escape");
-    check("Esc clears the highlight", (await boxes()).length, 0);
+    const afterEsc = await domSel();
+    check("Esc collapses it", afterEsc.start === afterEsc.end, true);
+    check("...and leaves no overlay behind", (await boxes()).length, 0);
 
     await typeKeys(session, "V");
     const lineBoxes = await boxes();
-    check("V highlights the whole line", lineBoxes.length >= 1 && lineBoxes[0].w >= 300, true);
+    check("V still paints the full-width bar", lineBoxes.length >= 1 && lineBoxes[0].w >= 300, true);
+    const vSel = await domSel();
+    check("...and keeps the native selection collapsed (the look is ours)", vSel.start === vSel.end, true);
     await typeKeys(session, "j");
     check("V extends to a second line", (await boxes()).length >= 2, true);
     await sendKey(session, "Escape");
@@ -449,7 +458,6 @@ async function main() {
       await session.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, button: "left", buttons: 0, clickCount: 1 });
       await sleep(80);
     };
-    const domSel = () => evaluate(session, `(() => { const el = document.getElementById('field'); return { start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection }; })()`);
 
     console.log("\n\x1b[1mcaret keys own the model outside insert mode\x1b[0m");
     await resetField();
@@ -518,8 +526,8 @@ async function main() {
     check("the head is the live end of the drag", await evaluate(session, "window.jsbarevi.textarea.engine.cursor"), 9);
     check("the engine's selection is the dragged text", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "beta");
     const afterDrag = await domSel();
-    check("the host selection is collapsed again, so only the overlay paints", afterDrag.start === afterDrag.end, true);
-    check("the overlay is painting the drag", await evaluate(session, `[...document.querySelectorAll('.jsbarevi-sel')].filter(n => getComputedStyle(n).display !== 'none').length > 0`), true);
+    check("the host selection IS the dragged range", [afterDrag.start, afterDrag.end], [6, 10]);
+    check("...and no overlay doubles it", (await boxes()).length, 0);
     await typeKeys(session, "d");
     check("d deletes exactly what was dragged", await field(), "alpha  gamma\ndelta epsilon\nzeta eta theta");
 
@@ -528,15 +536,20 @@ async function main() {
     await typeKeys(session, "vll");
     check("v is visual", await mode(), "VISUAL");
     const visualSel = await domSel();
-    check("engine-driven visual keeps the host selection collapsed", [visualSel.start === visualSel.end, visualSel.start], [true, 2]);
-    check("...and paints its own highlight instead", await evaluate(session, `[...document.querySelectorAll('.jsbarevi-sel')].filter(n => getComputedStyle(n).display !== 'none').length > 0`), true);
+    check("engine-driven visual PROJECTS the range", [visualSel.start, visualSel.end], [0, 3]);
+    check("...instead of painting its own highlight", (await boxes()).length, 0);
     await sendNamedKey(session, "ArrowRight");
     check("an arrow EXTENDS the visual selection", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alph");
     await sendKey(session, "Escape");
     check("Esc leaves visual and clears the highlight", await evaluate(session, `[...document.querySelectorAll('.jsbarevi-sel')].filter(n => getComputedStyle(n).display !== 'none').length`), 0);
+    check("...and collapses the native selection", (await domSel()).start === (await domSel()).end, true);
     await sendNamedKey(session, "ArrowRight", 8);        // shift+arrow: a native selection
+    // The adoption rides on `selectionchange`, which lands a task later: wait for the
+    // state rather than racing it (the suite is loaded when it runs inside test:all).
+    for (let i = 0; i < 20 && (await mode()) !== "VISUAL"; i++) await sleep(20);
     check("a shift+arrow selection is adopted as visual too", await mode(), "VISUAL");
-    check("...with the host selection collapsed, not doubled", (await domSel()).start === (await domSel()).end, true);
+    const shiftSel = await domSel();
+    check("...as a real projected range, not a collapsed caret", shiftSel.start !== shiftSel.end, true);
     await sendKey(session, "Escape");
     console.log("\n\x1b[1mshift+click adjusts the selection\x1b[0m");
     const shiftClickAt = async (x, y) => {
@@ -558,7 +571,9 @@ async function main() {
     check("shift+click outside the selection keeps visual mode", await mode(), "VISUAL");
     check("...and grows it, from the click to the far end", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), "alpha beta ");
     const grownSel = await domSel();
-    check("...host selection still collapsed", grownSel.start === grownSel.end, true);
+    check("...and the projected range matches the engine's selection",
+      grownSel.end - grownSel.start,
+      (await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()")).length);
     await sendKey(session, "Escape");
 
     // clicked INSIDE it: a boundary moves to the click, so it shrinks
@@ -644,6 +659,81 @@ async function main() {
     check("Esc still leaves insert mode afterwards", await mode(), "NORMAL");
     await typeKeys(session, "u");
     check("one u undoes the whole insert with both deletions", await field(), BUFFER);
+    // ---------------------------------------------------------------------
+    // Insert mode borrows the host's selection gestures; visual mode borrows the
+    // host's native shortcuts. (Charter: `docs/DECISIONS.md`, spec in the session.)
+    // ---------------------------------------------------------------------
+    console.log("\n\x1b[1minsert mode borrows the host's selection gestures\x1b[0m");
+    const pointAt = (off) => evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      const r = a.caret.measure(${off});
+      return { x: Math.round(r.left + 2), y: Math.round(r.top + r.height / 2) };
+    })()`);
+
+    await resetField();
+    await typeKeys(session, "i");
+    check("i is insert", await mode(), "INSERT");
+    await dragFromTo(await pointAt(2), await pointAt(8));
+    check("a drag in INSERT enters VISUAL", await mode(), "VISUAL");
+    await sendKey(session, "Escape");
+
+    await resetField();
+    await typeKeys(session, "i");
+    await sendKey(session, "C-a");
+    check("Ctrl-A in INSERT enters VISUAL", await mode(), "VISUAL");
+    check("...with the cursor on the LAST character", await cursor(), BUFFER.length - 1);
+    check("...selecting the whole buffer",
+      await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"), BUFFER);
+    await sendKey(session, "Escape");
+
+    await resetField();
+    await typeKeys(session, "i");
+    await sendKey(session, "C-v");
+    check("Ctrl-V in INSERT is still the browser's — no mode change", await mode(), "INSERT");
+    await sendKey(session, "Escape");
+
+    console.log("\n\x1b[1mvisual mode borrows the host's keys\x1b[0m");
+    await resetField();
+    await typeKeys(session, "gg");
+    await typeKeys(session, "v");
+    await sendNamedKey(session, "ArrowRight", 8);
+    await sleep(90);
+    await sendNamedKey(session, "ArrowRight", 8);
+    await sleep(90);
+    const accumulated = await domSel();
+    check("shift+arrow ACCUMULATES in visual mode", [accumulated.start, accumulated.end], [0, 3]);
+    await sendKey(session, "Escape");
+
+    // A drag always re-anchors at the press point — the browser's own model. Vim would
+    // keep the anchor when the drag starts inside the selection; recorded as a known
+    // deviation rather than chased, because it needs pointer hit-testing inside the
+    // gesture (docs/DECISIONS.md).
+    await resetField();
+    await typeKeys(session, "gg");
+    await typeKeys(session, "vll");                      // 0..2
+    await dragFromTo(await pointAt(2), await pointAt(7));
+    // Chrome starts a DRAG-AND-DROP when the press lands on an existing selection, so no
+    // new range is produced at all. Vim would keep the anchor and move the head; this is
+    // the one mouse gesture we cannot have, and it is recorded as a deviation rather than
+    // emulated.
+    check("a drag from inside a selection adjusts it, keeping visual mode", await mode(), "VISUAL");
+    check("...and never MOVES the text (drag-and-drop is suppressed in visual mode)",
+      await field(), BUFFER);
+    const insideDrag = await domSel();
+    check("...leaving a real range", insideDrag.start !== insideDrag.end, true);
+
+    // VISUAL LINE simulates the six shift keys, so the selection stays linewise
+    await resetField();
+    await typeKeys(session, "gg");
+    await typeKeys(session, "V");
+    await sendNamedKey(session, "ArrowDown", 8);
+    await sleep(90);
+    check("shift+arrow in VISUAL LINE stays linewise", await mode(), "VISUAL_LINE");
+    check("...and extends by a line",
+      await evaluate(session, "window.jsbarevi.textarea.adapter.engine.visualText()"),
+      "alpha beta gamma\ndelta epsilon\n");
+    await sendKey(session, "Escape");
+
     console.log("\n\x1b[1mright click: extends in visual mode, menu suppressed there only\x1b[0m");
     const rightClickAt = async (x, y) => {
       await session.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "right", buttons: 2, clickCount: 1 });
