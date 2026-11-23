@@ -3,14 +3,15 @@
 Everything below is the exact text for the store form. The build artifact is
 `dist/jbarevi-<version>.zip` (from `npm run build:ext`).
 
-> **Status (2026-11-20): 0.1.0 is published and its review has PASSED.** The next
-> upload ships **0.5.0**, which adds one permission the approved build never had —
-> **`clipboardRead`** (added 2026-11-14, `76383b1`) — so that justification is the
-> one a reviewer will actually read, and users will see Chrome's
-> *"Read data you copy and paste"* warning for the first time.
+> **Status: PUBLISHED.**
+> <https://chromewebstore.google.com/detail/jsbarevi-%E2%80%94-vi-keys-in-any/kjkagomcgiagbieohmbapadgjojcpmea>
+> (item id `kjkagomcgiagbieohmbapadgjojcpmea`). The package in this repo is **0.5.0**,
+> the first build that declares **`clipboardRead`** — so its justification above is the
+> one a reviewer reads, and users see Chrome's *"Read data you copy and paste"* warning.
 >
-> Upload needs `npm run build:ext` → `dist/jsbarevi-<version>.zip`, and the
-> privacy-policy URL in `PRIVACY.md` must be public.
+> A new upload needs `npm run build:ext` → `dist/jsbarevi-<version>.zip`, plus a bump of
+> the version. The privacy-policy URL was accepted for this listing; if `PRIVACY.md`
+> changes, that URL has to keep serving the new text.
 
 ---
 
