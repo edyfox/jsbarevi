@@ -1,9 +1,13 @@
 // Integration test against the REAL pyTextFilter server code (not a stub).
 //
-// It starts two copies on spare ports with `sed` as the "editor", so nothing
+// It starts three copies on spare ports with `sed` as the "editor", so nothing
 // opens a GUI and the developer's own session is untouched:
-//   1. unpatched  -> proves why `:e` needs a proxy (OPTIONS is 501)
-//   2. patched    -> proves the opt-in CORS patch lets a page talk directly
+//   1. cors off  -> proves why `:e` defaults to the proxy (OPTIONS is 501)
+//   2. cors on   -> proves the server's own opt-in lets a page talk directly
+//   3. wildcard  -> proves one allow-list entry can admit any localhost port
+//
+// The CORS support is pyTextFilter's OWN (upstream since 2026-11), so nothing here
+// patches the server: only the `cors` config key changes.
 //
 // Skipped when ~/workspace/pytextfilter is not present.
 
@@ -45,18 +49,13 @@ const http = (opts, body) => new Promise((resolve) => {
   req.end(body);
 });
 
-/** Copy pyTextFilter into a temp dir, optionally apply the CORS patch, run it. */
+/** Copy pyTextFilter into a temp dir, set `cors` in its config, run it. */
 async function startServer({ cors, port }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jsbarevi-ptf-"));
   const tmpdir = path.join(dir, "tmp");
   fs.mkdirSync(tmpdir);
   for (const f of ["pytextfilter.py", "filename_filter.py"]) {
     fs.copyFileSync(path.join(PTF, f), path.join(dir, f));
-  }
-  if (cors) {
-    const { spawnSync } = await import("node:child_process");
-    const r = spawnSync("python3", [path.join(HERE, "..", "tools/pytextfilter-add-cors.py"), path.join(dir, "pytextfilter.py")], { encoding: "utf8" });
-    if (r.status !== 0) throw new Error("CORS patch failed: " + (r.stderr || r.stdout));
   }
   // `cors` is true, falsy, or an allow-list of origin patterns (a wildcard is allowed).
   const corsValue = cors === true ? "True" : Array.isArray(cors) ? JSON.stringify(cors) : "";
@@ -87,8 +86,8 @@ const p1 = 34000 + Math.floor(Math.random() * 400);
 const p2 = p1 + 500;
 const p3 = p1 + 1000;
 
-// ---------------------------------------------------------------- unpatched
-console.log("\n\x1b[1munpatched pyTextFilter: why :e needs a proxy\x1b[0m");
+// ------------------------------------------------------------- cors disabled
+console.log("\n\x1b[1mstock pyTextFilter (cors off): why :e defaults to the proxy\x1b[0m");
 {
   const srv = await startServer({ cors: false, port: p1 });
   const proxyPort = p1 + 1000;
@@ -107,26 +106,20 @@ console.log("\n\x1b[1munpatched pyTextFilter: why :e needs a proxy\x1b[0m");
     check("the proxy reaches pyTextFilter and returns its edit", viaProxy.text, "HELLO world");
     check("status is 200", viaProxy.status, 200);
 
-    // The host's own file may already carry the patch. The guarantee the patch
-    // makes is that INSTALLING it changes nothing until `cors` is configured: with
-    // the flag off, OPTIONS must still answer 501 and send no CORS header, exactly
-    // like the stock server. (An earlier generation answered 204 here, which meant
-    // the preflight "passed" and the real request was then blocked — a half-done
-    // state that reads as "cannot reach" in the page.)
-    const sourcePatched = fs.readFileSync(path.join(PTF, "pytextfilter.py"), "utf8").includes("def do_OPTIONS");
+    // With `cors` unset the server behaves like a stock one: OPTIONS answers 501 and no
+    // CORS header is sent, so a page cannot use it directly and `:e` needs the proxy.
     const options = await http({ host: "127.0.0.1", port: p1, path: "/", method: "OPTIONS",
       headers: { Origin: "http://127.0.0.1:8080", "Access-Control-Request-Method": "POST" } });
-    check("an unconfigured server answers OPTIONS with 501 — hence the proxy", options.status, 501);
+    check("cors off: OPTIONS answers 501 — hence the proxy", options.status, 501);
     check("...and sends no CORS header", options.headers["access-control-allow-origin"], undefined);
-    console.log(`       (source ${sourcePatched ? "already carries the patch" : "is unpatched"}; cors is off in both)`);
   } finally {
     proxy.kill("SIGKILL");
     srv.child.kill("SIGKILL");
   }
 }
 
-// ------------------------------------------------------------------ patched
-console.log("\n\x1b[1mCORS-patched pyTextFilter: a page can talk to it directly\x1b[0m");
+// ------------------------------------------------------------------- cors on
+console.log("\n\x1b[1mpyTextFilter with cors enabled: a page can talk to it directly\x1b[0m");
 {
   const srv = await startServer({ cors: true, port: p2 });
   try {

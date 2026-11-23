@@ -16,7 +16,6 @@
     "test:oracle": "python3 oracle/run.py",
     "gen:expect": "node tools/gen-expect.mjs",
     "dev": "node tools/stamp-build.mjs && node tools/dev-server.mjs",
-    "patch:pytextfilter": "python3 tools/pytextfilter-add-cors.py",
     "stamp": "node tools/stamp-build.mjs",
     "audit": "python3 tools/emit-target.py && node tools/audit-surface.mjs",
     "audit:align": "node tools/audit-align.mjs",

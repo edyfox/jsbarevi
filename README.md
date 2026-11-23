@@ -10,8 +10,9 @@ contract, and a real editor behind `:e` when the field is not enough.
 > 294 differential cases match real `vim`, 160 engine cases, 109 unit, 180
 > end-to-end checks in real headless Chrome, and 24 more that drive the *packaged*
 > extension (content script, settings, service-worker transport) in Chrome for
-> Testing. The unpacked extension loads today; the Web Store package and listing are
-> built by `npm run build:ext` — see `docs/EXTENSION.md`.
+> Testing. **It is published on the Chrome Web Store** —
+> [jsbarevi — vi keys in any text field](https://chromewebstore.google.com/detail/jsbarevi-%E2%80%94-vi-keys-in-any/kjkagomcgiagbieohmbapadgjojcpmea)
+> — and the unpacked package can still be loaded for development (`npm run build:ext`).
 
 ## What works today
 
@@ -29,6 +30,10 @@ npm run build:ext            # dist/ + the Web Store zip
 ```
 
 ### Installing it in a browser
+
+From the store: [jsbarevi — vi keys in any text field](https://chromewebstore.google.com/detail/jsbarevi-%E2%80%94-vi-keys-in-any/kjkagomcgiagbieohmbapadgjojcpmea).
+
+From a checkout, for development:
 
 ```bash
 npm run build:ext
@@ -93,55 +98,34 @@ a browser rule, not a setting — the two ways to satisfy it are below.
 
 Two ways to get the direct path:
 
-**A. Patch the server (opt-in, one command).** Adds `do_OPTIONS` and CORS headers,
-gated on `config["server"]["cors"]`, so default behaviour is unchanged. A current
-pyTextFilter checkout already has it; the tool upgrades an older copy:
-
-```bash
-# 1. add do_OPTIONS + CORS headers to the server (idempotent; re-running upgrades)
-python3 tools/pytextfilter-add-cors.py ~/workspace/pytextfilter/pytextfilter.py
-
-# 2. flip the flag in its config. Prefer an allow-list over "any origin":
-python3 tools/enable-pytextfilter-cors.py ~/workspace/pytextfilter/config.py \
-    --origin http://127.0.0.1:8080
-
-# 3. RESTART the server — config is imported once, a running process keeps the old value
-#    (if it lives in tmux: tmux kill-session -t edit-server, then start it as before)
-
-# 4. verify the header really appears
-curl -si -X OPTIONS -H 'Origin: http://127.0.0.1:8080' \
-  -H 'Access-Control-Request-Method: POST' http://127.0.0.1:31416/ | grep -i access-control
-
-# 5. open the fixture against the direct endpoint
-#    http://127.0.0.1:8080/test/e2e.html?editor=http://127.0.0.1:31416/
-```
-
-Accepted values for `config["server"]["cors"]`: `False` (default, patch inert),
-`True`/`"*"` (echo any origin), or a list such as
-`["http://127.0.0.1:8080", "chrome-extension://<id>"]` — only those origins get
-`Access-Control-Allow-Origin`, everyone else gets nothing. Revert by deleting the
-key; the patch then does nothing.
-
-A `*` **inside** an entry matches any run of characters, so
-`["http://localhost:*"]` admits every port on localhost — what a dev server needs,
-since its port changes per project — and `host:*` also admits the default-port form
-a browser sends with no port at all. Hosts are never aliased: `localhost` and
-`127.0.0.1` are different origins, and on ChromeOS they can resolve to different
-machines (the browser's localhost is not a Linux container's), so list each one:
+**A. Turn on the server's own CORS support.** pyTextFilter ships it now — the support that
+used to live here as a patch is upstream — so a current checkout needs **no patching**, only
+the flag:
 
 ```python
+# ~/workspace/pytextfilter/config.py
 "cors": ["http://localhost:*", "http://127.0.0.1:*"]
 ```
 
-**Installing the patch without configuring it is a true no-op**: with `cors`
-unset, `OPTIONS` still answers `501` and no CORS header is sent, exactly like the
-stock server. The failure that *does* bite is patched **and** configured with the
-wrong origin: `OPTIONS` answers `204`, but no `Access-Control-Allow-Origin` comes
-back for that origin, so the preflight "passes" and the real request is then
-blocked. `:e` names that case instead of reporting "cannot reach".
+Then restart the server: the config is imported once, so a running process keeps the old
+value. Accepted values are `False` (the default: `OPTIONS` still answers `501` and no CORS
+header is sent, exactly like a stock server), `True` or `"*"` (echo whatever origin asks), or
+a list of patterns. A `*` **inside** an entry matches any run of characters, so `host:*`
+admits every port a dev server might pick — which is what a per-project port needs. Hosts are
+never aliased: `localhost` and `127.0.0.1` are different origins to a browser, and on ChromeOS
+they are not even the same machine, so list both.
 
-Verified: unpatched answers `OPTIONS` with 501 and no CORS header; patched answers
-`204` with the origin echoed, and a page-origin POST is readable.
+**Prefer the allow-list, and leave it off for day-to-day use**: with `cors` set to `True` any
+page you visit can POST to the editor server and read the reply. The failure that still
+bites is *enabled with the wrong origin* — `OPTIONS` answers `204` but no
+`Access-Control-Allow-Origin` comes back for that origin, so the preflight looks fine and the
+real request is then blocked. `:e` names that case instead of reporting "cannot reach".
+
+Then point the fixture at the direct endpoint:
+
+```
+http://127.0.0.1:8080/test/e2e.html?editor=http://127.0.0.1:31416/
+```
 
 **B. Run as the extension.** The package ships with `host_permissions` for
 `http://127.0.0.1/*` and `http://localhost/*` and routes `:e` through its service
@@ -152,9 +136,9 @@ to the direct endpoint when it detects a `chrome-extension://` origin. See
 
 ### Trying `:e` against a real edit-server
 
-A browser page cannot POST to a local edit-server directly: the response is
-cross-origin (unreadable without CORS) and pyTextFilter-style servers answer
-`OPTIONS` with **501**, so a custom header or JSON body would fail at the
+A browser page cannot POST to a local edit-server directly unless that server opts in:
+the response is cross-origin (unreadable without CORS) and a server with CORS off
+answers `OPTIONS` with **501**, so a custom header or JSON body would fail at the
 preflight. `tools/dev-server.mjs` serves the fixture and proxies `/edit`:
 
 ```bash
