@@ -692,6 +692,21 @@ async function main() {
     check("Ctrl-V in INSERT is still the browser's — no mode change", await mode(), "INSERT");
     await sendKey(session, "Escape");
 
+    // The classic set: Shift+Insert pastes, Ctrl+Insert copies, Shift+Delete cuts. Only the
+    // first one can regress here (the Insert key toggles replace), so it is pinned.
+    const rawKey = async (key, code, vk, modifiers) => {
+      await session.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers });
+      await session.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers });
+      await sleep(80);
+    };
+    await resetField();
+    await typeKeys(session, "i");
+    await rawKey("Insert", "Insert", 45, 8);            // Shift+Insert = paste
+    check("Shift+Insert in INSERT pastes; it does not toggle replace", await mode(), "INSERT");
+    check("...and starts no replace session",
+      await evaluate(session, "window.jsbarevi.textarea.engine.replaceSession === null"), true);
+    await sendKey(session, "Escape");
+
     console.log("\n\x1b[1mvisual mode borrows the host's keys\x1b[0m");
     await resetField();
     await typeKeys(session, "gg");
@@ -750,6 +765,15 @@ async function main() {
       await evaluate(session, "document.querySelector('.jsbarevi-badge').style.display"), "none");
     await typeKeys(session, "u");
     check("...and u puts the text back", await field(), BUFFER);
+
+    // The classic Cut key reaches the browser too and takes the same path.
+    await visualSetup("NORMAL", ["v", "l", "l", "l"]);
+    await rawKey("Delete", "Delete", 46, 8);            // Shift+Delete = cut
+    await sleep(150);
+    check("Shift+Delete cuts the visual selection", await field(), "a beta gamma\ndelta epsilon\nzeta eta theta");
+    check("...and leaves visual mode", await mode(), "NORMAL");
+    await typeKeys(session, "u");
+    check("...undoably", await field(), BUFFER);
 
     // The same cut, from a selection MADE IN INSERT, returns to insert.
     await evaluate(session, `(() => {

@@ -1072,5 +1072,22 @@ console.log("\n\x1b[1mnative shortcuts: refused, delegated, or simulated\x1b[0m"
   void fromField;
 }
 
+{
+  const { tokenFor } = await import("../src/adapters/keys.js");
+  const ev = (key, mods = {}) => ({ key, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, ...mods });
+  eq("plain Insert is the engine's (the replace toggle)", tokenFor(ev("Insert"), Mode.INSERT), "Insert");
+  eq("Shift+Insert is the HOST's paste", tokenFor(ev("Insert", { shiftKey: true }), Mode.INSERT), null);
+  eq("Ctrl+Insert is the HOST's copy", tokenFor(ev("Insert", { ctrlKey: true }), Mode.INSERT), null);
+  eq("Shift+Delete is the HOST's cut", tokenFor(ev("Delete", { shiftKey: true }), Mode.INSERT), null);
+  eq("Shift+Insert in VISUAL LINE is the engine's paste", tokenFor(ev("Insert", { shiftKey: true }), Mode.VISUAL_LINE), "C-v");
+  eq("Ctrl+Insert in VISUAL LINE is the engine's copy", tokenFor(ev("Insert", { ctrlKey: true }), Mode.VISUAL_LINE), "C-c");
+  eq("Shift+Delete in VISUAL LINE is the engine's cut", tokenFor(ev("Delete", { shiftKey: true }), Mode.VISUAL_LINE), "C-x");
+  eq("...and the same three in charwise visual", [
+    tokenFor(ev("Insert", { shiftKey: true }), Mode.VISUAL),
+    tokenFor(ev("Insert", { ctrlKey: true }), Mode.VISUAL),
+    tokenFor(ev("Delete", { shiftKey: true }), Mode.VISUAL),
+  ], [null, null, null]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

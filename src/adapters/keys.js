@@ -17,6 +17,15 @@ import { Mode } from "../engine/engine.js";
  * the buffer-line motions they are in vim.
  */
 export function tokenFor(e, mode) {
+  // The classic clipboard set — Shift+Delete / Ctrl+Insert / Shift+Insert — for the hosts
+  // and hands that use it instead of Ctrl-X/C/V. Everywhere but VISUAL LINE they belong to
+  // the host; `V` has no native selection to act on, so there they are translated to the
+  // keys the engine simulates, and mean exactly the same thing.
+  if (mode === Mode.VISUAL_LINE) {
+    if (e.key === "Insert" && e.shiftKey && !e.ctrlKey) return "C-v";
+    if (e.key === "Insert" && e.ctrlKey && !e.shiftKey) return "C-c";
+    if (e.key === "Delete" && e.shiftKey) return "C-x";
+  }
   if (e.ctrlKey && !e.altKey && !e.metaKey) {
     const k = e.key.toLowerCase();
     if (k === "c") return "C-c";
@@ -43,9 +52,14 @@ export function tokenFor(e, mode) {
     if (mode === Mode.INSERT || e.shiftKey) return null;
     return caret[e.key];
   }
-  // `Insert` toggles between insert and replace mode — the cycle the keyboard has always
-  // had (`normal --Insert--> insert --Insert--> replace --Insert--> insert`).
-  const named = { Escape: "Esc", Enter: "CR", Backspace: "BS", Tab: "Tab", Insert: "Insert" };
+  // The Insert key toggles insert ⇄ replace (`normal --Insert--> insert --Insert--> replace
+  // --Insert--> insert`). It is handled HERE rather than in the named table below because
+  // the modifier decides everything: **Shift+Insert is the old paste shortcut** and
+  // Ctrl+Insert the old copy one, and swallowing either would take a key the host owns —
+  // Shift+Insert silently toggled replace mode instead of pasting, which is exactly the
+  // report that produced this line.
+  if (e.key === "Insert" && !e.shiftKey) return "Insert";
+  const named = { Escape: "Esc", Enter: "CR", Backspace: "BS", Tab: "Tab" };
   if (named[e.key] !== undefined) return named[e.key];
   if (e.key.length === 1) return e.key;
   return null;

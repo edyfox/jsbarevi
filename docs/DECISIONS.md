@@ -477,6 +477,18 @@ from before this change. A host edit that changes the text ends visual mode outr
 anchor's referent is gone), which is the accepted cost of letting the browser perform
 `Ctrl-X`/`Ctrl-V`.
 
+### The classic clipboard keys
+
+`Shift+Delete` (cut), `Ctrl+Insert` (copy) and `Shift+Insert` (paste) are the older set, and
+they are the reason the `Insert` key is handled **before** the named-key table in `keys.js`:
+the modifier decides everything. Plain `Insert` is the engine's replace toggle; with Shift it
+is the host's paste. Swallowing Shift+Insert was a real defect — it silently toggled replace
+mode instead of pasting, because the key looked like a bare `Insert`.
+
+Everywhere but `V` these three belong to the host, exactly like `Ctrl-X/C/V`. `V` translates
+them to the keys it simulates (`C-x`/`C-c`/`C-v`), so the two sets mean the same thing in
+both visual modes.
+
 ### The context menu
 
 Suppressing it was the original reason any of this work happened: while the native
