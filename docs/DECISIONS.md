@@ -383,33 +383,38 @@ output are in the session's scratchpad):
 | `Shift+↓/↑` | the browser's visual row, and it can land on the line separator | **differs**: `j`/`k` are buffer lines |
 | `Shift+←/→` repeated | **stalls at one character** | defect, below |
 
-**Two defects, not choices.** Both were found by measuring, and they share one root cause:
+**Two limitations in NORMAL/VISUAL, deliberately out of scope.** Both were found by
+measuring, and they share one root cause:
 
 1. **`Shift+→` does not accumulate.** After adopting a host selection the adapter
    `_commit()`s, which collapses the native selection to the engine cursor — the head
    *character*. A one-character extension therefore rewinds the caret to where it started,
    and the next press extends one character again. Keys that move far in a single event
-   (`Shift+End`, `Shift+PageDown`) look correct and hide the defect.
+   (`Shift+End`, `Shift+PageDown`) look correct and hide it.
 2. **In VISUAL, the anchor is replaced.** `v` `ll` then `Shift+→` gives a one-character
-   selection anchored at the head, discarding the original span, because the adopted
-   anchor is the collapsed caret rather than the selection's real anchor.
+   selection anchored at the head, discarding the original span.
 
-The missing piece is the same for both: **in visual mode the native selection must hold
-the engine's range between keystrokes instead of being collapsed to a caret.** That is the
-projection step of the native-selection design — the engine already supplies everything it
-needs (`visualSelection()` returns the span, `visual.anchor` vs `cursor` gives the
-direction), so fixing these needs **no engine change**. A local hack (collapsing to the
-exclusive end so the browser's caret sits one past the head) was considered and rejected:
-it would make the native caret disagree with the block caret in visual mode, which is the
-invariant the whole caret design protects.
+**These are recorded, not scheduled.** Normal mode is close to where it should be, and it is
+deliberately closed to new features (Edward, 2026-11-23): adding Shift-key handling there
+would be scope creep against a mode that already works. They are written down for two
+reasons — so nobody re-derives them as mysteries, and so the insert-mode work below does
+not disturb them by accident. Mouse drag and Shift+click are unaffected: they carry their
+own anchor/head.
 
 **What we deliberately do not do:** map the Shift keys onto vi motions; treat
-`Shift+PageDown` as `C-f`; or re-label the accumulation stall as "a browser difference".
+`Shift+PageDown` as `C-f`; add any Shift-key handling to NORMAL or VISUAL.
+
+**Insert mode is the actual scope.** Measured in `test/e2e.html` (Chromium 157): `Ctrl-V`
+and a mouse drag already stay in INSERT and act natively, but **`Shift+→`, `Shift+End` and
+`Ctrl-A` all flip the field into VISUAL**, because the adoption rule ("a selection the host
+creates IS visual mode") applies in INSERT too. The visible damage is worse than a mode
+change: after `Ctrl-A` in insert mode, typing a letter is swallowed as a vi command,
+because the engine is now in VISUAL. The fix is to stop adopting host-created selections
+**while the engine is in INSERT** — they are the browser's text selection, not a vim
+selection — which leaves NORMAL and VISUAL untouched.
 
 **Coverage today:** one assertion — a single `Shift+→` entering visual
-(`test/e2e-cdp.mjs:537`). Growth, and each of the six keys, are untested, which is how the
-stall survived. Mouse drag and Shift+click are unaffected: they carry their own
-anchor/head.
+(`test/e2e-cdp.mjs:537`).
 
 ## No ProseMirror transaction adapter (the DOM is the contract)
 

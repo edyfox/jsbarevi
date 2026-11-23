@@ -295,16 +295,16 @@ behaviour, and the answer has two halves:
   selection and its Paste would bypass the engine's registers and undo. Pressing
   `Esc` leaves visual mode and brings the menu back.
 
-- **The Shift-modified caret keys are the host's too.** `Shift+←/→/↑/↓`,
+- **The Shift-modified caret keys are the host's.** `Shift+←/→/↑/↓`,
   `Shift+Home/End` and `Shift+PageUp/PageDown` are never intercepted (`keys.js`), because vi
   has no Shift-modified motions and in a browser field that gesture *is* the native
-  select. They enter VISUAL from NORMAL and extend it in VISUAL. Three consequences are
-  worth knowing: `Shift+End` agrees with `g$`, but `Shift+PageDown` is the browser's
-  viewport page rather than `C-f`'s page of rows, and `Shift+↑/↓` move by the browser's
-  visual row rather than by buffer line. Two further consequences are **defects, not
-  choices** — repeated `Shift+→` stalls at one character, and in VISUAL it re-anchors at
-  the head instead of growing the span — both caused by collapsing the native selection
-  between keystrokes; see
+  select. In NORMAL they enter VISUAL and in VISUAL they extend it; `Shift+End` agrees with
+  `g$`, but `Shift+PageDown` is the browser's viewport page rather than `C-f`'s page of
+  rows, and `Shift+↑/↓` move by the browser's visual row rather than by buffer line. Two
+  known limitations there (`Shift+→` does not accumulate; in VISUAL it re-anchors at the
+  head) are **recorded and deliberately not fixed** — normal mode is closed to new
+  features. In **insert mode** none of these keys is intercepted either, and a selection
+  the browser makes there stays the browser's; see
   [`docs/DECISIONS.md`](docs/DECISIONS.md#shift-modified-caret-keys-belong-to-the-host).
 
 The native selection is still collapsed the moment it has been adopted, so exactly
