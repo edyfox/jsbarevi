@@ -1076,17 +1076,23 @@ console.log("\n\x1b[1mnative shortcuts: refused, delegated, or simulated\x1b[0m"
   const { tokenFor } = await import("../src/adapters/keys.js");
   const ev = (key, mods = {}) => ({ key, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, ...mods });
   eq("plain Insert is the engine's (the replace toggle)", tokenFor(ev("Insert"), Mode.INSERT), "Insert");
-  eq("Shift+Insert is the HOST's paste", tokenFor(ev("Insert", { shiftKey: true }), Mode.INSERT), null);
-  eq("Ctrl+Insert is the HOST's copy", tokenFor(ev("Insert", { ctrlKey: true }), Mode.INSERT), null);
-  eq("Shift+Delete is the HOST's cut", tokenFor(ev("Delete", { shiftKey: true }), Mode.INSERT), null);
+  eq("Shift+Insert is the same token as Ctrl-V (declined in insert, so native)",
+    tokenFor(ev("Insert", { shiftKey: true }), Mode.INSERT), "C-v");
+  eq("Ctrl+Insert is the same token as Ctrl-C", tokenFor(ev("Insert", { ctrlKey: true }), Mode.INSERT), "C-c");
+  eq("Shift+Delete is the same token as Ctrl-X", tokenFor(ev("Delete", { shiftKey: true }), Mode.INSERT), "C-x");
+  eq("...and in NORMAL they stay the HOST's (Ctrl-V there is block visual, not paste)", [
+    tokenFor(ev("Insert", { shiftKey: true }), Mode.NORMAL),
+    tokenFor(ev("Insert", { ctrlKey: true }), Mode.NORMAL),
+    tokenFor(ev("Delete", { shiftKey: true }), Mode.NORMAL),
+  ], [null, null, null]);
   eq("Shift+Insert in VISUAL LINE is the engine's paste", tokenFor(ev("Insert", { shiftKey: true }), Mode.VISUAL_LINE), "C-v");
   eq("Ctrl+Insert in VISUAL LINE is the engine's copy", tokenFor(ev("Insert", { ctrlKey: true }), Mode.VISUAL_LINE), "C-c");
   eq("Shift+Delete in VISUAL LINE is the engine's cut", tokenFor(ev("Delete", { shiftKey: true }), Mode.VISUAL_LINE), "C-x");
-  eq("...and the same three in charwise visual", [
+  eq("...and in charwise visual they carry the same tokens", [
     tokenFor(ev("Insert", { shiftKey: true }), Mode.VISUAL),
     tokenFor(ev("Insert", { ctrlKey: true }), Mode.VISUAL),
     tokenFor(ev("Delete", { shiftKey: true }), Mode.VISUAL),
-  ], [null, null, null]);
+  ], ["C-v", "C-c", "C-x"]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

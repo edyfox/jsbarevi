@@ -485,9 +485,11 @@ the modifier decides everything. Plain `Insert` is the engine's replace toggle; 
 is the host's paste. Swallowing Shift+Insert was a real defect — it silently toggled replace
 mode instead of pasting, because the key looked like a bare `Insert`.
 
-Everywhere but `V` these three belong to the host, exactly like `Ctrl-X/C/V`. `V` translates
-them to the keys it simulates (`C-x`/`C-c`/`C-v`), so the two sets mean the same thing in
-both visual modes.
+They are the **same gesture** as `Ctrl-X/Ctrl-C/Ctrl-V`, so they are given the same token
+(`keys.js`) and therefore the same behaviour in every mode: declined — and so native — in
+insert and charwise visual, simulated by the engine in `V`. Normal mode is the one exception,
+and deliberately so: there `Ctrl-V` is vim's block-visual and is refused, while `Shift+Insert`
+must still paste, which is the terminal convention that predates it.
 
 ### The context menu
 

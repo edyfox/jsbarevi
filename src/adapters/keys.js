@@ -17,11 +17,15 @@ import { Mode } from "../engine/engine.js";
  * the buffer-line motions they are in vim.
  */
 export function tokenFor(e, mode) {
-  // The classic clipboard set — Shift+Delete / Ctrl+Insert / Shift+Insert — for the hosts
-  // and hands that use it instead of Ctrl-X/C/V. Everywhere but VISUAL LINE they belong to
-  // the host; `V` has no native selection to act on, so there they are translated to the
-  // keys the engine simulates, and mean exactly the same thing.
-  if (mode === Mode.VISUAL_LINE) {
+  // The classic clipboard set (Shift+Delete / Ctrl+Insert / Shift+Insert) is the SAME
+  // gesture as Ctrl-X/Ctrl-C/Ctrl-V, so it gets the same token and therefore the same
+  // behaviour in every mode: declined (and so native) in insert and charwise visual,
+  // simulated by the engine in VISUAL LINE.
+  //
+  // Normal mode is the one exception, and it is not an oversight: there Ctrl-V is vim's
+  // block-visual and is deliberately refused, while Shift+Insert must still paste — the
+  // terminal convention that predates it.
+  if (mode !== Mode.NORMAL) {
     if (e.key === "Insert" && e.shiftKey && !e.ctrlKey) return "C-v";
     if (e.key === "Insert" && e.ctrlKey && !e.shiftKey) return "C-c";
     if (e.key === "Delete" && e.shiftKey) return "C-x";
