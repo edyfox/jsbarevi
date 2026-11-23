@@ -404,17 +404,87 @@ own anchor/head.
 **What we deliberately do not do:** map the Shift keys onto vi motions; treat
 `Shift+PageDown` as `C-f`; add any Shift-key handling to NORMAL or VISUAL.
 
-**Insert mode is the actual scope.** Measured in `test/e2e.html` (Chromium 157): `Ctrl-V`
-and a mouse drag already stay in INSERT and act natively, but **`Shift+→`, `Shift+End` and
-`Ctrl-A` all flip the field into VISUAL**, because the adoption rule ("a selection the host
-creates IS visual mode") applies in INSERT too. The visible damage is worse than a mode
-change: after `Ctrl-A` in insert mode, typing a letter is swallowed as a vi command,
-because the engine is now in VISUAL. The fix is to stop adopting host-created selections
-**while the engine is in INSERT** — they are the browser's text selection, not a vim
-selection — which leaves NORMAL and VISUAL untouched.
+**Insert mode was the scope, and the rule it needed is the opposite of "stay native".**
+Measured in `test/e2e.html` (Chromium 157) before the change: `Shift+→`, `Shift+End` and
+`Ctrl-A` already flipped the field into VISUAL (the adoption rule applies in every mode),
+but a mouse drag did NOT — it left a live native selection that nothing owned, with the
+badge still saying INSERT. The incoherence was in *where* the adoption lived, not in a
+decision. Fixing it made insert mode uniform: **every selection the user makes becomes
+VISUAL** — drag, `Shift+…`, `Ctrl-A` — and a drag is adopted in the mouseup handler
+instead of being skipped there.
 
 **Coverage today:** one assertion — a single `Shift+→` entering visual
 (`test/e2e-cdp.mjs:537`).
+
+## Charwise visual owns the native selection; VISUAL LINE keeps its own paint
+
+Decided 2026-11-23. The question was whether visual mode could *be* the browser's selection,
+so the native menu and the native shortcuts work instead of being suppressed. It can — for
+one of the two visual modes.
+
+**The rule, and it is two rules, not a pile of cases:**
+
+1. **In INSERT, any selection the user creates becomes VISUAL.** Drag, `Shift+…`, `Ctrl-A`.
+   (vim agrees: `State & MODE_INSERT` + drag + `'mouse'` containing `v` → `MOUSE_MAY_VIS`.)
+   `Ctrl-A` lands with the cursor on the **last** character, which is what `ggVG` would do.
+2. **Charwise visual (`v`) delegates to the browser; VISUAL LINE (`V`) simulates.** Never a
+   third path. The linewise look is a full-width bar, and a native selection cannot draw
+   one (measured: its paint is the glyph extents only), so `V` keeps the overlay and a
+   collapsed native selection and performs the keys itself.
+
+**What that buys.** In `v`, the browser's own `Ctrl-C` / `Ctrl-X` / `Ctrl-V` / `Ctrl-A`
+work on the selection — the extension stops intercepting them — and `Shift+arrow`,
+`Shift+Home/End`, `Shift+PageUp/Down` extend and shrink it natively because the anchor the
+browser extends from survives between keystrokes. That last point is what fixes a defect
+this project had shipped: repeated `Shift+→` used to stall at one character, because the
+adopted selection was collapsed to the caret after every key and the next press started
+where the previous one had.
+
+**What `V` does instead**, since it has no native selection to act on: the six `Shift+…`
+keys become the engine's motions (`h l j k`, `g0 g$`, `C-b C-f`), `Ctrl-C` copies (it
+already did), `Ctrl-X` copies then deletes, `Ctrl-V` pastes the system clipboard over the
+selection, and `Ctrl-A` selects everything **staying linewise** (delegating would have
+selected charwise natively and silently turned `V` into `v`). Paste semantics are measured
+against vim 9.2: a linewise clipboard replaces the selected lines, a charwise one replaces
+their contents and keeps the break.
+
+**Two deliberate refusals in NORMAL**, because both used to fail silently: `Ctrl-V` /
+`Ctrl-Q` answer `block visual: not implemented` (before, the key reached the browser and
+pasted into the field *outside* the engine's undo), and `q` / `@` / `Q` answer
+`macros: not implemented` (before, they landed on the generic `unmapped:` line, which read
+like an accident). Both features are permanently out — see "Non-goals" — so saying so is
+more honest than falling through.
+
+**The `Insert` key** now runs the keyboard's own cycle: normal → insert → replace → insert.
+
+### The mechanics that were not obvious
+
+| fact | measured |
+|---|---|
+| one programmatic range write | exactly one `selectionchange`; an unchanged write emits **none**, so re-asserting is idempotent and cannot loop |
+| `setBaseAndExtent` on a contenteditable | keeps base/focus reversed, so `o` and a leftward drag keep their direction; `getRangeAt(0)` stays ordered |
+| `document.caretPositionFromPoint` in a `<textarea>` | returns the character offset directly — this is how shift+click and right-click find the clicked character once a range is projected (the browser's own gesture moves the *other* end) |
+| Chrome finishes a drag | a task **after** `mouseup`, so the first deferred read can see a collapsed caret; the handler retries, bounded |
+| a press inside the projected range | is a **drag-and-drop** candidate, and a drag there MOVED TEXT (observed: "al" relocated) — `dragstart` is now prevented in visual modes, which turns the gesture back into a selection adjustment |
+| writing a caret into a blurred contenteditable | REFOCUSES it (the focus handler then restored INSERT); a blur drops the ranges instead |
+
+**Hosts that take the range away.** A `selectionchange` that collapses a charwise visual
+selection is treated as a host rewrite: the engine's range is re-asserted, bounded (3 in
+500 ms), after which the field falls back to painting the selection itself — the behaviour
+from before this change. A host edit that changes the text ends visual mode outright (the
+anchor's referent is gone), which is the accepted cost of letting the browser perform
+`Ctrl-X`/`Ctrl-V`.
+
+### Known deviations, recorded not chased
+
+- A drag always **re-anchors at the press point**; vim keeps the anchor when the drag begins
+  inside the selection. Getting vim's rule needs pointer hit-testing inside the gesture,
+  and the browser's drag-and-drop competes for the same gesture.
+- `V`'s `Ctrl-V` pastes **plain text** (the flat model has no markup) and reads the
+  clipboard through the synchronous path, so a refusing host pastes stale text with a
+  status line.
+- In `V`, the simulated `Ctrl-X`/`Ctrl-V` are engine-undoable while the native ones in `v`
+  are not.
 
 ## No ProseMirror transaction adapter (the DOM is the contract)
 

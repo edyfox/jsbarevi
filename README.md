@@ -295,17 +295,17 @@ behaviour, and the answer has two halves:
   selection and its Paste would bypass the engine's registers and undo. Pressing
   `Esc` leaves visual mode and brings the menu back.
 
-- **The Shift-modified caret keys are the host's.** `Shift+←/→/↑/↓`,
-  `Shift+Home/End` and `Shift+PageUp/PageDown` are never intercepted (`keys.js`), because vi
-  has no Shift-modified motions and in a browser field that gesture *is* the native
-  select. In NORMAL they enter VISUAL and in VISUAL they extend it; `Shift+End` agrees with
-  `g$`, but `Shift+PageDown` is the browser's viewport page rather than `C-f`'s page of
-  rows, and `Shift+↑/↓` move by the browser's visual row rather than by buffer line. Two
-  known limitations there (`Shift+→` does not accumulate; in VISUAL it re-anchors at the
-  head) are **recorded and deliberately not fixed** — normal mode is closed to new
-  features. In **insert mode** none of these keys is intercepted either, and a selection
-  the browser makes there stays the browser's; see
-  [`docs/DECISIONS.md`](docs/DECISIONS.md#shift-modified-caret-keys-belong-to-the-host).
+- **The Shift-modified caret keys are the host's**, outside `V`. vi has no Shift-modified
+  motions, and in a browser field that gesture *is* the native select. A selection the host
+  makes becomes VISUAL in **every** mode, so these keys select in insert mode and extend or
+  shrink the selection in charwise visual — natively, because the range is projected there.
+  `Shift+End` agrees with `g$`, but `Shift+PageDown` is the browser's viewport page rather
+  than `C-f`'s page of rows, and `Shift+↑/↓` move by the browser's visual row rather than by
+  buffer line. `V` is the exception: it keeps its own paint, so those six keys are the
+  engine's motions there. Two NORMAL-mode limitations remain, deliberately: repeated
+  `Shift+→` does not accumulate, and a drag re-anchors at the press point where vim would
+  keep the anchor — see
+  [`docs/DECISIONS.md`](docs/DECISIONS.md#charwise-visual-owns-the-native-selection-visual-line-keeps-its-own-paint).
 
 The native selection is still collapsed the moment it has been adopted, so exactly
 one of the two is ever visible; see the overlay note below for why the painting is
@@ -335,15 +335,23 @@ per request** from `git rev-parse` (`tools/build-id.mjs`, the one definition of 
 build identity, shared with the stamp script and with packaging). Reloading is now
 enough; the label can only ever describe what is being served.
 
-VISUAL and VISUAL LINE paint their own **overlay**: one box per selected line
-segment, measured with the same mirror technique as the caret, stretched to the
-field's right edge in linewise mode. The native selection is collapsed while the
-overlay is up so the two never double-paint, and `Ctrl-C` copies the engine's
-visual range instead.
+CHARWISE visual uses the **browser's own selection**: the engine's range is projected into
+it, direction included, and held there between keystrokes. That is what lets the native
+shortcuts work in `v` (`Ctrl-C`/`Ctrl-X`/`Ctrl-V`/`Ctrl-A` are the browser's) and what makes
+`Shift+arrow` extend and shrink what is already selected. VISUAL LINE keeps an **overlay**
+instead — one box per selected line segment, measured with the same mirror as the caret and
+stretched to the field's right edge — because a native selection paints glyph extents only,
+and a linewise bar is not a native thing. There the native selection stays collapsed and the
+six `Shift+…` keys and the four `Ctrl+…` keys are performed by the engine. Exactly one of the
+two paints the selection in either mode.
 
-Relying on the native selection was the first attempt and it was wrong in a way
-tests alone did not catch: the range *was* set and a pixel *did* change, but the
-OS highlight in a dark field is so weak that it was invisible in practice.
+Relying on the native selection was the first attempt and it failed in a way tests alone did
+not catch: the range *was* set and a pixel *did* change, but the OS highlight in a dark field
+was so weak that it was invisible in practice. Re-measured in 2026-11-23: the default paint
+is the host's choice and can be strong (`(6, 58, 164)` on a dark field) or absent entirely on
+an unfocused page — which is why the second attempt keeps our own overlay for `V`, where the
+look matters most, and accepts the browser's paint only for charwise, where the shortcuts
+are the point.
 
 ## Inside an app with no extension system (Lark)
 
