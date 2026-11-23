@@ -192,24 +192,33 @@ export class ContenteditableAdapter {
 
   syncFromHost() {
     const before = this.engine.hostText;
+    const prevCursor = this.engine.cursor;
     const text = getFlatText(this.el);
     const offset = flatOffsetFromSelection(this.el);
     this.engine.applyHostEdit(fromField(text), offset);
-    this._afterHostEdit(before);
+    const endedVisual = this._afterHostEdit(before, prevCursor);
     if (this.engine.hostText !== text) this._commit();
     else { this._lastText = text; this._updateCaret(); }
+    if (endedVisual) this._emitMode();
   }
 
   /**
    * A host edit that changes the text invalidates a visual selection's anchor. Native Cut
    * and Paste are host edits, which is the accepted cost of letting the browser do them.
    */
-  _afterHostEdit(before) {
-    if (this.engine.hostText === before) return;
-    if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) {
-      this.engine.mode = Mode.NORMAL;
-      this.engine.visual = null;
-    }
+  _afterHostEdit(before, prevCursor) {
+    if (this.engine.hostText === before) return false;
+    if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) return false;
+    // A native Cut/Paste mutated the document behind the engine's back. Three things have
+    // to happen, and the field reported all three as one symptom:
+    //   1. it must be UNDOABLE, or `u` skips it and undoes an older command;
+    //   2. visual mode ends — the range it was measured from is gone;
+    //   3. it ends in the mode the selection was MADE FROM: one begun in insert goes back
+    //      to insert, because that is where the next keystroke belongs.
+    this.engine.recordHostEdit(fromField(before), prevCursor);
+    this.engine.mode = this._selectionReturn || Mode.NORMAL;
+    this.engine.visual = null;
+    return true;
   }
 
   _onInput() {
@@ -260,6 +269,11 @@ export class ContenteditableAdapter {
     const [anchor, head] = sel.anchor <= sel.focus
       ? [sel.anchor, sel.focus - 1]
       : [sel.anchor - 1, sel.focus];
+    // Only when ENTERING visual: a second Shift+arrow reports another range
+    // while we are already visual, and that must not overwrite the origin.
+    if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) {
+      this._selectionReturn = this.engine.mode === Mode.INSERT ? Mode.INSERT : Mode.NORMAL;
+    }
     this.engine.enterVisualFromHost(anchor, head);
     this._lastText = getFlatText(this.el);
     this._commit();
@@ -353,6 +367,11 @@ export class ContenteditableAdapter {
         const [a, h] = sel.anchor <= sel.focus
           ? [sel.anchor, sel.focus - 1]
           : [sel.anchor - 1, sel.focus];
+        // Only when ENTERING visual: a second Shift+arrow reports another range
+        // while we are already visual, and that must not overwrite the origin.
+        if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) {
+          this._selectionReturn = this.engine.mode === Mode.INSERT ? Mode.INSERT : Mode.NORMAL;
+        }
         this.engine.enterVisualFromHost(a, h);
       } else {
         // A bare click ends visual mode (vim's rule, mouse.c:769).
@@ -415,7 +434,11 @@ export class ContenteditableAdapter {
     const key = shiftMotionFor(e, this.engine.mode) ?? tokenFor(e, this.engine.mode);
     if (key == null) return;
 
+    const wasInsert = this.engine.mode === Mode.INSERT || !!this.engine.replaceSession;
     const r = this.engine.feed(key);
+    if (!wasInsert && (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE)) {
+      if (key === "v" || key === "V") this._selectionReturn = null;
+    }
     this._emitMode();
     if (r.insertText != null) {
       // `<C-r>{register}`. execCommand rather than a text-node rewrite: it is the

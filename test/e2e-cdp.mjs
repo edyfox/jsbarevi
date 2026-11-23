@@ -722,6 +722,59 @@ async function main() {
     const insideDrag = await domSel();
     check("...leaving a real range", insideDrag.start !== insideDrag.end, true);
 
+    // A native cut must leave visual, update the badge, and be UNDOABLE — the three
+    // symptoms the field reported as two. The visual selection is set up through the engine
+    // rather than by typing: the point here is the CUT, and key dispatch has its own tests.
+    // Chrome refuses clipboard operations on a document it does not consider focused, so
+    // focus is emulated for this block only.
+    await session.send("Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
+    const visualSetup = (mode, keys) => evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText(${JSON.stringify(BUFFER)}, 0);
+      a.engine.mode = ${JSON.stringify(mode)};
+      ${keys.map((k) => `a.engine.feed(${JSON.stringify(k)});`).join(" ")}
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+
+    await visualSetup("NORMAL", ["v", "l", "l", "l"]);      // 0..3 = "alph"
+    check("the visual range is projected before the cut",
+      await evaluate(session, "(() => { const f = document.getElementById('field'); return [f.selectionStart, f.selectionEnd]; })()"),
+      [0, 4]);
+    await sendKey(session, "C-x");
+    await sleep(150);
+    check("a native cut deletes the selection", await field(), "a beta gamma\ndelta epsilon\nzeta eta theta");
+    check("...leaves visual mode", await mode(), "NORMAL");
+    check("...and the badge stops saying VISUAL",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').style.display"), "none");
+    await typeKeys(session, "u");
+    check("...and u puts the text back", await field(), BUFFER);
+
+    // The same cut, from a selection MADE IN INSERT, returns to insert.
+    await evaluate(session, `(() => {
+      const a = window.jsbarevi.textarea.adapter;
+      a.engine.setText(${JSON.stringify(BUFFER)}, 0);
+      a._commit(); a._emitMode();
+      document.getElementById('field').focus();
+      return true;
+    })()`);
+    await typeKeys(session, "i");
+    await sendNamedKey(session, "ArrowRight", 8);
+    await sleep(90);
+    await sendNamedKey(session, "ArrowRight", 8);
+    await sleep(90);
+    check("selecting from insert is visual", await mode(), "VISUAL");
+    await sendKey(session, "C-x");
+    await sleep(150);
+    check("a native cut there returns to INSERT", await mode(), "INSERT");
+    check("...reported as insert",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').textContent"), "-- INSERT --");
+    await sendKey(session, "Escape");
+    await typeKeys(session, "u");
+    check("...and that cut is undoable too", await field(), BUFFER);
+    await session.send("Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
+
     // VISUAL LINE simulates the six shift keys, so the selection stays linewise
     await resetField();
     await typeKeys(session, "gg");

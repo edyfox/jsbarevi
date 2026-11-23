@@ -2586,6 +2586,23 @@ export class Engine {
     }
   }
 
+  /**
+   * Record a change the HOST made (a native Cut, a paste through the browser's menu) as one
+   * undoable step.
+   *
+   * Without this the engine's undo stack has no entry for it, so `u` skips the edit and
+   * undoes an OLDER command: the buffer and the user's last action disagree. Reported from
+   * the field as "undo doesn't work well after the native modification". `previousText` is
+   * the engine buffer as it was BEFORE the host's edit.
+   */
+  recordHostEdit(previousText, previousCursor) {
+    if (!previousText || previousText === this.text) return false;
+    const cur = Math.max(0, Math.min(previousCursor ?? 0, Math.max(0, previousText.length - 1)));
+    this._pushUndo({ text: previousText, cursor: cur });
+    this._closeUndo();
+    return true;
+  }
+
   /** Text of the current visual selection (for Ctrl-C). */
   visualText() {
     const sel = this.visualSelection();

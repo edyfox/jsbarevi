@@ -1061,5 +1061,16 @@ console.log("\n\x1b[1mnative shortcuts: refused, delegated, or simulated\x1b[0m"
   eq("...as it does in normal mode", shiftMotionFor(ev("ArrowDown"), Mode.NORMAL), null);
 }
 
+{
+  const { fromField } = await import("../src/engine/buffer.js");
+  const e = mk("alpha beta\n", 0);
+  const before = e.text;
+  e.applyHostEdit("alpha\n", 5);            // the host cut " beta" behind our back
+  e.recordHostEdit(before, 0);
+  e.feed("u");
+  eq("a host edit recorded with recordHostEdit is undoable", e.hostText, "alpha beta");
+  void fromField;
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

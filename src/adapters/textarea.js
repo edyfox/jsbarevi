@@ -305,10 +305,14 @@ export class TextareaAdapter {
     // fromField: a field value ending in a newline has an EMPTY LAST LINE, which
     // the buffer's line-terminated model only sees if one more newline follows.
     const before = this.engine.hostText;
+    const prevCursor = this.engine.cursor;
     this.engine.applyHostEdit(fromField(this.el.value), this.el.selectionStart ?? 0);
-    this._afterHostEdit(before);
+    const endedVisual = this._afterHostEdit(before, prevCursor);
     if (this.engine.hostText !== this.el.value) this._commit();
     else this._updateCaret();
+    // A host edit that ended visual mode has to re-emit it: the badge and the caret were
+    // still saying `-- VISUAL --` over a normal-mode buffer (reported from the field).
+    if (endedVisual) this._emitMode();
   }
 
   /**
@@ -316,12 +320,19 @@ export class TextareaAdapter {
    * it was measured from is gone. Native Cut and Paste are host edits, which is the
    * accepted cost of letting the browser perform them.
    */
-  _afterHostEdit(before) {
-    if (this.engine.hostText === before) return;
-    if (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE) {
-      this.engine.mode = Mode.NORMAL;
-      this.engine.visual = null;
-    }
+  _afterHostEdit(before, prevCursor) {
+    if (this.engine.hostText === before) return false;
+    if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) return false;
+    // A native Cut/Paste mutated the document behind the engine's back. Three things have
+    // to happen, and the field reported all three as one symptom:
+    //   1. it must be UNDOABLE, or `u` skips it and undoes an older command;
+    //   2. visual mode ends — the range it was measured from is gone;
+    //   3. it ends in the mode the selection was MADE FROM: one begun in insert goes back
+    //      to insert, because that is where the next keystroke belongs.
+    this.engine.recordHostEdit(fromField(before), prevCursor);
+    this.engine.mode = this._selectionReturn || Mode.NORMAL;
+    this.engine.visual = null;
+    return true;
   }
 
   /**
@@ -345,6 +356,13 @@ export class TextareaAdapter {
       // selection gesture is what starts visual mode.
       if (this._mouseDown) return;
       const sel = this._selectionFromHost(start, end);
+      // Remember where the selection was MADE: a native cut/paste afterwards returns there
+      // (insert if it began in insert), because the next keystroke is typing.
+      // Only when ENTERING visual: a second Shift+arrow reports another range
+      // while we are already visual, and that must not overwrite the origin.
+      if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) {
+        this._selectionReturn = this.engine.mode === Mode.INSERT ? Mode.INSERT : Mode.NORMAL;
+      }
       this.engine.enterVisualFromHost(sel.anchor, sel.head);
       this._commit();
       this._emitMode();
@@ -469,6 +487,11 @@ export class TextareaAdapter {
         // begins inside the current selection, where vim would keep the anchor (recorded
         // as a known deviation in docs/DECISIONS.md).
         const sel = this._selectionFromHost(start, end);
+        // Only when ENTERING visual: a second Shift+arrow reports another range
+        // while we are already visual, and that must not overwrite the origin.
+        if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) {
+          this._selectionReturn = this.engine.mode === Mode.INSERT ? Mode.INSERT : Mode.NORMAL;
+        }
         this.engine.enterVisualFromHost(sel.anchor, sel.head);
       } else {
         // A bare click ends any visual selection and puts the cursor where it
@@ -619,7 +642,13 @@ export class TextareaAdapter {
     const key = shiftMotionFor(e, this.engine.mode) ?? this._token(e);
     if (key == null) return;
 
+    const wasInsert = this.engine.mode === Mode.INSERT || !!this.engine.replaceSession;
     const r = this.engine.feed(key);
+    // `v`/`V` pressed from normal mode starts a NEW selection: forget where an older one
+    // came from, or a later native cut would return to the wrong mode.
+    if (!wasInsert && (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE)) {
+      if (key === "v" || key === "V") this._selectionReturn = null;
+    }
     this._emitMode();
 
     if (r.prompt) {
