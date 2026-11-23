@@ -353,6 +353,64 @@ the first divergence would be a mode only one host restores. Pinned by `e2e-cdp`
 restore, badge, next keystroke is text, Escape wins, NORMAL stays NORMAL, `R` → NORMAL) and
 `contenteditable-e2e` (rich composer: same, plus the blur's step to the left).
 
+## Shift-modified caret keys belong to the host
+
+Decided 2026-11-23 (documenting behaviour that has shipped since the mouse work — and
+measured first, because two of the six keys turned out to be defective rather than
+deliberate).
+
+**The rule.** `tokenFor` returns `null` for any caret key carrying `shiftKey`
+(`keys.js:38-41`), so `Shift+←/→/↑/↓`, `Shift+Home/End` and `Shift+PageUp/PageDown` belong
+to the **browser** in every mode. Their unshifted forms are the engine's
+(`h l gk gj g0 g$ C-b C-f`). A host-created selection is adopted as visual mode
+(`enterVisualFromHost`), so a Shift-key in NORMAL **enters** VISUAL and in VISUAL
+**extends** it.
+
+**Why.** vi has no Shift-modified motions, so there is nothing here to be faithful to;
+and in a browser field Shift+arrow IS the native select gesture. Intercepting it would
+make selection feel foreign in exactly the way the mouse would — the same reason the
+mouse belongs to the host.
+
+**Measured** (Chromium 157, `test/e2e.html`, three-line buffer; the probe and its raw
+output are in the session's scratchpad):
+
+| keys | measured | against the engine's own motion |
+|---|---|---|
+| `Shift+End` in NORMAL | VISUAL, anchor 0, head 15, span = the line | **agrees** with `v` + `g$` |
+| `Shift+End` in VISUAL | same span as `v` then `$` | agrees |
+| `Shift+Home` past column 3 | anchored at the old caret, head 0 | agrees with `v` + `g0` |
+| `Shift+PageDown` | the browser's viewport page | **differs**: `C-f` pages by rows (`vp.height − 2`) |
+| `Shift+↓/↑` | the browser's visual row, and it can land on the line separator | **differs**: `j`/`k` are buffer lines |
+| `Shift+←/→` repeated | **stalls at one character** | defect, below |
+
+**Two defects, not choices.** Both were found by measuring, and they share one root cause:
+
+1. **`Shift+→` does not accumulate.** After adopting a host selection the adapter
+   `_commit()`s, which collapses the native selection to the engine cursor — the head
+   *character*. A one-character extension therefore rewinds the caret to where it started,
+   and the next press extends one character again. Keys that move far in a single event
+   (`Shift+End`, `Shift+PageDown`) look correct and hide the defect.
+2. **In VISUAL, the anchor is replaced.** `v` `ll` then `Shift+→` gives a one-character
+   selection anchored at the head, discarding the original span, because the adopted
+   anchor is the collapsed caret rather than the selection's real anchor.
+
+The missing piece is the same for both: **in visual mode the native selection must hold
+the engine's range between keystrokes instead of being collapsed to a caret.** That is the
+projection step of the native-selection design — the engine already supplies everything it
+needs (`visualSelection()` returns the span, `visual.anchor` vs `cursor` gives the
+direction), so fixing these needs **no engine change**. A local hack (collapsing to the
+exclusive end so the browser's caret sits one past the head) was considered and rejected:
+it would make the native caret disagree with the block caret in visual mode, which is the
+invariant the whole caret design protects.
+
+**What we deliberately do not do:** map the Shift keys onto vi motions; treat
+`Shift+PageDown` as `C-f`; or re-label the accumulation stall as "a browser difference".
+
+**Coverage today:** one assertion — a single `Shift+→` entering visual
+(`test/e2e-cdp.mjs:537`). Growth, and each of the six keys, are untested, which is how the
+stall survived. Mouse drag and Shift+click are unaffected: they carry their own
+anchor/head.
+
 ## No ProseMirror transaction adapter (the DOM is the contract)
 
 Decided 2026-11-16, when Cursor's Agent window came up. Input Vim carried a
