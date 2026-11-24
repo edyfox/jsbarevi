@@ -416,6 +416,34 @@ export function deleteBackwardAt(el, at) {
   return execCmd("delete");
 }
 
+/**
+ * Delete one character by asking the HOST to do it.
+ *
+ * Some editors keep a model that ignores what we do to the DOM but DOES act on a key it
+ * receives — Lark's `editor-kit` handles a synthetic (untrusted) Backspace keydown and
+ * deletes from its own model (measured 2026-11-24: `trusted:false, prevented:true,
+ * applied:true`, one character gone). Its own pipeline is the only door, so use it: place
+ * the caret, dispatch the key, let the host do the edit.
+ *
+ * Returns false when nothing changed, so the caller's progress guard can give up.
+ */
+export function backspaceViaKey(el, at) {
+  const before = getFlatText(el);
+  if (!before.length) return false;
+  setCursorAt(el, Math.max(0, Math.min(at, before.length)));
+  const init = {
+    key: "Backspace", code: "Backspace", keyCode: 8, which: 8,
+    bubbles: true, cancelable: true, composed: true,
+  };
+  const down = new KeyboardEvent("keydown", init);
+  down.__jsbareviSynthetic = true;          // our adapter must not consume our own key
+  el.dispatchEvent(down);
+  const up = new KeyboardEvent("keyup", init);
+  up.__jsbareviSynthetic = true;
+  el.dispatchEvent(up);
+  return getFlatText(el) !== before;
+}
+
 export function insertTextAt(el, offset, str) {
   setCursorAt(el, offset);
   const ok = execCmd("insertText", str);

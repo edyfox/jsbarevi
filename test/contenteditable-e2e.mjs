@@ -199,14 +199,42 @@ const SEALED_HOST = `<!doctype html>
   window.ready = true;
 </script>`;
 
+// A host that ignores what we do to the DOM but acts on a key it receives — Lark's
+// `editor-kit`, measured 2026-11-24. Declares `destructiveEdits: "keys"`, so the adapter
+// must dispatch Backspaces through its own pipeline instead of editing the DOM.
+const KEYS_ONLY_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test</div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  let model = "test";
+  window.hostLog = { model: () => model, repaints: 0 };
+  globalThis.__jsbareviDestructiveEdits = "keys";
+  const paint = () => { editor.textContent = model; window.hostLog.repaints++; };
+  // It repairs any DOM edit it did not make…
+  editor.addEventListener("input", () => { if (editor.textContent !== model) paint(); });
+  // …and acts on its own key pipeline.
+  editor.addEventListener("keydown", (e) => {
+    if (e.key !== "Backspace") return;
+    e.preventDefault();
+    model = model.slice(0, -1);
+    paint();
+  }, true);
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed"].includes(url)) {
+    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed", "/keysonly"].includes(url)) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST
         : url === "/normalizing" ? NORMALIZING_HOST
-        : url === "/padded" ? PADDED_HOST : url === "/sealed" ? SEALED_HOST : PAGE);
+        : url === "/padded" ? PADDED_HOST
+        : url === "/sealed" ? SEALED_HOST : url === "/keysonly" ? KEYS_ONLY_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -535,6 +563,24 @@ async function main() {
       check("...and a change command clears exactly the visible text",
         await evaluate(padPage, "window.handle.engine.hostText.replace(/[\\s\\u200b]/g, '')"), "");
       try { padPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- a host that only accepts edits through its own key pipeline ------
+    {
+      const keysPage = await openPage(chromePort, `http://127.0.0.1:${port}/keysonly`);
+      await waitFor(keysPage, "!!window.ready", 10000);
+      await evaluate(keysPage, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      await typeKeys(keysPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(keysPage, "0");
+      await typeKeys(keysPage, "C");
+      await sleep(600);
+      check("a keys-only host is edited through its own key pipeline",
+        await evaluate(keysPage, `[window.handle.engine.hostText, window.hostLog.model()]`), ["", ""]);
+      check("...and the DOM agrees with the host model",
+        await evaluate(keysPage, `document.getElementById("editor").innerText`), "");
+      try { keysPage.close(); } catch { /* ignore */ }
     }
 
     // ---- a host that forbids destructive edits (scoped seam) ---------------

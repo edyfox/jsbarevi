@@ -26,7 +26,7 @@ import { tokenFor, shiftMotionFor } from "./keys.js";
 import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import {
   getFlatText, flatOffsetAt, flatOffsetFromSelection, setCursorAt, projectRange,
-  deleteRange, deleteBackwardAt, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
+  deleteRange, deleteBackwardAt, backspaceViaKey, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
 } from "./contenteditable-dom.js";
 
 /**
@@ -457,7 +457,7 @@ export class ContenteditableAdapter {
   // -------------------------------------------------------------------------
 
   _onKeydown(e) {
-    if (e.__jsbareviProbe) return;              // our own diagnostic key, not a person's
+    if (e.__jsbareviSynthetic) return;           // a key WE dispatched (probe or edit)
     const target = e.composedPath?.()[0] ?? e.target;
     if (!(target === this.el || this.el.contains(target))) return;
     // See textarea.js: the composition guard belongs to insert mode only, otherwise a
@@ -565,6 +565,9 @@ export class ContenteditableAdapter {
     // payload's runtime config). Detection alone is too slow to rely on: Lark repaints its
     // model back SECONDS later, so the 80 ms check never fires and the adapter never learns.
     if (!this._slow && globalThis.__jsbareviSlowEdits === true) this._slow = true;
+    // `"keys"`: this host only accepts edits through its own key pipeline, so deletions are
+    // dispatched as synthetic Backspaces and must go one per tick.
+    if (!this._slow && globalThis.__jsbareviDestructiveEdits === "keys") this._slow = true;
     const next = this.engine.hostText;
     const prev = this._lastText;
     if (next === prev) return;
@@ -759,9 +762,12 @@ export class ContenteditableAdapter {
           // One character per tick — except a span so large that stepping through it would
           // take longer than the user is willing to wait.
           this._ignoreSelectionUntil = Date.now() + 60;
-        const ok = to - from > 160
+        const viaKeys = globalThis.__jsbareviDestructiveEdits === "keys";
+        const ok = to - from > 160 && !viaKeys
             ? deleteRange(this.el, from, to)
-            : deleteBackwardAt(this.el, Math.min(to, current.length));
+            : viaKeys
+              ? backspaceViaKey(this.el, Math.min(to, current.length))
+              : deleteBackwardAt(this.el, Math.min(to, current.length));
           if (!ok) break;
           changed = true;
           await new Promise((resolve) => setTimeout(resolve, 0));

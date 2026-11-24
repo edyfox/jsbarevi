@@ -224,7 +224,7 @@ function main() {
       key: "Backspace", code: "Backspace", keyCode: 8, which: 8,
       bubbles: true, cancelable: true, composed: true
     });
-    try { ev.__jsbareviProbe = true; } catch (err) {}
+    try { ev.__jsbareviSynthetic = true; } catch (err) {}
     var notPrevented = el.dispatchEvent(ev);
     setTimeout(function () {
       report("lark-probe", JSON.stringify({
