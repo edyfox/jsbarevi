@@ -76,7 +76,16 @@ export class Engine {
   // --- host API ------------------------------------------------------------
   setText(text, cursor = 0) {
     this._setText(B.ensureEol(text));
-    this.state.cursor = Math.max(0, Math.min(cursor, Math.max(0, this.state.text.length - 1)));
+    const max = Math.max(0, this.state.text.length - 1);
+    const at = Math.max(0, Math.min(cursor, max));
+    // `_setText` appends a trailing newline (the buffer invariant), so "the end of the
+    // buffer" is one past the last character of the last line. In INSERT that is a
+    // legitimate insertion point; in NORMAL/VISUAL it is not a position at all, and
+    // adopting one leaves the cursor past the line — where `l` walks BACKWARDS and the
+    // line cannot be entered (reported live, 2026-11-24). Same clamp as
+    // `setCursorFromHost`, which is why the host path was already correct.
+    const inserting = this.mode === Mode.INSERT || !!this.replaceSession;
+    this.state.cursor = inserting ? at : B.clampToLineEnd(this.state.text, at, at);
   }
   /**
    * The single writer for the buffer. Every mutation goes through here so the

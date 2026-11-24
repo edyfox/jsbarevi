@@ -986,6 +986,28 @@ console.log("\n\x1b[1mtheme detection (adapters/theme.js)\x1b[0m");
 // ---------------------------------------------------------------------------
 // The native-shortcut contract: refused, delegated, or simulated.
 // ---------------------------------------------------------------------------
+console.log("\n\x1b[1mthe cursor stays on a character outside insert\x1b[0m");
+{
+  // `_setText` appends a trailing newline, so "end of buffer" is one past the last
+  // character of the last line. That is an insertion point in INSERT and NOT a position
+  // in NORMAL — adopting it left the cursor past the line, where `l` walked BACKWARDS and
+  // the line could not be entered (reported live, 2026-11-24).
+  const e = new Engine({});
+  e.setText("abcde", 5);
+  eq("NORMAL adopts the last character, not the newline past it", e.cursor, 4);
+  e.mode = "INSERT";
+  e.setText("abcde", 5);
+  eq("INSERT may sit past the last character (typing at the end)", e.cursor, 5);
+
+  const f = new Engine({});
+  f.setText("abcdef", 0);
+  f.feed("$");
+  f.feed("x");
+  eq("x on the last character leaves the cursor on the new last one", f.cursor, 4);
+  f.feed("l");
+  eq("...and l does not walk backwards from there", f.cursor, 4);
+}
+
 console.log("\n\x1b[1mnative shortcuts: refused, delegated, or simulated\x1b[0m");
 {
   const msgs = [];

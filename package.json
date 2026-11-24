@@ -1,6 +1,6 @@
 {
   "name": "jsbarevi",
-  "version": "0.6.19",
+  "version": "0.6.20",
   "description": "A deliberately barebones vi for browser text fields",
   "type": "module",
   "license": "MIT",
