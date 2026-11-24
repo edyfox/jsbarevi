@@ -418,7 +418,8 @@ async function main() {
     // be turned back into INSERT).
     await evaluate(page, `(() => {
       const el = document.getElementById("editor");
-      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      // a press OUTSIDE the field is what "the user clicked away" means
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
       el.blur();
     })()`);

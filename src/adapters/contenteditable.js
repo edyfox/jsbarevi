@@ -398,6 +398,8 @@ export class ContenteditableAdapter {
 
   _onMouseDown(e) {
     this._lastPointerAt = Date.now();
+    this._lastPointerInside = this.el.contains(e.target);
+
     const target = e.composedPath?.()[0] ?? e.target;
     if (!(target === this.el || this.el.contains(target))) return;
     this._menuProjection = false;
@@ -495,7 +497,11 @@ export class ContenteditableAdapter {
     // See textarea.js: leaving insert on a blur must still take vim's step to the left,
     // or the block lands on the character after where the beam was. The mode is
     // remembered first, so the field comes back the way it was left (focus-mode.js).
-    this._returnMode = modeToReturn(this.engine);
+    // Only a DELIBERATE leave remembers INSERT — a pointer press outside the field
+    // (see textarea.js): a key-driven blur is normally another extension taking the
+    // Escape, and restoring INSERT there undoes what the user asked for.
+    const pressedOutside = Date.now() - (this._lastPointerAt || 0) < 400 && !this._lastPointerInside;
+    this._returnMode = pressedOutside ? modeToReturn(this.engine) : null;
     if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
     this.engine.reset();
     // A blurred composer must not keep a selection no mode owns. Dropping the ranges

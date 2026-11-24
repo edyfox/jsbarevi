@@ -94,6 +94,8 @@ export class TextareaAdapter {
         if (!this.el.contains(e.target)) return;
         this._menuProjection = false;
         this._mouseDown = true;
+        this._lastPointerAt = Date.now();
+        this._lastPointerInside = this.el.contains(e.target);
         this._pressPoint = { x: e.clientX, y: e.clientY };
         this._rememberBeforeClick();
       },
@@ -112,7 +114,13 @@ export class TextareaAdapter {
         // character AFTER the beam.
         // What the field was doing is remembered first: an editor you come back to
         // should still be the editor you left (see focus-mode.js).
-        this._returnMode = modeToReturn(this.engine);
+        // Remember INSERT only when the user LEFT DELIBERATELY — a pointer press outside
+        // the field. A blur with no such press is a key driver (another extension blurring
+        // on Escape): remembering INSERT there is what made Escape look like "it just moves
+        // the cursor left", because the focus guard hands the field back and the mode comes
+        // back with it (measured live, 2026-11-24).
+        const pressedOutside = Date.now() - (this._lastPointerAt || 0) < 400 && !this._lastPointerInside;
+        this._returnMode = pressedOutside ? modeToReturn(this.engine) : null;
         if (this.engine.mode === Mode.INSERT || this.engine.replaceSession) this.engine.feed("Esc");
         this.engine.reset();
         // Whatever the host still has selected is no longer ours: collapse it, or a
