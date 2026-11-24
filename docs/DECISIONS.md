@@ -575,6 +575,15 @@ Two rules, and the second one generalises:
    buffer. The rule that satisfies both: compare for exact equality, let the span (not the
    text) decide when to stop, and accept the placeholder shape only once the span is spent.
 
+4. **Prefer ONE edit over a burst — a host may coalesce.** Seven synchronous
+   `deleteContentBackward` events land in the DOM and reach the host as *one* model update
+   (measured in Lark: its model lost a single character while seven were deleted, and `est`
+   came back). So a range change is issued as a single
+   `execCommand("insertText", …)` over the real selection — a pure deletion is
+   `insertText("")`, which the browser reports as one `input` with `inputType: "insertText"`
+   and `data: ""`. `replaceRange` does that; `deleteRange`'s tail-wise loop stays as the
+   fallback for a host that ignores the empty insert.
+
 Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
 `reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
 the old ranged delete (`tes` resurrects), which is the regression this guards.

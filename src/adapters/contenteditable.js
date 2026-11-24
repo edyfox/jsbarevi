@@ -26,7 +26,7 @@ import { tokenFor, shiftMotionFor } from "./keys.js";
 import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import {
   getFlatText, flatOffsetAt, flatOffsetFromSelection, setCursorAt, projectRange,
-  deleteRange, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
+  deleteRange, replaceRange, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
 } from "./contenteditable-dom.js";
 
 /**
@@ -632,7 +632,17 @@ export class ContenteditableAdapter {
         // the whole mention, because that is the only thing the host can do.
         const range = snapRange(this.el, from, to);
         at = range.from;
-        if (!deleteRange(this.el, range.from, range.to)) return false;
+        // ONE edit first — "replace this selection with this text" — because that is the
+        // shape a host with its own model applies in one step. Then the tail-wise delete,
+        // for a host that ignores an empty insert (the plain-contenteditable case on some
+        // engines).
+        if (!replaceRange(this.el, range.from, range.to, insert)) {
+          if (!deleteRange(this.el, range.from, range.to)) return false;
+          if (!insert) return true;
+          at = snapInsert(this.el, at);
+          return insertTextAt(this.el, at, insert);
+        }
+        return true;
       }
       if (insert) {
         at = snapInsert(this.el, at);

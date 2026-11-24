@@ -352,6 +352,28 @@ export function deleteRange(el, from, to) {
   return stripTail(getFlatText(el)) === stripTail(expected);
 }
 
+/**
+ * Replace [from, to) with `insert` as ONE editing command.
+ *
+ * "Replace this selection with this text" is what a vim change command means, and
+ * `execCommand("insertText", …)` over a real selection is the one edit the browser
+ * reports in exactly those terms: a single `input` with `inputType: "insertText"`
+ * (data "" for a pure deletion). That matters on a host with its own model: a burst of
+ * `deleteContentBackward` events issued in one tick gets coalesced into a single model
+ * update, so most of the deletion never reaches it (measured in Lark, 2026-11-24: seven
+ * deletes landed in the DOM, its model lost one character, and `est` came back).
+ *
+ * Returns false when the host ignored it, so the caller can fall back to deleting
+ * character by character.
+ */
+export function replaceRange(el, from, to, insert = "") {
+  if (to <= from && !insert) return true;
+  setSelectionRange(el, from, to);
+  const before = getFlatText(el);
+  if (!execCmd("insertText", insert || "")) return false;
+  return getFlatText(el) !== before;
+}
+
 export function insertTextAt(el, offset, str) {
   setCursorAt(el, offset);
   const ok = execCmd("insertText", str);

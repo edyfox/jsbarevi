@@ -106,7 +106,10 @@ const MODEL_HOST = `<!doctype html>
     const it = String(e.inputType || "");
     if (it === "deleteContentBackward") model = model.slice(0, -1);    // one character, literally
     else if (it === "deleteContentForward") model = model.slice(1);
-    else if (it === "insertText" && e.data) model += e.data;
+    // A replace is one edit over a selection: the host removes exactly that span and puts
+    // the data in its place. With no data it is a pure deletion; the DOM is the record of
+    // which span was selected, which is what an editor applies here too.
+    else if (it === "insertText") model = e.data ? model + e.data : editor.textContent;
   });
   window.rerender = () => { editor.textContent = model; window.hostLog.rerenders++; };
   const { attach } = await import("/src/entry.js");
@@ -125,8 +128,7 @@ const REVERTING_HOST = `<!doctype html>
   window.hostLog = { reverts: 0 };
   window.reports = [];
   globalThis.__jsbareviReport = (src, detail) => window.reports.push([src, detail]);
-  editor.addEventListener("input", (e) => {
-    if (!String(e.inputType || "").startsWith("delete")) return;
+  editor.addEventListener("input", () => {
     setTimeout(() => { editor.textContent = model; window.hostLog.reverts++; }, 60);
   });
   const { attach } = await import("/src/entry.js");
@@ -157,7 +159,10 @@ const NORMALIZING_HOST = `<!doctype html>
   editor.addEventListener("input", (e) => {
     const it = String(e.inputType || "");
     if (it === "deleteContentBackward") model = model.slice(0, -1);
-    else if (it === "insertText" && e.data) model += e.data;
+    // A replace adopts what the DOM now holds — minus the empty-block placeholder this
+    // host paints (a model never contains a zero-width space the viewer cannot see).
+    else if (it === "insertText") model = e.data ? model + e.data
+      : editor.textContent.replace(/[\u200b]/g, "").replace(/^\\n+$/, "");
     paint();                                  // repaint at once, the way editor-kit does
   });
   const { attach } = await import("/src/entry.js");
