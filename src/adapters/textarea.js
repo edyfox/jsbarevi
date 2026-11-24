@@ -90,12 +90,13 @@ export class TextareaAdapter {
       },
       contextmenu: (e) => this._onContextMenu(e),
       mousedown: (e) => {
+        // WHERE the press landed is what distinguishes "the user left the field" from a
+        // key-driven blur, so record it BEFORE the early return for outside presses.
         this._lastPointerAt = Date.now();
+        this._lastPointerInside = this.el.contains(e.target);
         if (!this.el.contains(e.target)) return;
         this._menuProjection = false;
         this._mouseDown = true;
-        this._lastPointerAt = Date.now();
-        this._lastPointerInside = this.el.contains(e.target);
         this._pressPoint = { x: e.clientX, y: e.clientY };
         this._rememberBeforeClick();
       },

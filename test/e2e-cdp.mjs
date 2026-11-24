@@ -1394,7 +1394,14 @@ async function main() {
     await typeKeys(session, "iX");
     check("typing while inserting", await field(), "Xalpha beta");
     check("...and the engine says INSERT", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "INSERT");
-    await evaluate(session, "document.getElementById('field').blur()");
+    // A blur is "the user left" only when a press landed OUTSIDE the field: a key-driven
+    // blur (another extension taking the Escape) must not bring INSERT back. Model the
+    // click-away properly, or the test asserts the wrong thing.
+    await evaluate(session, `(() => {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      document.getElementById("field").blur();
+    })()`);
     await sleep(80);
     check("a blur still leaves the engine in NORMAL", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "NORMAL");
     check("...and says so on the badge",
