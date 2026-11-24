@@ -119,7 +119,7 @@ function main() {
     try {
       var img = new Image();
       img.src = BEACON + "/beacon?src=" + src + "&u=" + encodeURIComponent(location.href.slice(0, 140)) +
-        (detail ? "&d=" + encodeURIComponent(String(detail).slice(0, 300)) : "");
+        (detail ? "&d=" + encodeURIComponent(String(detail).slice(0, 900)) : "");
     } catch (e) {}
   };
   report("lark-page", document.title || "");
@@ -127,6 +127,71 @@ function main() {
   // through, the adapter reports through this sink and it lands in Lark's own log and on
   // the beacon server. Absent anywhere else, so the adapter's call is a no-op there.
   globalThis.__jsbareviReport = report;
+
+  // --- the HOST side of an edit (jsbarevi) --------------------------------------
+  //
+  // Lark's editor-kit keeps its own document model, and this app refuses DevTools
+  // ("DevTools remote debugging is disallowed by the system admin"), so an edit that
+  // wedges the composer cannot be watched from outside. Watch it from inside instead:
+  // every execCommand the engine issues, every beforeinput the host sees (and whether it
+  // cancels it), every input it dispatches, and any exception. Config-gated — one beacon
+  // per edit is cheap, but it is not something to leave on.
+  var traced = function () {
+    var c = globalThis.__larkVimCfg;
+    return !!(c && c.trace);
+  };
+  var fieldNow = function () {
+    try {
+      var el = document.activeElement || document.querySelector(".innerdocbody");
+      var sel = getSelection();
+      return {
+        text: String((el && (el.innerText || el.textContent)) || "").slice(0, 160),
+        kids: el ? el.childNodes.length : -1,
+        html: el ? String(el.innerHTML || "").slice(0, 200) : "",
+        sel: sel ? (sel.isCollapsed ? "caret@" + sel.anchorOffset : "range " + String(sel).slice(0, 40)) : "-"
+      };
+    } catch (e) { return { error: String(e) } }
+  };
+  var nativeExec = document.execCommand;
+  document.execCommand = function (cmd) {
+    if (!traced()) return nativeExec.apply(document, arguments);
+    var before = fieldNow();
+    var ok, threw = null;
+    try { ok = nativeExec.apply(document, arguments) } catch (e) { threw = String(e); }
+    var after = fieldNow();
+    // Short fields FIRST, html last: report() truncates, and a truncated record whose
+    // first fields are still readable is worth more than one that ends mid-html.
+    report("lark-exec", JSON.stringify({
+      cmd: cmd, arg: arguments[1], ok: ok === undefined ? null : ok, threw: threw,
+      changed: before.text !== after.text,
+      from: before.text, to: after.text, sel: before.sel + ">" + after.sel,
+      kids: before.kids + ">" + after.kids, html: after.html
+    }));
+    if (threw) throw threw;
+    return ok;
+  };
+  document.addEventListener("beforeinput", function (e) {
+    if (!traced()) return;
+    var it = e.inputType, cancelable = e.cancelable;
+    setTimeout(function () {
+      report("lark-beforeinput", JSON.stringify({ it: it, data: e.data === null ? null : String(e.data || "").slice(0, 40), cancelable: cancelable, cancelled: e.defaultPrevented }));
+    }, 0);
+  }, true);
+  document.addEventListener("input", function (e) {
+    if (!traced()) return;
+    report("lark-input", JSON.stringify({ it: e.inputType, data: e.data === null ? null : String(e.data || "").slice(0, 40), after: fieldNow().text }));
+  }, true);
+  window.addEventListener("error", function (e) {
+    report("lark-error", String(e.message || "") + " @ " + String(e.filename || "").slice(-40) + ":" + (e.lineno || 0) + " " + String(e.error && e.error.stack || "").slice(0, 200));
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e.reason;
+    report("lark-error", "rejection " + String(r && (r.stack || r.message || r)).slice(0, 250));
+  });
+  document.addEventListener("focusout", function (e) {
+    if (!traced()) return;
+    report("lark-focusout", String(e.target && e.target.className || e.target && e.target.tagName || "?").slice(0, 90));
+  }, true);
 
   // Runtime config lives on the beacon server: changing the gate needs no re-patch.
   globalThis.__larkVimCfg = ${JSON.stringify(cfg)};

@@ -83,12 +83,63 @@ const PAGE = `<!doctype html>
 </script>
 </body></html>`;
 
+// ---- hosts with their own document MODEL (Lark's editor-kit) ------------------
+//
+// editor-kit does not rebuild its model from the DOM; it applies the edits it is told
+// about and re-renders from its own string. Two shapes matter, and both broke the
+// composer on 2026-11-24 (`C` on "test" ended up holding `cbtest`):
+//
+//   * it models `deleteContentBackward` literally — ONE character — so a ranged delete
+//     we perform in the DOM removes one character in ITS copy;
+//   * it renders that copy back over the field afterwards, with no `input` event.
+const MODEL_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test</div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  let model = "test";                       // the host's own copy, NOT read from the DOM
+  window.hostLog = { model: () => model, rerenders: 0 };
+  // The input event, NOT beforeinput: Chromium does not fire beforeinput for an edit
+  // made through execCommand, which is how every jsbarevi edit reaches the DOM.
+  editor.addEventListener("input", (e) => {
+    const it = String(e.inputType || "");
+    if (it === "deleteContentBackward") model = model.slice(0, -1);    // one character, literally
+    else if (it === "deleteContentForward") model = model.slice(1);
+    else if (it === "insertText" && e.data) model += e.data;
+  });
+  window.rerender = () => { editor.textContent = model; window.hostLog.rerenders++; };
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  window.ready = true;
+</script>`;
+
+// A host that simply does not believe the edit: it keeps its model and paints it back.
+const REVERTING_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test</div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  const model = "test";
+  window.hostLog = { reverts: 0 };
+  window.reports = [];
+  globalThis.__jsbareviReport = (src, detail) => window.reports.push([src, detail]);
+  editor.addEventListener("input", (e) => {
+    if (!String(e.inputType || "").startsWith("delete")) return;
+    setTimeout(() => { editor.textContent = model; window.hostLog.reverts++; }, 60);
+  });
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (url === "/" || url === "/ce") {
+    if (url === "/" || url === "/ce" || url === "/model" || url === "/reverting") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      res.end(PAGE);
+      res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -400,6 +451,53 @@ async function main() {
     check("...with no overlay left behind",
       await evaluate(page, "document.querySelectorAll('.jsbarevi-caret, .jsbarevi-sel, .jsbarevi-badge').length"), 0);
     check("...and no mode marker", await evaluate(page, "document.getElementById('editor').hasAttribute('data-jsbarevi-mode')"), false);
+
+    // ---- a host with its own document MODEL (Lark's editor-kit) -----------
+    //
+    // The ranged delete used to be ONE execCommand: right in the DOM, one character in
+    // the host's model — which Lark then painted back over the field (2026-11-24). The
+    // host here re-renders from its model, so this is the end-to-end check: after `C`
+    // both copies must say the same thing, and a re-render must resurrect nothing.
+    {
+      const modelPage = await openPage(chromePort, `http://127.0.0.1:${port}/model`);
+      await waitFor(modelPage, "!!window.ready", 10000);
+      await evaluate(modelPage, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      await typeKeys(modelPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(modelPage, "0");
+      await typeKeys(modelPage, "C");
+      await sleep(250);
+      check("a modelled host and the engine agree after `C`",
+        await evaluate(modelPage, `[window.handle.engine.hostText, window.hostLog.model()]`), ["", ""]);
+      await evaluate(modelPage, "window.rerender()");
+      await sleep(60);
+      check("...so the host's own re-render resurrects nothing",
+        await evaluate(modelPage, `document.getElementById("editor").innerText`), "");
+      try { modelPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- a host that rewrites over us afterwards --------------------------
+    // Adopting the host's text is the difference between a wedged composer and a
+    // recoverable one: the engine must never keep a caret the document does not back.
+    {
+      const revertPage = await openPage(chromePort, `http://127.0.0.1:${port}/reverting`);
+      await waitFor(revertPage, "!!window.ready", 10000);
+      await evaluate(revertPage, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      await typeKeys(revertPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(revertPage, "0");
+      await typeKeys(revertPage, "C");
+      await sleep(300);
+      check("the reverting host really did paint its model back",
+        await evaluate(revertPage, "window.hostLog.reverts >= 1"), true);
+      check("the engine adopts the text the host really has",
+        await evaluate(revertPage, "window.handle.engine.hostText"), "test");
+      check("...and reports it instead of failing silently",
+        await evaluate(revertPage, `window.reports.some((r) => r[0] === "edit-reverted")`), true);
+      try { revertPage.close(); } catch { /* ignore */ }
+    }
 
   } finally {
     try { page?.close(); } catch { /* ignore */ }

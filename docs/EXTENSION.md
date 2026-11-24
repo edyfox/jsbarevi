@@ -319,6 +319,24 @@ Two deliberate details:
 `:e` does not travel: a page on a custom scheme may not fetch `http://127.0.0.1`, so the
 transport reports "cannot reach" and the session stays in the field.
 
+### What the chat composer does to an edit we make
+
+Lark's composer is ByteDance `editor-kit` (`DIV.zone-container editor-kit-container
+innerdocbody`). It keeps its own document model and repaints from it, which changes two
+things about editing it:
+
+- **A ranged delete reaches it as a one-character backspace.** `execCommand("delete")`
+  over the projected range empties the span in the DOM, but the only event the host gets is
+  `input` with `inputType: "deleteContentBackward"` and no data — and Chromium fires no
+  `beforeinput` for an `execCommand` edit at all. Measured 2026-11-24: `C` on `test` left
+  the composer holding `cbtest`, with the caret pointing at text that no longer existed.
+  Fixed by deleting from the tail, one caret-width at a time (`deleteRange`), so each step
+  is the edit every editor models the same way.
+- **It can repaint after we finish, silently.** The immediate post-edit check sees our own
+  DOM write and passes; the host's copy lands a moment later with no `input` event. So the
+  field is re-read shortly after and the host's text is adopted, reported as
+  `edit-reverted`. `docs/DECISIONS.md` has both rules and the evidence.
+
 ## Settings
 
 `chrome.storage.local`, three keys — nothing else is stored anywhere:

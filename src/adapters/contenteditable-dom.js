@@ -298,11 +298,38 @@ export function hasAtomicContent(el) {
 
 /**
  * Delete [from, to) through the browser's own editing command.
- * Returns false when the host refused — the caller then leaves the document alone
- * rather than rewriting it and losing whatever is in there.
+ *
+ * One ranged `execCommand("delete")` empties the span in the DOM, and that is all the
+ * immediate check can see. What a RICH host receives is different: `beforeinput`/`input`
+ * with inputType `deleteContentBackward` and no data — "backspace one character". A host
+ * that keeps its own model (Lark's editor-kit) applies exactly that, one character, and
+ * re-renders the rest back later; the two documents then disagree and the next keystroke
+ * lands at a caret that no longer exists (measured 2026-11-24: `C` on `test` left the
+ * composer holding `cbtest`).
+ *
+ * So delete from the TAIL, one caret-width at a time: every step is a single backward
+ * delete, the one edit every editor models the way we do. A span too large to step
+ * through falls back to the ranged delete, which is right for plain hosts.
+ *
+ * Returns false when the host refused — the caller then leaves the document alone rather
+ * than rewriting it and losing whatever is in there.
  */
+const DELETE_STEPS = 240;
+
 export function deleteRange(el, from, to) {
-  setSelectionRange(el, from, to);
+  if (to <= from) return true;
+  const target = getFlatText(el).length - (to - from);
+  let end = to;
+  for (let step = 0; step < DELETE_STEPS; step++) {
+    const before = getFlatText(el).length;
+    if (before <= target) return true;
+    setCursorAt(el, Math.min(end, before));
+    if (!execCmd("delete")) return false;
+    const after = getFlatText(el).length;
+    if (after >= before) return false;          // the host did nothing; do not spin
+    end -= before - after;                      // a mention goes as one unbreakable unit
+  }
+  setSelectionRange(el, from, Math.max(from, Math.min(to, getFlatText(el).length)));
   return execCmd("delete");
 }
 

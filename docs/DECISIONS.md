@@ -542,3 +542,30 @@ asset.
 - Multi-cursor.
 - Reimplementing the host's typing, IME, paste or undo.
 - A settings popup (`:set` is the settings).
+
+## A deletion has to be *told* to a host that keeps its own model
+
+Decided 2026-11-24, from Lark (`editor-kit`, `innerdocbody`).
+
+One ranged `execCommand("delete")` empties the span in the DOM — and fires
+`input` with `inputType: "deleteContentBackward"`, `data: null`. Chromium does **not**
+fire `beforeinput` for an edit made through `execCommand` at all, so the only thing the
+host is told is *"backspace one character"*. A host with its own model applies exactly
+that (one character gone there), then re-renders its copy back over the field later, with
+no event to announce it. Measured end state in Lark: `C` on `test` left the composer
+holding `cbtest`, with our caret pointing at content that no longer existed.
+
+Two rules, and the second one generalises:
+
+1. **Delete from the tail, one caret-width at a time** (bounded at 240 steps, then one
+   ranged delete for very large spans). Every step is the single backward delete every
+   editor models the way we do, so the two documents stay in step. `deleteRange` in
+   `adapters/contenteditable-dom.js`.
+2. **"The DOM changed" is not "the edit was applied."** Re-read the field shortly after
+   the edit and adopt what the host really has, reporting `edit-reverted`. The immediate
+   check cannot see a host that repaints later; without the second read the engine keeps a
+   caret the document does not back, which is what "wedged" feels like to a person.
+
+Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
+`reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
+the old ranged delete (`tes` resurrects), which is the regression this guards.

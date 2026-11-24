@@ -149,6 +149,7 @@ export class ContenteditableAdapter {
   }
 
   destroy() {
+    clearTimeout(this._verifyTimer);
     if (!this._keysDispatchedByHost) window.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
     this.el.removeEventListener("contextmenu", this._bound.contextmenu);
@@ -579,12 +580,42 @@ export class ContenteditableAdapter {
         }
         this._lastText = this.engine.hostText;
         this._dispatchInput();
+        this._verifySoon();
       }
       this._remember(prev, html);
     }
     // AFTER the DOM writes above, which drop the range.
     this._project();
     this._updateCaret();
+  }
+
+  /**
+   * The host can rewrite its document AFTER we finish, and tell nobody.
+   *
+   * The immediate check in `_commit` runs in the same tick, so it sees the DOM we just
+   * wrote and reports success — while a host with its own model (Lark's editor-kit) can
+   * re-render that model back over the field a moment later, with no `input` event to
+   * announce it. The result is ghost text: the field shows what we deleted, our caret
+   * points somewhere that content no longer backs, and the next keystrokes land wrong.
+   *
+   * Read the field once, shortly after, and ADOPT what the host really has — a host is
+   * the authority on its own document. Reported so the seam stays measurable instead of
+   * being discovered by a person noticing a wedged composer.
+   */
+  _verifySoon() {
+    clearTimeout(this._verifyTimer);
+    this._verifyTimer = setTimeout(() => {
+      const actual = getFlatText(this.el);
+      const expected = this._lastText;
+      if (actual === expected) return;
+      this._lastText = actual;
+      this.engine.setText(fromField(actual), Math.min(this.engine.cursor, actual.length));
+      this.onStatus?.("the host re-rendered the text after the edit", "error");
+      globalThis.__jsbareviReport?.("edit-reverted", JSON.stringify({
+        expected: expected.slice(0, 300),
+        actual: actual.slice(0, 300),
+      }).slice(0, 900));
+    }, 80);
   }
 
   _remember(text, html) {
