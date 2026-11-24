@@ -207,6 +207,34 @@ function main() {
     report("lark-focusout", String(e.target && e.target.className || e.target && e.target.tagName || "?").slice(0, 90));
   }, true);
 
+  // --- probe: does this host act on an UNTRUSTED Backspace keydown? --------------
+  //
+  // If it does, a deletion can be issued through the host's own key pipeline and its own
+  // model performs it — no fight, no coalescing, no ghost text. F9 in a composer runs the
+  // probe and beacons what happened, so the question costs one keystroke per answer.
+  window.addEventListener("keydown", function (e) {
+    var CFG = globalThis.__larkVimCfg || {};
+    if (!CFG.probeKeys || e.key !== "F9") return;
+    var el = document.activeElement;
+    if (!el || !el.isContentEditable) return;
+    e.preventDefault();
+    var before = String(el.innerText || "");
+    var target = String(before).length ? (el.lastChild || el) : el;
+    var ev = new KeyboardEvent("keydown", {
+      key: "Backspace", code: "Backspace", keyCode: 8, which: 8,
+      bubbles: true, cancelable: true, composed: true
+    });
+    try { ev.__jsbareviProbe = true; } catch (err) {}
+    var notPrevented = el.dispatchEvent(ev);
+    setTimeout(function () {
+      report("lark-probe", JSON.stringify({
+        trusted: ev.isTrusted, prevented: !notPrevented,
+        before: before.slice(0, 80), after: String(el.innerText || "").slice(0, 80),
+        applied: String(el.innerText || "") !== before
+      }));
+    }, 200);
+  }, true);
+
   // Runtime config lives on the beacon server: changing the gate needs no re-patch.
   globalThis.__larkVimCfg = ${JSON.stringify(cfg)};
   try {

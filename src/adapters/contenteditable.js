@@ -457,6 +457,7 @@ export class ContenteditableAdapter {
   // -------------------------------------------------------------------------
 
   _onKeydown(e) {
+    if (e.__jsbareviProbe) return;              // our own diagnostic key, not a person's
     const target = e.composedPath?.()[0] ?? e.target;
     if (!(target === this.el || this.el.contains(target))) return;
     // See textarea.js: the composition guard belongs to insert mode only, otherwise a
