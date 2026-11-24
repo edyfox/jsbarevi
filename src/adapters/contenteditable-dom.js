@@ -317,7 +317,10 @@ export function hasAtomicContent(el) {
 const DELETE_STEPS = 240;
 
 /** Line breaks and Lark's zero-width placeholders are the host's business, not ours. */
-const stripTail = (s) => s.replace(/[\s\u200b]+$/, "");
+const stripTail = (s) => s.replace(/[\s\u00a0\u200b]+$/, "");
+/** Two spellings of the same text: breaks, non-breaking spaces, zero-width spaces. */
+const sameText = (a, b) => a.replace(/[\u00a0]/g, " ").replace(/[\n\u200b]/g, "") ===
+  b.replace(/[\u00a0]/g, " ").replace(/[\n\u200b]/g, "");
 
 export function deleteRange(el, from, to) {
   if (to <= from) return true;
@@ -333,12 +336,12 @@ export function deleteRange(el, from, to) {
     // Out of span, and what is left is only the host's empty-block placeholder (`<br>` +
     // zero-width space): the deletion DID land. Trying one more delete here is a no-op
     // that reported a finished edit as "refused" (Lark, 2026-11-24: `abcest`).
-    if (end <= from && stripTail(current) === stripTail(expected)) return true;
+    if (end <= from && sameText(current, expected)) return true;
     const beforeLen = current.length;
     setCursorAt(el, Math.min(end, beforeLen));
     if (!execCmd("delete")) return false;
     const after = getFlatText(el);
-    if (after === current) return stripTail(after) === stripTail(expected);
+    if (after === current) return sameText(after, expected);
     end -= Math.max(1, beforeLen - after.length);        // a mention goes as one unit
     if (end < from) break;
   }
@@ -349,7 +352,7 @@ export function deleteRange(el, from, to) {
     setSelectionRange(el, from, Math.min(to, getFlatText(el).length));
     return execCmd("delete");
   }
-  return stripTail(getFlatText(el)) === stripTail(expected);
+  return sameText(getFlatText(el), expected);
 }
 
 /**
@@ -372,6 +375,22 @@ export function replaceRange(el, from, to, insert = "") {
   const before = getFlatText(el);
   if (!execCmd("insertText", insert || "")) return false;
   return getFlatText(el) !== before;
+}
+
+/**
+ * Delete ONE character before `at` — the unit a host with its own model understands.
+ *
+ * `editor-kit` (Lark) applies exactly one edit per input event, and it applies the
+ * `inputType` it is handed: a burst issued inside one tick collapses into a single model
+ * update, and a range it cannot see is ignored entirely. A backward delete with the caret
+ * before the character to remove is the one shape it applies faithfully — so the adapter
+ * issues them, one per tick, from `_drain`.
+ */
+export function deleteBackwardAt(el, at) {
+  const text = getFlatText(el);
+  if (!text.length) return false;
+  setCursorAt(el, Math.max(0, Math.min(at, text.length)));
+  return execCmd("delete");
 }
 
 export function insertTextAt(el, offset, str) {

@@ -26,7 +26,7 @@ import { tokenFor, shiftMotionFor } from "./keys.js";
 import { modeToReturn, applyReturnedMode } from "./focus-mode.js";
 import {
   getFlatText, flatOffsetAt, flatOffsetFromSelection, setCursorAt, projectRange,
-  deleteRange, replaceRange, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
+  deleteRange, deleteBackwardAt, insertTextAt, caretRect, rangeRects, snapRange, snapInsert,
 } from "./contenteditable-dom.js";
 
 /**
@@ -37,7 +37,11 @@ import {
  * the placeholder block it needs. That is line structure, not a lost edit — while any
  * other difference is text that went missing, which must be reported.
  */
-const withoutBreaks = (text) => text.replace(/\n/g, "");
+// Hosts normalize the document in ways that are not edits: a block join becomes a break,
+// an emptied chip leaves a non-breaking space, Lark sprinkles zero-width spaces. Two texts
+// that differ only in those are the SAME text, and treating them as a lost edit is what
+// made a successful chip deletion report "refused".
+const withoutBreaks = (text) => text.replace(/\n/g, "").replace(/\u00a0/g, " ").replace(/\u200b/g, "");
 
 /** Longest common prefix/suffix, i.e. the smallest edit between two buffers. */
 export function diffRange(prev, next) {
@@ -80,6 +84,13 @@ export class ContenteditableAdapter {
     this.highlight = new SelectionHighlight(el);
 
     this._lastText = getFlatText(el);
+    this._target = this._lastText;
+    this._draining = false;
+    this._slow = false;
+    this._reverts = 0;
+    this._commitSeq = 0;
+    this._ignoreSelectionUntil = 0;
+    this._destroyed = false;
     // Text → the host's own DOM for that text. A text diff cannot re-create an
     // element, so restoring a state that still exists as markup (vim's u and redo)
     // puts the markup back instead. Same idea as Input Vim's innerHTML undo stack,
@@ -149,6 +160,7 @@ export class ContenteditableAdapter {
   }
 
   destroy() {
+    this._destroyed = true;
     clearTimeout(this._verifyTimer);
     if (!this._keysDispatchedByHost) window.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
@@ -223,7 +235,9 @@ export class ContenteditableAdapter {
   }
 
   _onInput() {
-    if (this._typing) return;
+    // `_drain` (and `_dispatchInput`) drive the document themselves; a host's echo of one
+    // of those writes must not overwrite the text the drain is converging on.
+    if (this._typing || this._draining) return;
     this.syncFromHost();
   }
 
@@ -242,6 +256,12 @@ export class ContenteditableAdapter {
   }
 
   _onSelectionChange() {
+    if (this._draining) return;
+    // `deleteRange` sets a REAL range as the edit primitive, and Chrome reports
+    // selectionchange for it asynchronously — after the edit returned. Without this guard
+    // the adapter reads its own edit selection as "the user selected this" and switches
+    // to visual, which is what made `x` on a chip do nothing at all.
+    if (Date.now() < this._ignoreSelectionUntil) return;
     if (document.activeElement !== this.el) return;
     if (this.engine.prompt || this._mouseDown) return;
     const sel = this._selection();
@@ -528,88 +548,132 @@ export class ContenteditableAdapter {
 
   /** Write the engine's buffer back, touching only the span that changed. */
   _commit() {
+    // The DOM writes below drop the native selection, so the projection and the caret are
+    // re-established for EVERY path out of this method — refused edits included.
+    try {
+      this._commitBody();
+    } finally {
+      this._project();
+      this._updateCaret();
+    }
+  }
+
+  _commitBody() {
+    this._commitSeq++;
     const next = this.engine.hostText;
     const prev = this._lastText;
-    if (next !== prev) {
-      const html = this.el.innerHTML;
-      const restore = this._snaps.find((s) => s.text === next && s.html !== html);
-      if (restore) {
-        // An exact restoration (vim's u, or a redo): put the host's own markup back so
-        // chips and inline marks survive. A text diff cannot re-create an element, and
-        // undoing a deleted mention into plain text would be a lie about the document.
-        this.el.innerHTML = restore.html;
-        this._lastText = next;
-        this._dispatchInput();
-      } else {
-        const { from, to, insert } = diffRange(prev, next);
-        if (!this._applyEdit(from, to, insert)) {
-          // The host refused. Do not rewrite its document to force the point: re-read
-          // what is really there and say so.
-          globalThis.__jsbareviReport?.("edit-refused", JSON.stringify({ from, to, insert, prev, next }).slice(0, 900));
-          this._lastText = getFlatText(this.el);
-          this.engine.setText(fromField(this._lastText), Math.min(this.engine.cursor, this._lastText.length));
-          this.onStatus?.("this editor refused the edit", "error");
-          return;
-        }
-        const actual = getFlatText(this.el);
-        if (actual !== next) {
-          // The host re-styled its own document. Two shapes, and only one of them is a
-          // problem:
-          //
-          //   * ONLY line breaks differ — the host collapsed a block that a change
-          //     command emptied (`S`, `cc`, `ciw` on a one-word line) or added the
-          //     placeholder one it needs. That is the host's line model, not a lost edit,
-          //     so it is adopted SILENTLY: a red status line for the host's own
-          //     normalization trains the user to ignore the status line.
-          //   * any other difference — text disappeared that we did not ask it to remove
-          //     (an unbreakable chip, a framework rewrite). Adopt it, and SAY SO.
-          const breaksOnly = withoutBreaks(actual) === withoutBreaks(next);
-          this.engine.setText(fromField(actual), Math.min(from, Math.max(0, actual.length - 1)));
-          if (breaksOnly) {
-            // A host we cannot step through can still tell us what it produced: the Lark
-            // payload exposes `__jsbareviReport`, a beacon/log sink. A no-op elsewhere.
-            globalThis.__jsbareviReport?.("edit-reflowed", JSON.stringify({
-              from, to, insert, prev, next, actual,
-            }).slice(0, 900));
-          } else {
-            this.onStatus?.("the host removed more than the command asked for (an unbreakable element)", "error");
-            globalThis.__jsbareviReport?.("edit-mismatch", JSON.stringify({
-              from, to, insert, prev, next, actual,
-            }).slice(0, 900));
-          }
-        }
-        this._lastText = this.engine.hostText;
+    if (next === prev) return;
+    const html = this.el.innerHTML;
+    const restore = this._snaps.find((s) => s.text === next && s.html !== html);
+    if (restore) {
+      // An exact restoration (vim's u, or a redo): put the host's own markup back so
+      // chips and inline marks survive. A text diff cannot re-create an element, and
+      // undoing a deleted mention into plain text would be a lie about the document.
+      this.el.innerHTML = restore.html;
+      this._lastText = next;
+      this._dispatchInput();
+      return;
+    }
+    this._remember(prev, html);
+
+    // A host that has already disagreed once gets the slow path from then on.
+    if (this._slow) {
+      this._target = next;
+      this._drain();
+      return;
+    }
+
+    const { from, to, insert } = diffRange(prev, next);
+    let ok = true;
+    this._ignoreSelectionUntil = Date.now() + 60;
+    if (to > from) {
+      // A deletion never half-covers an unbreakable element: `x` on a mention deletes the
+      // whole mention, because that is the only thing the host can do.
+      const range = snapRange(this.el, from, to);
+      ok = deleteRange(this.el, range.from, range.to);
+      if (ok && insert) ok = insertTextAt(this.el, snapInsert(this.el, range.from), insert);
+    } else if (insert) {
+      ok = insertTextAt(this.el, snapInsert(this.el, from), insert);
+    }
+    if (!ok) {
+      // The host refused. Do not rewrite its document to force the point: re-read what is
+      // really there and say so.
+      globalThis.__jsbareviReport?.("edit-refused", JSON.stringify({ from, to, insert, prev, next }).slice(0, 900));
+      this._lastText = getFlatText(this.el);
+      this.engine.setText(fromField(this._lastText), Math.min(this.engine.cursor, this._lastText.length));
+      this.onStatus?.("this editor refused the edit", "error");
+      return;
+    }
+
+    const actual = getFlatText(this.el);
+    this._lastText = actual;
+    if (actual !== next) {
+      // The host re-styled its own document. Two shapes, and only one of them is a problem:
+      //
+      //   * ONLY line breaks differ — the host collapsed a block that a change command
+      //     emptied (`S`, `cc`, `ciw` on a one-word line) or added the placeholder it
+      //     needs. That is the host's line model, not a lost edit, so it is adopted
+      //     SILENTLY: a red status line for the host's own normalization trains the user
+      //     to ignore the status line.
+      //   * any other difference — text survived that we deleted, or disappeared that we
+      //     did not remove. That is a host with its own model that did not apply the edit.
+      const breaksOnly = withoutBreaks(actual) === withoutBreaks(next);
+      const removedMore = withoutBreaks(actual).length < withoutBreaks(next).length;
+      this.engine.setText(fromField(actual), Math.min(this.engine.cursor, actual.length));
+      globalThis.__jsbareviReport?.(breaksOnly ? "edit-reflowed" : removedMore ? "edit-mismatch" : "edit-reverted", JSON.stringify({
+        from, to, insert, prev, next, actual,
+      }).slice(0, 900));
+      if (removedMore) {
+        // The host took MORE than we asked — an unbreakable element went whole, which is
+        // the only thing it can do. Adopt its document and say so once.
+        this.onStatus?.("the host removed more than the command asked for (an unbreakable element)", "error");
         this._dispatchInput();
         this._verifySoon();
+        return;
       }
-      this._remember(prev, html);
+      if (!breaksOnly) {
+        // Stop asking this host for range edits, and finish the command the slow way so
+        // the user is not left with a half-applied change.
+        this._slow = true;
+        this.engine.setText(fromField(next), Math.min(from, next.length));
+        this._target = next;
+        this._dispatchInput();
+        this._drain();
+        return;
+      }
     }
-    // AFTER the DOM writes above, which drop the range.
-    this._project();
-    this._updateCaret();
+    this._dispatchInput();
+    this._verifySoon();
   }
 
   /**
    * The host can rewrite its document AFTER we finish, and tell nobody.
    *
-   * The immediate check in `_commit` runs in the same tick, so it sees the DOM we just
-   * wrote and reports success — while a host with its own model (Lark's editor-kit) can
-   * re-render that model back over the field a moment later, with no `input` event to
-   * announce it. The result is ghost text: the field shows what we deleted, our caret
-   * points somewhere that content no longer backs, and the next keystrokes land wrong.
+   * The check above runs in the same tick, so it sees the DOM we just wrote and reports
+   * success — while a host with its own model can paint that model back over the field a
+   * moment later, with no `input` event to announce it. The result is ghost text: the field
+   * shows what we deleted and the next keystrokes land at a caret the content does not back.
    *
-   * Read the field once, shortly after, and ADOPT what the host really has — a host is
-   * the authority on its own document. Reported so the seam stays measurable instead of
-   * being discovered by a person noticing a wedged composer.
+   * Read the field once, shortly after, and ADOPT what the host really has — a host is the
+   * authority on its own document. Two content mismatches are enough to conclude the host
+   * models its own text, and from then on it gets one edit per tick (`_drain`).
    */
   _verifySoon() {
     clearTimeout(this._verifyTimer);
+    const seq = this._commitSeq;
     this._verifyTimer = setTimeout(() => {
       const actual = getFlatText(this.el);
       const expected = this._lastText;
       if (actual === expected) return;
       this._lastText = actual;
       this.engine.setText(fromField(actual), Math.min(this.engine.cursor, actual.length));
+      // Line breaks are the host's own line model — adopt them silently, exactly as
+      // `_commit` does. Only a CONTENT difference means the host rewrote our edit.
+      if (withoutBreaks(actual) === withoutBreaks(expected)) return;
+      // One repaint is proof enough: from here on this host gets one edit per tick. The
+      // edit that revealed it is absorbed rather than chased — a host that just refused
+      // would only refuse again, and chasing it would fight the person typing.
+      this._slow = true;
       this.onStatus?.("the host re-rendered the text after the edit", "error");
       globalThis.__jsbareviReport?.("edit-reverted", JSON.stringify({
         expected: expected.slice(0, 300),
@@ -618,40 +682,87 @@ export class ContenteditableAdapter {
     }, 80);
   }
 
+  /**
+   * Make the DOM converge on `this._target`, ONE edit per tick.
+   *
+   * This is the shape a host with its own document model can actually apply. Lark's
+   * `editor-kit` takes exactly one edit per input event and applies the `inputType` it is
+   * given — a burst issued in one tick collapses into a single model update, so a
+   * multi-character deletion has to be delivered as a sequence of single backward deletes,
+   * each in its own tick (measured 2026-11-24: seven deletes in one tick reached the model
+   * as one, and `est` came back; a single ranged delete lost six of seven).
+   *
+   * The engine stays the authority on TEXT: every keystroke just moves `_target`, and this
+   * loop chases it. Nothing is dropped and nothing races, because a keystroke never writes
+   * the DOM directly.
+   */
+  async _drain() {
+    if (this._draining) return;
+    this._draining = true;
+    let changed = false;
+    let stuck = 0;
+    let lastSeen = null;
+    try {
+      for (let guard = 0; guard < 800; guard++) {
+        if (this._destroyed) break;
+        const current = getFlatText(this.el);
+        if (current === this._target) break;
+        // A host that keeps putting the same text back (it does not believe the edit):
+        // stop after two attempts and adopt what it really has.
+        if (current === lastSeen) {
+          if (++stuck > 2) break;
+        } else {
+          lastSeen = current;
+          stuck = 0;
+        }
+        const { from, to, insert } = diffRange(current, this._target);
+        if (to > from) {
+          // One character per tick — except a span so large that stepping through it would
+          // take longer than the user is willing to wait.
+          this._ignoreSelectionUntil = Date.now() + 60;
+        const ok = to - from > 160
+            ? deleteRange(this.el, from, to)
+            : deleteBackwardAt(this.el, Math.min(to, current.length));
+          if (!ok) break;
+          changed = true;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          continue;
+        }
+        if (insert) {
+          if (!insertTextAt(this.el, snapInsert(this.el, from), insert)) break;
+          changed = true;
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          continue;
+        }
+        break;                                  // nothing left to converge
+      }
+    } finally {
+      this._draining = false;
+    }
+
+    const actual = getFlatText(this.el);
+    const expected = this._target;
+    this._lastText = actual;
+    if (actual !== expected) {
+      // The host rewrote it. Adopt its text — it is the authority on its own document —
+      // and say so, instead of keeping a caret the document does not back.
+      this.engine.setText(fromField(actual), Math.min(this.engine.cursor, actual.length));
+      this.onStatus?.("the host edited this differently", "error");
+      globalThis.__jsbareviReport?.("edit-reverted", JSON.stringify({
+        expected: expected.slice(0, 300),
+        actual: actual.slice(0, 300),
+      }).slice(0, 900));
+    }
+    this._project();
+    this._updateCaret();
+    if (changed) this._dispatchInput();
+    this._verifySoon();
+  }
+
   _remember(text, html) {
     if (this._snaps.some((s) => s.text === text && s.html === html)) return;
     this._snaps.push({ text, html });
     if (this._snaps.length > 40) this._snaps.shift();
-  }
-
-  _applyEdit(from, to, insert) {
-    try {
-      let at = from;
-      if (to > from) {
-        // A deletion never half-covers an unbreakable element: `x` on a mention deletes
-        // the whole mention, because that is the only thing the host can do.
-        const range = snapRange(this.el, from, to);
-        at = range.from;
-        // ONE edit first — "replace this selection with this text" — because that is the
-        // shape a host with its own model applies in one step. Then the tail-wise delete,
-        // for a host that ignores an empty insert (the plain-contenteditable case on some
-        // engines).
-        if (!replaceRange(this.el, range.from, range.to, insert)) {
-          if (!deleteRange(this.el, range.from, range.to)) return false;
-          if (!insert) return true;
-          at = snapInsert(this.el, at);
-          return insertTextAt(this.el, at, insert);
-        }
-        return true;
-      }
-      if (insert) {
-        at = snapInsert(this.el, at);
-        if (!insertTextAt(this.el, at, insert)) return false;
-      }
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   /**

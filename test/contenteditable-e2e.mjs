@@ -511,6 +511,17 @@ async function main() {
       await sleep(60);
       check("...so the host's own re-render resurrects nothing",
         await evaluate(modelPage, `document.getElementById("editor").innerText`), "");
+      // The first edit may be absorbed (a modelling host repaints it away). That has now
+      // taught the adapter this host needs ONE EDIT PER TICK, so the next edit must land.
+      await typeKeys(modelPage, "abc");
+      await sleep(120);
+      await typeKeys(modelPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(modelPage, "0");
+      await typeKeys(modelPage, "C");
+      await sleep(500);
+      check("a second edit converges, one character per tick",
+        await evaluate(modelPage, `[window.handle.engine.hostText, window.hostLog.model()]`), ["", ""]);
       try { modelPage.close(); } catch { /* ignore */ }
     }
 

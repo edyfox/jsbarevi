@@ -584,6 +584,24 @@ Two rules, and the second one generalises:
    and `data: ""`. `replaceRange` does that; `deleteRange`'s tail-wise loop stays as the
    fallback for a host that ignores the empty insert.
 
+5. **The edit path is adaptive: fast by default, one-edit-per-tick for a host that has
+   proved it needs it.** The DOM is made to *converge* on the engine's text (`_drain`), one
+   `deleteBackwardAt` per tick, and a host is only put on that path after it has repainted a
+   content change over us once (`_verifySoon`). Everything else keeps the synchronous fast
+   path, so no ordinary host pays for a tick loop. The engine stays the authority on TEXT:
+   a keystroke never writes the DOM directly, it moves the target.
+6. **"Same text, different spelling" is not an edit.** A block join becomes a break, an
+   emptied chip leaves a non-breaking space, Lark sprinkles zero-width spaces. A chip
+   deletion that WORKED was reported "refused" because the leftover `\u00a0` made the text
+   differ. `withoutBreaks` normalizes breaks, `\u00a0` and `\u200b`; a host that removed MORE
+   than we asked (an unbreakable element went whole) is adopted with a message, never
+   retried.
+7. **Never project a real selection as the edit primitive without a guard.** Chrome reports
+   `selectionchange` for it asynchronously, *after* the edit returns, and the adapter then
+   reads its own edit range as a user selection and switches to visual — the edit silently
+   never lands (`x` on a chip did nothing, `A` inserted at column 0). `_ignoreSelectionUntil`
+   covers the write window.
+
 Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
 `reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
 the old ranged delete (`tes` resurrects), which is the regression this guards.
