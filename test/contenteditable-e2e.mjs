@@ -226,15 +226,52 @@ const KEYS_ONLY_HOST = `<!doctype html>
   window.ready = true;
 </script>`;
 
+// A Keep-shaped note: a flat contenteditable with two lines. Used for host edits — a native
+// Cut, which the browser performs and the engine has to absorb.
+const NOTE_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">alpha<br>beta gamma</div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  // Select the first line the way a person does (Shift+Home), then let the BROWSER cut it:
+  // delete the range and report it as the host's own edit, which is what a real Cut does.
+  window.selectFirstLine = () => {
+    const r = document.createRange();
+    r.setStart(editor.firstChild, 0);
+    r.setEnd(editor.firstChild, 5);              // "alpha"
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    document.dispatchEvent(new Event("selectionchange"));
+  };
+  window.hostCut = () => {
+    document.execCommand("delete");
+    // …and the host leaves a range behind, which is the reported bug: the browser keeps
+    // painting it, and because the edit moved the nodes it now covers the text BELOW.
+    const r = document.createRange();
+    r.setStart(editor.lastChild, 0);
+    r.setEnd(editor.lastChild, 4);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteByCut" }));
+  };
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed", "/keysonly"].includes(url)) {
+    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed", "/keysonly", "/note"].includes(url)) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST
         : url === "/normalizing" ? NORMALIZING_HOST
         : url === "/padded" ? PADDED_HOST
-        : url === "/sealed" ? SEALED_HOST : url === "/keysonly" ? KEYS_ONLY_HOST : PAGE);
+        : url === "/sealed" ? SEALED_HOST
+        : url === "/keysonly" ? KEYS_ONLY_HOST : url === "/note" ? NOTE_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -563,6 +600,30 @@ async function main() {
       check("...and a change command clears exactly the visible text",
         await evaluate(padPage, "window.handle.engine.hostText.replace(/[\\s\\u200b]/g, '')"), "");
       try { padPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- a host edit must not leave the browser's range painted -----------
+    // Reported in Google Keep: Shift+Home selects the line, Ctrl-X cuts it, and the
+    // highlight stayed on screen — over the text BELOW, because the browser's range still
+    // pointed at nodes the cut had moved.
+    {
+      const notePage = await openPage(chromePort, `http://127.0.0.1:${port}/note`);
+      await waitFor(notePage, "!!window.ready", 10000);
+      await evaluate(notePage, `document.getElementById("editor").focus()`);
+      await sleep(120);
+      await evaluate(notePage, "window.selectFirstLine()");
+      await sleep(120);
+      check("selecting in insert mode becomes visual", await evaluate(notePage, "!!window.handle.engine.visual"), true);
+      await evaluate(notePage, "window.hostCut()");
+      await sleep(200);
+      check("...the cut ends visual mode", await evaluate(notePage, "window.handle.engine.visual"), null);
+      check("...the browser selection is COLLAPSED, so nothing stays painted",
+        await evaluate(notePage, "getSelection().isCollapsed"), true);
+      check("...our own highlight overlay is gone",
+        await evaluate(notePage, `document.querySelectorAll(".jsbarevi-sel").length`), 0);
+      check("...and the buffer adopted what the host did",
+        await evaluate(notePage, "window.handle.engine.hostText"), "\nbeta gamma");
+      try { notePage.close(); } catch { /* ignore */ }
     }
 
     // ---- a host that only accepts edits through its own key pipeline ------

@@ -112,7 +112,7 @@ export class ContenteditableAdapter {
       // registered on the element, and anything registered later on the same node
       // runs after it. Capture on the document always runs first.
       keydown: (e) => this._onKeydown(e),
-      input: () => this._onInput(),
+      input: (e) => this._onInput(e),      // the inputType decides host-deletion handling
       mouseup: (e) => this._onMouseUp(e),
       mousedown: (e) => this._onMouseDown(e),
       selectionchange: () => this._onSelectionChange(),
@@ -203,15 +203,38 @@ export class ContenteditableAdapter {
     this.syncFromHost();
   }
 
-  syncFromHost() {
+  syncFromHost(options = {}) {
     const before = this.engine.hostText;
     const prevCursor = this.engine.cursor;
     const text = getFlatText(this.el);
     const offset = flatOffsetFromSelection(this.el);
     this.engine.applyHostEdit(fromField(text), offset);
-    const endedVisual = this._afterHostEdit(before, prevCursor);
+    const endedVisual = this._afterHostEdit(before, prevCursor, options.fromInput === true);
     if (this.engine.hostText !== text) this._commit();
-    else { this._lastText = text; this._updateCaret(); }
+    else {
+      this._lastText = text;
+      if (options.deleted) {
+        // The browser deleted text under a range it still holds. Collapse it here as well,
+        // not only when a visual was live: the range is stale either way, and Chrome keeps
+        // painting it over whatever moved into its place (Google Keep, 2026-11-24).
+        this._ignoreSelectionUntil = Date.now() + 150;
+        this._writeSelection();
+        this.highlight.clear();
+      }
+      if (endedVisual) {
+        // End the selection for real: our overlay goes, and so does the BROWSER's range —
+        // a host edit moves the nodes under it, so a range left behind keeps painting and
+        // appears to slide onto the text below (Google Keep, 2026-11-24).
+        //
+        // Chrome reports that range's `selectionchange` AFTER this input event, and the
+        // adapter reads a range as "the user selected this" — which re-armed visual on a
+        // range whose nodes the edit had moved. Ignore the echo window while we collapse it.
+        this._ignoreSelectionUntil = Date.now() + 150;
+        this._writeSelection();
+        this.highlight.clear();
+      }
+      this._updateCaret();
+    }
     if (endedVisual) this._emitMode();
   }
 
@@ -219,8 +242,11 @@ export class ContenteditableAdapter {
    * A host edit that changes the text invalidates a visual selection's anchor. Native Cut
    * and Paste are host edits, which is the accepted cost of letting the browser do them.
    */
-  _afterHostEdit(before, prevCursor) {
-    if (this.engine.hostText === before) return false;
+  _afterHostEdit(before, prevCursor, fromInput = false) {
+    // `fromInput` matters because a cut can leave our text EXACTLY as it was (the browser
+    // removed what we had already accounted for) while the anchor is still live — the text
+    // comparison alone let that case through, which is the Keep bug.
+    if (this.engine.hostText === before && !fromInput) return false;
     if (this.engine.mode !== Mode.VISUAL && this.engine.mode !== Mode.VISUAL_LINE) return false;
     // A native Cut/Paste mutated the document behind the engine's back. Three things have
     // to happen, and the field reported all three as one symptom:
@@ -234,11 +260,13 @@ export class ContenteditableAdapter {
     return true;
   }
 
-  _onInput() {
+  _onInput(event) {
     // `_drain` (and `_dispatchInput`) drive the document themselves; a host's echo of one
     // of those writes must not overwrite the text the drain is converging on.
     if (this._typing || this._draining) return;
-    this.syncFromHost();
+    // A host DELETION can never leave a meaningful selection behind, whatever our mode was.
+    const inputType = String((typeof event !== "undefined" && event && event.inputType) || "");
+    this.syncFromHost({ fromInput: true, deleted: inputType.startsWith("delete") });
   }
 
   /** Flat offsets of both ends of the host selection, or null when it is elsewhere. */
