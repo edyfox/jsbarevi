@@ -17,6 +17,7 @@
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchChrome, openPage, evaluate, waitFor, typeKeys, sleep } from "./lib/cdp.mjs";
@@ -46,12 +47,33 @@ const PAGE = `<!doctype html>
 <div class="lark-chat-composer"><div id="chat" contenteditable="true" role="textbox">hello world</div></div>
 <div class="lark-chat-composer"><textarea id="chatInput">a textarea in a chat shell</textarea></div>
 <script src="/lark-payload.js"></script>
+<!-- The payload also fetches the LIVE gate config from the beacon server, and the deployed
+     one now refuses edits that delete text (Lark's scope). This test is about the engine, so
+     pin the switch open before any command runs. -->
+<script>
+  Object.defineProperty(globalThis, "__jsbareviDestructiveEdits", { get: () => true, configurable: true });
+</script>
 </body></html>`;
 
 function build() {
   // The payload must be built from the CURRENT source; a stale artefact is the failure
   // this seam already paid for once (see `lark-ext-patch status`).
-  execFileSync(process.execPath, [path.join(ROOT, "tools", "lark-payload.mjs")], { cwd: ROOT, stdio: "inherit" });
+  //
+  // The gate config is also baked in, and the DEPLOYED one now refuses edits that delete
+  // text (Lark scopes them — see docs/DECISIONS.md). This test is about the engine, so it
+  // builds with a config that allows everything.
+  const cfg = path.join(os.tmpdir(), `lark-gate-test-${process.pid}.json`);
+  fs.writeFileSync(cfg, JSON.stringify({
+    enabled: true, gateSelector: "[class*=chat]", logFocus: false, trace: false,
+    slowEdits: false, destructiveEdits: true,
+  }));
+  try {
+    execFileSync(process.execPath, [path.join(ROOT, "tools", "lark-payload.mjs")], {
+      cwd: ROOT, stdio: "inherit", env: { ...process.env, LARK_GATE_CONFIG: cfg },
+    });
+  } finally {
+    try { fs.unlinkSync(cfg); } catch { /* ignore */ }
+  }
 }
 
 function serve() {

@@ -588,6 +588,20 @@ export class ContenteditableAdapter {
     }
 
     const { from, to, insert } = diffRange(prev, next);
+
+    // A host can forbid edits that DELETE text (`__jsbareviDestructiveEdits === false`, from
+    // the payload's config). Lark's editor-kit keeps its own model and both accepts and then
+    // re-inserts what we remove, so a deletion there is a fight with no winner — measured
+    // 2026-11-24: per-tick deletes applied, then the host re-inserted them, 59 deletes in one
+    // second. Refuse cleanly instead: no DOM write, no loop, and say why once.
+    if (to > from && globalThis.__jsbareviDestructiveEdits === false) {
+      globalThis.__jsbareviReport?.("edit-blocked", JSON.stringify({ from, to, insert, prev, next }).slice(0, 900));
+      this._lastText = getFlatText(this.el);
+      this.engine.setText(fromField(this._lastText), Math.min(this.engine.cursor, this._lastText.length));
+      this.onStatus?.("this host blocks edits that delete text — Esc/:q to leave", "error");
+      return;
+    }
+
     let ok = true;
     this._ignoreSelectionUntil = Date.now() + 60;
     if (to > from) {

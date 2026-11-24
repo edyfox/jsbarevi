@@ -130,6 +130,12 @@ function main() {
   // Hosts whose editor keeps its own model need ONE edit per tick; this is the switch, so
   // trying it costs a config edit and a page load, not a re-patch.
   try {
+    Object.defineProperty(globalThis, "__jsbareviDestructiveEdits", {
+      get: function () { return !!(globalThis.__larkVimCfg && globalThis.__larkVimCfg.destructiveEdits); },
+      configurable: true
+    });
+  } catch (e) {}
+  try {
     Object.defineProperty(globalThis, "__jsbareviSlowEdits", {
       get: function () { return !!(globalThis.__larkVimCfg && globalThis.__larkVimCfg.slowEdits); },
       configurable: true

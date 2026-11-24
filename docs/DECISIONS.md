@@ -610,6 +610,14 @@ Two rules, and the second one generalises:
    and `domPosInBlock` now skip them in BOTH directions, so an offset means "visible
    character number N" and the padding is neither deleted nor counted.
 
+9. **Some hosts are scoped, not fixed — and the scope is enforced in code.** `editor-kit`
+   (Lark) accepts our per-tick deletes and then *re-inserts* what we removed: measured as a
+   visible loop, 59 deletes in one second, 79 in the next. Chasing that is a fight with no
+   winner, so `__jsbareviDestructiveEdits === false` (Lark's config) makes the adapter
+   REFUSE any edit that deletes text: no DOM write, the buffer re-reads the host, one status
+   line explains it, and `edit-blocked` is reported. Navigation, insert mode and `:q` are
+   unaffected. A scoped seam that says why beats a seam that corrupts.
+
 Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
 `reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
 the old ranged delete (`tes` resurrects), which is the regression this guards.

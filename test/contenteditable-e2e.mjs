@@ -184,13 +184,29 @@ const PADDED_HOST = `<!doctype html>
   window.ready = true;
 </script>`;
 
+// A host that forbids edits which delete text (Lark's editor-kit: it re-inserts whatever we
+// remove). The adapter must refuse cleanly — no DOM write, no loop — and say why.
+const SEALED_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test</div>
+<script type="module">
+  globalThis.__jsbareviDestructiveEdits = false;
+  window.reports = [];
+  globalThis.__jsbareviReport = (src, detail) => window.reports.push([src, detail]);
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(document.getElementById("editor"), { editorUrl: "" });
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded"].includes(url)) {
+    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed"].includes(url)) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST
-        : url === "/normalizing" ? NORMALIZING_HOST : url === "/padded" ? PADDED_HOST : PAGE);
+        : url === "/normalizing" ? NORMALIZING_HOST
+        : url === "/padded" ? PADDED_HOST : url === "/sealed" ? SEALED_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -519,6 +535,26 @@ async function main() {
       check("...and a change command clears exactly the visible text",
         await evaluate(padPage, "window.handle.engine.hostText.replace(/[\\s\\u200b]/g, '')"), "");
       try { padPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- a host that forbids destructive edits (scoped seam) ---------------
+    {
+      const sealedPage = await openPage(chromePort, `http://127.0.0.1:${port}/sealed`);
+      await waitFor(sealedPage, "!!window.ready", 10000);
+      await evaluate(sealedPage, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      await typeKeys(sealedPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(sealedPage, "0");
+      await typeKeys(sealedPage, "C");
+      await sleep(300);
+      check("a sealed host is told, not fought: status line explains it",
+        await evaluate(sealedPage, `document.querySelector(".jsbarevi-line").className.includes("error")`), true);
+      check("...the document is untouched", await evaluate(sealedPage, `document.getElementById("editor").innerText`), "test");
+      check("...the buffer still agrees with the host", await evaluate(sealedPage, "window.handle.engine.hostText"), "test");
+      check("...and it is reported, not silent",
+        await evaluate(sealedPage, `window.reports.some((r) => r[0] === "edit-blocked")`), true);
+      try { sealedPage.close(); } catch { /* ignore */ }
     }
 
     // ---- a host with its own document MODEL (Lark's editor-kit) -----------
