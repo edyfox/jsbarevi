@@ -352,6 +352,23 @@ permission justifications, screenshots and the privacy policy are in `store/`
 (`listing.md`, `PRIVACY.md`, `screenshots/`, `promo-440x280.png`). The listing needs a
 **public privacy-policy URL** — host `store/PRIVACY.md` and paste the URL.
 
+**Recording a release (decided 2026-11-24).** The **Chrome Web Store is the distribution
+channel**; this repo does not publish GitHub *Releases*. What it does is **tag the commit
+the uploaded zip was built from**:
+
+```bash
+git tag -a v<version> <commit> -m "jsbarevi <version>+<commit> — published <date>"
+```
+
+The tag message carries the pairing nobody can recover later: the runtime `version_name`
+(`<version>+<commit>`), which artifact was uploaded, and what changed since the previous
+tag. `v0.5.0 → 7921fc2` and `v0.6.1 → 65da41e` are the two releases so far.
+
+A GitHub Release would add a second downloadable copy of a build artifact — exactly the
+thing `dist/` is kept out of git to avoid, and the near-miss on 2026-11-23 was a carried
+zip two releases old. Revisit only if someone needs a stable download link without the
+Store, or if a signed archive/SBOM becomes worth attaching.
+
 **In an Electron host (OpenCode Desktop, VS Code-family).** Copy `dist/` into the
 host's unpacked-extension directory (for OpenCode,
 `~/.local/share/opencode-desktop-extensions/jbarevi/`) and restart. A host patch is what
