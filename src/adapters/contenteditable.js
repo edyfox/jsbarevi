@@ -716,6 +716,8 @@ export class ContenteditableAdapter {
     let changed = false;
     let stuck = 0;
     let lastSeen = null;
+    let noProgress = 0;
+    let best = Infinity;
     try {
       for (let guard = 0; guard < 800; guard++) {
         if (this._destroyed) break;
@@ -729,6 +731,14 @@ export class ContenteditableAdapter {
           lastSeen = current;
           stuck = 0;
         }
+        // MONOTONIC PROGRESS OR STOP. A host that fights the edit (Lark re-inserts a
+        // character we just removed) turns this loop into a visible thrash — hundreds of
+        // deletes a second. Distance to the target must keep shrinking; if it does not for
+        // three steps, give up, adopt what the host has, and report it.
+        const distance = Math.abs(current.length - this._target.length);
+        if (distance < best) { best = distance; noProgress = 0; }
+        else if (++noProgress > 3) break;
+
         const { from, to, insert } = diffRange(current, this._target);
         if (to > from) {
           // One character per tick — except a span so large that stepping through it would
