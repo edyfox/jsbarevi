@@ -560,6 +560,10 @@ export class ContenteditableAdapter {
 
   _commitBody() {
     this._commitSeq++;
+    // A host can declare that it needs one edit per tick (`__jsbareviSlowEdits`, set from the
+    // payload's runtime config). Detection alone is too slow to rely on: Lark repaints its
+    // model back SECONDS later, so the 80 ms check never fires and the adapter never learns.
+    if (!this._slow && globalThis.__jsbareviSlowEdits === true) this._slow = true;
     const next = this.engine.hostText;
     const prev = this._lastText;
     if (next === prev) return;
@@ -660,8 +664,18 @@ export class ContenteditableAdapter {
    */
   _verifySoon() {
     clearTimeout(this._verifyTimer);
+    clearTimeout(this._verifyLate);
     const seq = this._commitSeq;
+    // A host that repaints lazily can take seconds. Check once quickly and once late, so a
+    // silent rewrite is caught before it can eat the next keystroke.
+    this._verifyLate = setTimeout(() => this._verifyNow(seq), 1200);
     this._verifyTimer = setTimeout(() => {
+      this._verifyNow(seq);
+    }, 80);
+  }
+
+  _verifyNow(seq) {
+    {
       const actual = getFlatText(this.el);
       const expected = this._lastText;
       if (actual === expected) return;
@@ -679,7 +693,7 @@ export class ContenteditableAdapter {
         expected: expected.slice(0, 300),
         actual: actual.slice(0, 300),
       }).slice(0, 900));
-    }, 80);
+    }
   }
 
   /**

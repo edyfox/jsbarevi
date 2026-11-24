@@ -127,6 +127,14 @@ function main() {
   // through, the adapter reports through this sink and it lands in Lark's own log and on
   // the beacon server. Absent anywhere else, so the adapter's call is a no-op there.
   globalThis.__jsbareviReport = report;
+  // Hosts whose editor keeps its own model need ONE edit per tick; this is the switch, so
+  // trying it costs a config edit and a page load, not a re-patch.
+  try {
+    Object.defineProperty(globalThis, "__jsbareviSlowEdits", {
+      get: function () { return !!(globalThis.__larkVimCfg && globalThis.__larkVimCfg.slowEdits); },
+      configurable: true
+    });
+  } catch (e) {}
 
   // --- the HOST side of an edit (jsbarevi) --------------------------------------
   //
