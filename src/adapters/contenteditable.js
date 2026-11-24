@@ -307,6 +307,13 @@ export class ContenteditableAdapter {
   }
 
   _onSelectionChange() {
+    if (!this.el.isContentEditable) {
+      // Let go completely: `onQuit` is the host's release (it removes our UI and marker);
+      // a bare destroy would leave an orphaned badge behind.
+      if (this.onQuit) this.onQuit();
+      else this.destroy();
+      return;
+    }
     if (this._draining) return;
     // `deleteRange` sets a REAL range as the edit primitive, and Chrome reports
     // selectionchange for it asynchronously — after the edit returned. Without this guard
@@ -885,6 +892,11 @@ export class ContenteditableAdapter {
 
   /** Collapse the native selection onto the engine cursor, remembering that we did. */
   _writeSelection() {
+    // A host may flip `contenteditable` off under a field we already own (Keep does it on
+    // every re-render). Writing a range into a non-editable container is how a stale engine
+    // paints a selection over the wrong text — and with two of our adapters on the same
+    // subtree, one of them is always stale (measured in Keep, 2026-11-24).
+    if (!this.el.isContentEditable) return;
     const offset = Math.min(this.engine.cursor, getFlatText(this.el).length);
     this._expectedSel = { anchor: offset, focus: offset };
     const current = flatOffsetFromSelection(this.el);
@@ -900,6 +912,7 @@ export class ContenteditableAdapter {
    * collapsed on purpose — its look is a full-width bar, which is the overlay's job.
    */
   _project() {
+    if (!this.el.isContentEditable) return;
     const sel = this._projectionOff ? null : this.engine.visualSelection();
     if (!sel || this.engine.mode !== Mode.VISUAL) { this._writeSelection(); return; }
     const flat = getFlatText(this.el).length;

@@ -264,16 +264,33 @@ const NOTE_HOST = `<!doctype html>
   window.ready = true;
 </script>`;
 
+// A host that hands us the same node twice and later flips contenteditable off (Keep does
+// both on every re-render). One adapter per field, and a field that stops being editable
+// must not keep projecting ranges into it.
+const REATTACH_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:80px;padding:12px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test</div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  const { attach } = await import("/src/entry.js");
+  window.editor = editor;
+  window.first = attach(editor, { editorUrl: "" });
+  window.second = attach(editor, { editorUrl: "" });   // the host re-attaches the same node
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed", "/keysonly", "/note"].includes(url)) {
+    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded", "/sealed", "/keysonly", "/note", "/reattach"].includes(url)) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST
         : url === "/normalizing" ? NORMALIZING_HOST
         : url === "/padded" ? PADDED_HOST
         : url === "/sealed" ? SEALED_HOST
-        : url === "/keysonly" ? KEYS_ONLY_HOST : url === "/note" ? NOTE_HOST : PAGE);
+        : url === "/keysonly" ? KEYS_ONLY_HOST
+        : url === "/note" ? NOTE_HOST : url === "/reattach" ? REATTACH_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -602,6 +619,26 @@ async function main() {
       check("...and a change command clears exactly the visible text",
         await evaluate(padPage, "window.handle.engine.hostText.replace(/[\\s\\u200b]/g, '')"), "");
       try { padPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- one adapter per field, and none on a field that stopped being editable ---
+    {
+      const rePage = await openPage(chromePort, `http://127.0.0.1:${port}/reattach`);
+      await waitFor(rePage, "!!window.ready", 10000);
+      await sleep(120);
+      check("attaching twice to one field leaves ONE adapter",
+        await evaluate(rePage, `document.querySelectorAll(".jsbarevi-badge").length`), 1);
+      // the host flips it off under us, then reports a selection change
+      await evaluate(rePage, `(() => {
+        window.editor.setAttribute("contenteditable", "false");
+        document.dispatchEvent(new Event("selectionchange"));
+      })()`);
+      await sleep(120);
+      check("...and a field that stops being editable is let go",
+        await evaluate(rePage, `document.querySelectorAll(".jsbarevi-badge").length`), 0);
+      check("...with its marker removed",
+        await evaluate(rePage, `window.editor.hasAttribute("data-jsbarevi-mode")`), false);
+      try { rePage.close(); } catch { /* ignore */ }
     }
 
     // ---- a host edit must not leave the browser's range painted -----------

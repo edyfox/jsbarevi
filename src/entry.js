@@ -157,7 +157,16 @@ function makeUi(el) {
 import { BUILD as STAMP, VERSION } from "./build-info.js";
 export const BUILD = `${VERSION}+${STAMP}`;
 
+// ONE adapter per field. A host that re-renders (Keep) can hand us the same node twice,
+// and two engines on one document is the failure this project already paid for once: the
+// first eats keys, the second paints the badge — and either can project a stale range.
+const ATTACHED = new WeakMap();
+
 export function attach(el, opts = {}) {
+  const previous = ATTACHED.get(el);
+  if (previous) {
+    try { previous.destroy(); } catch { /* already gone */ }
+  }
   const ui = makeUi(el);
   // A stale page is invisible otherwise: say which build is running.
   if (typeof console !== "undefined") {
@@ -186,6 +195,11 @@ export function attach(el, opts = {}) {
       const input = ui.prompt(kind, initial);
       input.dataset.kind = kind;
     },
+    // The adapter's release path (`:q`, or a host that flipped contenteditable off) must
+    // take the UI with it. A host that manages release itself — the extension's content
+    // script, which keeps its own field registry — keeps its handler; anywhere else we
+    // destroy the handle.
+    ...(opts.onQuit ? {} : { onQuit: () => handle.destroy() }),
   });
 
   const promptOpen = () => ui.promptEl.style.display !== "none";
@@ -229,7 +243,7 @@ export function attach(el, opts = {}) {
   const onFocus = () => clipboard.refresh?.();
   el.addEventListener("focus", onFocus);
 
-  return {
+  const handle = {
     adapter,
     engine: adapter.engine,
     /**
@@ -246,6 +260,7 @@ export function attach(el, opts = {}) {
     // during dispatch never sees the event that is already in flight.
     keydown: (e) => adapter._onKeydown(e),
     destroy() {
+      ATTACHED.delete(el);
       adapter.destroy();
       ui.promptEl.removeEventListener("keydown", onPromptKey, true);
       ui.promptEl.removeEventListener("input", onPromptInput);
@@ -257,6 +272,8 @@ export function attach(el, opts = {}) {
       for (const node of ui.nodes) node.remove();
     },
   };
+  ATTACHED.set(el, handle);
+  return handle;
 }
 
 export { Engine } from "./engine/engine.js";
