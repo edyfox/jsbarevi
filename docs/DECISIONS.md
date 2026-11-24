@@ -602,6 +602,14 @@ Two rules, and the second one generalises:
    never lands (`x` on a chip did nothing, `A` inserted at column 0). `_ignoreSelectionUntil`
    covers the write window.
 
+8. **Zero-width placeholders are not characters.** Lark pads every line with U+200B caret
+   anchors and empty blocks. Counting them as text put invisible content in the buffer, so
+   every motion and every change command was off by the padding in front of it — `dd` left a
+   character behind, `C` deleted a range that ended in padding, and a host that applies one
+   edit per event spent its single edit on an invisible character. `blockText`, `countChars`
+   and `domPosInBlock` now skip them in BOTH directions, so an offset means "visible
+   character number N" and the padding is neither deleted nor counted.
+
 Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
 `reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
 the old ranged delete (`tes` resurrects), which is the regression this guards.

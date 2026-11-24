@@ -46,11 +46,11 @@ function isPlaceholderBR(br) {
 
 /** Text of one block, with placeholder BRs contributing nothing. */
 function blockText(block) {
-  if (block.nodeType === 3) return block.textContent;
+  if (block.nodeType === 3) return block.textContent.replace(ZERO_WIDTH, "");
   const parts = [];
   const walk = (node) => {
     for (let child = node.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 3) parts.push(child.textContent);
+      if (child.nodeType === 3) parts.push(child.textContent.replace(ZERO_WIDTH, ""));
       else if (child.nodeName === "BR") { if (!isPlaceholderBR(child)) parts.push("\n"); }
       else if (child.nodeType === 1) walk(child);
     }
@@ -84,9 +84,31 @@ export function getFlatText(el) {
   return getBlocks(el).map(blockText).join("\n");
 }
 
+/**
+ * Lark (and any editor built on that stack) pads its lines with U+200B zero-width spaces:
+ * they are caret anchors, not text. Counting them as characters put invisible content into
+ * the engine's buffer, so every motion and every change command was off by the number of
+ * placeholders before it — `dd` left one character behind, `C` deleted a range that ended in
+ * the padding (measured 2026-11-24).
+ */
+const ZERO_WIDTH = /\u200b/g;
+const visLen = (text) => text.replace(ZERO_WIDTH, "").length;
+/** DOM offset inside `text` for a visible offset: placeholders are skipped, not counted. */
+function domOffsetFor(text, visible) {
+  let seen = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\u200b") continue;
+    if (seen === visible) return i;
+    seen++;
+  }
+  return text.length;
+}
+/** Visible characters in `text` before DOM offset `off`. */
+const visPrefix = (text, off) => visLen(text.slice(0, off));
+
 /** Characters a node contributes to the flat text. */
 function countChars(node) {
-  if (node.nodeType === 3) return node.textContent.length;
+  if (node.nodeType === 3) return visLen(node.textContent);
   if (node.nodeName === "BR") return isPlaceholderBR(node) ? 0 : 1;
   let count = 0;
   for (let child = node.firstChild; child; child = child.nextSibling) count += countChars(child);
@@ -96,7 +118,7 @@ function countChars(node) {
 /** Flat offset from the start of a block to a DOM position inside it. */
 function offsetInBlock(block, targetNode, targetOff) {
   if (block.nodeType === 3) {
-    return targetNode === block ? Math.min(targetOff, block.textContent.length) : 0;
+    return targetNode === block ? visPrefix(block.textContent, targetOff) : 0;
   }
   if (targetNode === block) {
     let offset = 0;
@@ -109,7 +131,7 @@ function offsetInBlock(block, targetNode, targetOff) {
     let child = container.firstChild;
     while (child && !result.done) {
       if (child === targetNode) {
-        if (child.nodeType === 3) result.offset += Math.min(targetOff, child.textContent.length);
+        if (child.nodeType === 3) result.offset += visPrefix(child.textContent, targetOff);
         else for (let j = 0; j < targetOff && j < child.childNodes.length; j++) result.offset += countChars(child.childNodes[j]);
         result.done = true;
         return;
@@ -176,8 +198,9 @@ function domPosInBlock(block, localOffset) {
     let child = container.firstChild;
     while (child && !result) {
       if (child.nodeType === 3) {
-        if (remaining <= child.textContent.length) { result = { node: child, offset: remaining }; return; }
-        remaining -= child.textContent.length;
+        const visible = visLen(child.textContent);
+        if (remaining <= visible) { result = { node: child, offset: domOffsetFor(child.textContent, remaining) }; return; }
+        remaining -= visible;
       } else if (child.nodeName === "BR") {
         if (!isPlaceholderBR(child)) {
           if (remaining === 0) { result = { node: child.parentNode, offset: childIdx(child) }; return; }

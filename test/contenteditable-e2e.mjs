@@ -170,13 +170,27 @@ const NORMALIZING_HOST = `<!doctype html>
   window.ready = true;
 </script>`;
 
+// A composer padded the way Lark pads its lines: U+200B zero-width spaces as caret anchors,
+// plus empty blocks. They are not text, and the engine must never count them — every motion
+// and change command was off by the padding before it (2026-11-24).
+const PADDED_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test<span data-zero-space="true">\u200b</span></div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (["/", "/ce", "/model", "/reverting", "/normalizing"].includes(url)) {
+    if (["/", "/ce", "/model", "/reverting", "/normalizing", "/padded"].includes(url)) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
       res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST
-        : url === "/normalizing" ? NORMALIZING_HOST : PAGE);
+        : url === "/normalizing" ? NORMALIZING_HOST : url === "/padded" ? PADDED_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -488,6 +502,24 @@ async function main() {
     check("...with no overlay left behind",
       await evaluate(page, "document.querySelectorAll('.jsbarevi-caret, .jsbarevi-sel, .jsbarevi-badge').length"), 0);
     check("...and no mode marker", await evaluate(page, "document.getElementById('editor').hasAttribute('data-jsbarevi-mode')"), false);
+
+    // ---- a host padded with zero-width placeholders (Lark's shape) --------
+    {
+      const padPage = await openPage(chromePort, `http://127.0.0.1:${port}/padded`);
+      await waitFor(padPage, "!!window.ready", 10000);
+      await evaluate(padPage, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      check("zero-width padding is not characters in the buffer",
+        await evaluate(padPage, "window.handle.engine.hostText"), "test");
+      await typeKeys(padPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(padPage, "0");
+      await typeKeys(padPage, "C");
+      await sleep(300);
+      check("...and a change command clears exactly the visible text",
+        await evaluate(padPage, "window.handle.engine.hostText.replace(/[\\s\\u200b]/g, '')"), "");
+      try { padPage.close(); } catch { /* ignore */ }
+    }
 
     // ---- a host with its own document MODEL (Lark's editor-kit) -----------
     //
