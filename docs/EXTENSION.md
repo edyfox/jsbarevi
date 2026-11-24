@@ -15,7 +15,7 @@ npm run icons         # regenerate the icon set
 
 | File | What |
 |---|---|
-| `manifest.json` | MV3. Version from `package.json`, `version_name` = `0.1.0+<commit>` |
+| `manifest.json` | MV3. Version from `package.json`, `version_name` = `<version>+<commit>` |
 | `content.js` | **one classic script**: the engine (all of `src/`) plus `extension/src/content.js` |
 | `escape-blocker.js` | MAIN-world `document_start` patch: a site cannot `blur()` a field we own |
 | `background.js` | the service worker: the only context that may fetch cross-origin |

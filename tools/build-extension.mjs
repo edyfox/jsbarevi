@@ -164,6 +164,15 @@ async function main() {
   const content = fs.readFileSync(path.join(OUT, "content.js"), "utf8");
   if (/^\s*(import|export)\s/m.test(content)) fail("content.js contains module syntax; it must be a classic script");
 
+  // A hard-coded semver in the artifact is how `:version` printed `0.1.0+<commit>` on
+  // every build up to 0.6.0. The prefix must come from package.json; if a literal
+  // `"<semver>+"` survives into the bundle it has to name THIS version. (Absent is
+  // fine: the bundler may fold the prefix into the stamp instead.)
+  for (const [literal] of content.matchAll(/"(\d+\.\d+\.\d+)\+"/g)) {
+    const semver = literal.slice(1, -2);
+    if (semver !== pkg.version) fail(`content.js hard-codes semver "${semver}+" — this build is ${pkg.version}`);
+  }
+
   const files = walk(OUT).map((f) => path.relative(OUT, f)).sort();
   console.log(`built ${path.relative(ROOT, OUT)}/ — ${files.length} files, ${(sizeOf(OUT) / 1024).toFixed(0)} KiB`);
   console.log(`  version ${versionName}`);

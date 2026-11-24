@@ -20,6 +20,9 @@ import { fileURLToPath } from "node:url";
 import { launchChrome, openPage, evaluate, waitFor, typeKeys, sendKey, sleep } from "./lib/cdp.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// The semver the status line must print comes from package.json — never a literal here,
+// which is how the test itself kept blessing the hard-coded `0.1.0` label.
+const { version: VERSION } = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
 let pass = 0;
@@ -231,7 +234,7 @@ async function main() {
 
     // ---- :version reports the build --------------------------------------
     await typeKeys(page, ":version<CR>");
-    check("status line carries the build", (await evaluate(page, "document.querySelector('.jsbarevi-line').textContent")).startsWith("jsbarevi 0.1.0+"), true);
+    check("status line carries the build", (await evaluate(page, "document.querySelector('.jsbarevi-line').textContent")).startsWith(`jsbarevi ${VERSION}+`), true);
     // ---------------------------------------------------------------------
     // `<C-r>{register}` in a rich composer.
     //

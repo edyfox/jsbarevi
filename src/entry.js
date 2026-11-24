@@ -150,8 +150,12 @@ function makeUi(el) {
 }
 
 /** Attach to one field. Returns a handle with destroy(). */
-import { BUILD as STAMP } from "./build-info.js";
-export const BUILD = "0.1.0+" + STAMP;
+// The semver comes from package.json at build time (via build-info.js), never from a
+// literal here: a hard-coded prefix printed `0.1.0+<commit>` on every release up to
+// 0.6.0, so a current build labelled itself as a stale one — the exact confusion this
+// string exists to remove.
+import { BUILD as STAMP, VERSION } from "./build-info.js";
+export const BUILD = `${VERSION}+${STAMP}`;
 
 export function attach(el, opts = {}) {
   const ui = makeUi(el);

@@ -28,6 +28,10 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(ROOT, "dist");
+// The artifact under test records its own identity in dist/build.json — the file the popup
+// and `:version` are meant to agree with. Comparing against it (instead of a literal here)
+// keeps this test from blessing a stale label: it blessed `0.1.0` on every build to 0.6.0.
+const PACKAGED = JSON.parse(fs.readFileSync(path.join(DIST, "build.json"), "utf8"));
 
 let pass = 0;
 let fail = 0;
@@ -224,7 +228,7 @@ async function main() {
 
     // ---- :version tells you which build is running ------------------------
     await typeKeys(page, ":version<CR>");
-    checkMatch(":version reports the packaged stamp", await evaluate(page, "document.querySelector('.jsbarevi-line').textContent"), /^jsbarevi 0\.1\.0\+/);
+    check(":version reports the packaged stamp", await evaluate(page, "document.querySelector('.jsbarevi-line').textContent"), `jsbarevi ${PACKAGED.version_name}`);
 
     // ---- :e through the service worker ------------------------------------
     await typeKeys(page, ":e<CR>");

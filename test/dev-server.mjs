@@ -4,6 +4,7 @@
 // which is the one confusion the label exists to prevent.
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDirty } from "../tools/build-id.mjs";
@@ -42,6 +43,12 @@ try {
     execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: ROOT, encoding: "utf8" })
       .split("\n").map((l) => l.slice(3).trim()).filter((f) => f && f !== "src/build-info.js").length > 0);
   eq("...and is never cached", res.headers.get("cache-control"), "no-store");
+  // The label printed in the field (`:version`, the status line) is `${VERSION}+${stamp}`.
+  // The VERSION half must come from package.json: while it was a literal in src/entry.js,
+  // a 0.6.0 build announced itself as 0.1.0 and read as a stale copy.
+  const servedVersion = (body.match(/VERSION = "([^"]+)"/) || [])[1];
+  const pkgVersion = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+  eq("the served semver is package.json's, not a source literal", servedVersion, pkgVersion);
   const engine = await fetch(`http://127.0.0.1:${port}/src/engine/engine.js`);
   eq("the engine is served too", (await engine.text()).includes("case \"gj\": case \"gk\""), true);
 } finally {
