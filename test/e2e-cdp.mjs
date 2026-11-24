@@ -761,8 +761,8 @@ async function main() {
     await sleep(150);
     check("a native cut deletes the selection", await field(), "a beta gamma\ndelta epsilon\nzeta eta theta");
     check("...leaves visual mode", await mode(), "NORMAL");
-    check("...and the badge stops saying VISUAL",
-      await evaluate(session, "document.querySelector('.jsbarevi-badge').style.display"), "none");
+    check("...and the badge stops saying VISUAL, saying NORMAL instead",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').textContent"), "-- NORMAL --");
     await typeKeys(session, "u");
     check("...and u puts the text back", await field(), BUFFER);
 
@@ -792,8 +792,8 @@ async function main() {
     await sendKey(session, "C-x");
     await sleep(150);
     check("a native cut there returns to INSERT", await mode(), "INSERT");
-    check("...reported as insert",
-      await evaluate(session, "document.querySelector('.jsbarevi-badge').textContent"), "-- INSERT --");
+    check("...reported as insert (by showing no badge at all — INSERT is the host's state)",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').style.display"), "none");
     await sendKey(session, "Escape");
     await typeKeys(session, "u");
     check("...and that cut is undoable too", await field(), BUFFER);
@@ -1409,8 +1409,8 @@ async function main() {
     await evaluate(session, "document.getElementById('field').focus()");
     await sleep(120);
     check("regaining focus restores INSERT", await evaluate(session, "window.jsbarevi.textarea.adapter.engine.mode"), "INSERT");
-    check("...the badge says INSERT too",
-      await evaluate(session, "document.querySelector('.jsbarevi-badge').textContent"), "-- INSERT --");
+    check("...and no badge is shown, because INSERT is the host's own state",
+      await evaluate(session, "document.querySelector('.jsbarevi-badge').style.display"), "none");
     const beforeTypingAfterFocus = (await field()).length;
     await typeKeys(session, "Y");
     check("...so the next keystroke is TEXT, not a command", (await field()).length, beforeTypingAfterFocus + 1);

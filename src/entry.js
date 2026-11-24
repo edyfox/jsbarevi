@@ -115,10 +115,17 @@ function makeUi(el) {
     releaseTheme,
     setMode(mode, count) {
       place();
-      const label = mode === "REPLACE" ? "-- REPLACE --" : mode === "INSERT" ? "-- INSERT --"
+      // INSERT is the host's own state — a browser field is "inserting" by default, so a
+      // badge for it says nothing the user did not already know. The states WE add are the
+      // ones worth naming: NORMAL, VISUAL, REPLACE. (Edward, 2026-11-24: "if we really want
+      // to hide something, hide INSERT".)
+      const label = mode === "NORMAL" ? "-- NORMAL --" : mode === "REPLACE" ? "-- REPLACE --"
         : mode === "VISUAL" ? "-- VISUAL --" : mode === "VISUAL_LINE" ? "-- VISUAL LINE --" : "";
+      // …and never on a field that does not hold the focus: a blurred editor is not in a
+      // mode at all, and a badge there is a claim about a field the user is not typing in.
+      const focused = el === document.activeElement || el.contains(document.activeElement);
       badge.textContent = label;
-      badge.style.display = label ? "block" : "none";
+      badge.style.display = label && focused ? "block" : "none";
       if (count) badge.textContent = `${label} ${count}`;
     },
     status(msg, kind) {

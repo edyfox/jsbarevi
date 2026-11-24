@@ -161,7 +161,8 @@ async function main() {
   check("one composition root marked active", double.state.attached, 1);
   check("Esc i ZZZ types with a duplicate present", double.baseline.includes("ZZZ"), true);
   check("after focus loss, i QQQ types with a duplicate present", double.after.includes("QQQ"), true);
-  check("the visible badge after i is INSERT, not a stale mode", double.badgeAfterI, ["-- INSERT --"]);
+  check("no badge is visible after i (INSERT is the host's own state)",
+    double.badgeAfterI, []);
 
   console.log("\nthree copies (a loader with two stale backups)");
   const triple = await run(3);

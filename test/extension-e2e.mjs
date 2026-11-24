@@ -217,10 +217,12 @@ async function main() {
 
     // ---- insert mode belongs to the browser -------------------------------
     await typeKeys(page, "i");
-    check("i shows INSERT", await evaluate(page, "document.querySelector('.jsbarevi-badge').textContent"), "-- INSERT --");
+    check("i shows no badge (INSERT is the host's own state)",
+      await evaluate(page, "document.querySelector('.jsbarevi-badge').style.display"), "none");
     await typeKeys(page, "XY<Esc>");
     check("typed text landed at the cursor", await fieldValue(page), "XYalpha beta gamma\ndelta epsilon\nzeta eta theta");
-    check("Escape returns to NORMAL", await evaluate(page, "document.querySelector('.jsbarevi-badge').textContent"), "");
+    check("Escape returns to NORMAL, and the badge says so",
+      await evaluate(page, "document.querySelector('.jsbarevi-badge').textContent"), "-- NORMAL --");
 
     // ---- visual line ------------------------------------------------------
     await typeKeys(page, "Vd");

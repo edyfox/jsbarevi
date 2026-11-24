@@ -167,11 +167,13 @@ export async function sendKey(session, ch) {
     await sleep(18);
     return;
   }
+  // Read the MODE, not the badge: INSERT is deliberately unbadged now (it is the host's
+  // own state), so the badge cannot be asked what mode the field is in.
   const state = await evaluate(session, `(() => {
-    const badge = document.querySelector('.jsbarevi-badge');
+    const mode = document.querySelector('[data-jsbarevi-mode]')?.getAttribute('data-jsbarevi-mode') || '';
     const prompt = document.querySelector('.jsbarevi-prompt');
     return {
-      insert: !!badge && /INSERT|REPLACE/.test(badge.textContent || ''),
+      insert: mode === 'INSERT' || mode === 'REPLACE',
       prompt: !!prompt && prompt.style.display !== 'none',
     };
   })()`);
