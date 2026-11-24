@@ -413,7 +413,15 @@ async function main() {
     await typeKeys(page, "gg0lll");
     await typeKeys(page, "iZ");
     const beforeBlur = await evaluate(page, "window.handle.engine.cursor");
-    await evaluate(page, "document.activeElement.blur()");
+    // A DELIBERATE blur is the user clicking away — the adapter only remembers the mode for
+    // those (a key-driven blur is usually another extension taking the Escape, and must not
+    // be turned back into INSERT).
+    await evaluate(page, `(() => {
+      const el = document.getElementById("editor");
+      el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      el.blur();
+    })()`);
     const afterBlur = await evaluate(page, "JSON.stringify({ mode: window.handle.engine.mode, cursor: window.handle.engine.cursor, under: window.handle.engine.hostText[window.handle.engine.cursor] })");
     check("a blur while inserting steps the cursor left", JSON.parse(afterBlur), { mode: "NORMAL", cursor: beforeBlur - 1, under: "Z" });
     // ...and the field comes back the way it was left: INSERT. A composer that returns
@@ -622,6 +630,30 @@ async function main() {
       check("...and a change command clears exactly the visible text",
         await evaluate(padPage, "window.handle.engine.hostText.replace(/[\\s\\u200b]/g, '')"), "");
       try { padPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- an Escape must stick even when another extension saw it first ----
+    // Another extension blurs the field on Escape (Vimium-style). The blur handler leaves
+    // INSERT through the engine and REMEMBERS it as the mode to come back in; our keydown
+    // then sees the Escape. If it does not clear that memory, the focus-reclaim walks
+    // straight back into INSERT and the user sees "Escape just moves the cursor left".
+    {
+      const page2 = await openPage(chromePort, `http://127.0.0.1:${port}/ce`);
+      await waitFor(page2, "!!window.ready", 10000);
+      await evaluate(page2, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      await typeKeys(page2, "<Escape>");
+      await typeKeys(page2, "i");                       // back into INSERT
+      await sleep(80);
+      const mode = await evaluate(page2, `(() => {
+        const el = document.getElementById("editor");
+        el.blur();                                      // the other extension blurs first
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true, cancelable: true }));
+        el.focus();                                     // the focus guard reclaims
+        return window.handle.engine.mode;
+      })()`);
+      check("an Escape that arrived after a blur still lands", mode, "NORMAL");
+      try { page2.close(); } catch { /* ignore */ }
     }
 
     // ---- one adapter per field, and none on a field that stopped being editable ---

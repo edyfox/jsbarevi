@@ -90,6 +90,7 @@ export class TextareaAdapter {
       },
       contextmenu: (e) => this._onContextMenu(e),
       mousedown: (e) => {
+        this._lastPointerAt = Date.now();
         if (!this.el.contains(e.target)) return;
         this._menuProjection = false;
         this._mouseDown = true;
@@ -635,6 +636,12 @@ export class TextareaAdapter {
   }
 
   _onKeydown(e) {
+    // An Escape is an Escape even when it lands somewhere else: another extension blurs the
+    // field on Escape first, so by the time the key arrives the target is <body> — and a
+    // handler that checks the target before noting the key leaves `_returnMode` set to
+    // INSERT, which the focus reclaim then restores. Escape "just moved the cursor left"
+    // was exactly this (measured live, 2026-11-24).
+    if (e.key === "Escape") { this._lastEscapeAt = Date.now(); this._returnMode = null; }
     // Ownership: the listener is on WINDOW (capture), so every attached field sees every
     // keystroke on the page. Without this, typing into one field would also feed the
     // engine of every other attached field — including our own command line.
@@ -657,6 +664,11 @@ export class TextareaAdapter {
     this._menuProjection = false;
     const wasInsert = this.engine.mode === Mode.INSERT || !!this.engine.replaceSession;
     const r = this.engine.feed(key);
+    // An Escape always wins over the mode the field would come back in — including when
+    // ANOTHER extension blurred the field first (it sets `_returnMode` from the mode it
+    // found), and the focus-reclaim then walks us straight back into INSERT. Clearing it
+    // here is what makes Escape stick regardless of who saw the blur first.
+    if (key === "Esc") this._returnMode = null;
     // `v`/`V` pressed from normal mode starts a NEW selection: forget where an older one
     // came from, or a later native cut would return to the wrong mode.
     if (!wasInsert && (this.engine.mode === Mode.VISUAL || this.engine.mode === Mode.VISUAL_LINE)) {
