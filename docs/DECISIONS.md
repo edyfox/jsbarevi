@@ -618,6 +618,17 @@ Two rules, and the second one generalises:
    line explains it, and `edit-blocked` is reported. Navigation, insert mode and `:q` are
    unaffected. A scoped seam that says why beats a seam that corrupts.
 
+10. **The key pipeline works, and the host's model is still a step ahead of us.** Lark DOES
+    act on a synthetic Backspace (`trusted:false, prevented:true, applied:true`), so
+    `destructiveEdits: "keys"` deletes through its own pipeline — and `dd` and `C` on a short
+    line really do land. But the host applies that edit to its model tens of milliseconds
+    later: we converge the DOM to `""`, it still holds `t`, and it reclaims the character on
+    the NEXT keystroke (`abc` → `tbc`, `x` leaves a duplicate: `Thiis`). Waiting 30 ms per
+    step did not close it, because the model's own transaction is not observable. Editing
+    that model reliably would mean intercepting its transactions — out of scope for a page
+    world payload. **Lark therefore stays scoped (`destructiveEdits: false`); the key path
+    stays in the code behind config, with this note, so the next attempt starts from here.**
+
 Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
 `reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
 the old ranged delete (`tes` resurrects), which is the regression this guards.
