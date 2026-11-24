@@ -278,9 +278,12 @@ export class ContenteditableAdapter {
    * both in place and the ordinary host-edit path can end visual and collapse them.
    */
   _onHostClipboard(event) {
-    if (event && event.defaultPrevented) return;
+    // Do NOT bail on `defaultPrevented`: Keep cancels the default cut and performs it
+    // inside its own model, so the flag says "the host took this", not "nothing happened".
+    // Two checks, because that host applies the change after the event returns.
     const deleted = !event || event.type === "cut";
     setTimeout(() => this.syncFromHost({ fromInput: true, deleted }), 0);
+    setTimeout(() => this.syncFromHost({ fromInput: true, deleted }), 80);
   }
 
   _onInput(event) {

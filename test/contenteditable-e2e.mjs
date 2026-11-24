@@ -250,6 +250,9 @@ const NOTE_HOST = `<!doctype html>
   // Google Keep's shape, measured in the live app: a native Cut fires the cut event and
   // NOTHING else — no beforeinput, no input — and the host leaves a range behind whose
   // nodes the edit moved, so it keeps painting over the text below.
+  // Keep CANCELS the default cut and performs the edit in its own model, so the flag says
+  // "the host took this", not "nothing happened" — the adapter must not bail on it.
+  editor.addEventListener("cut", (e) => e.preventDefault(), true);
   window.hostCut = () => {
     const sel = getSelection();
     const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
