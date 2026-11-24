@@ -113,6 +113,12 @@ export class ContenteditableAdapter {
       // runs after it. Capture on the document always runs first.
       keydown: (e) => this._onKeydown(e),
       input: (e) => this._onInput(e),      // the inputType decides host-deletion handling
+      // Some hosts perform a native Cut/Paste themselves and fire NO `input` for it
+      // (Google Keep, measured 2026-11-24: `cut` fires, `beforeinput`/`input` never do).
+      // Without a signal the engine stays in visual and keeps projecting a range whose
+      // nodes the edit moved — the highlight then sits over the text below.
+      cut: (e) => this._onHostClipboard(e),
+      paste: (e) => this._onHostClipboard(e),
       mouseup: (e) => this._onMouseUp(e),
       mousedown: (e) => this._onMouseDown(e),
       selectionchange: () => this._onSelectionChange(),
@@ -133,6 +139,8 @@ export class ContenteditableAdapter {
     // mean every key twice, and `d` twice is `dd`).
     if (!opts.keysDispatchedByHost) window.addEventListener("keydown", this._bound.keydown, true);
     el.addEventListener("input", this._bound.input);
+    el.addEventListener("cut", this._bound.cut);
+    el.addEventListener("paste", this._bound.paste);
     el.addEventListener("contextmenu", this._bound.contextmenu);
     el.addEventListener("dragstart", this._bound.dragstart);
     el.addEventListener("blur", this._bound.blur);
@@ -164,6 +172,8 @@ export class ContenteditableAdapter {
     clearTimeout(this._verifyTimer);
     if (!this._keysDispatchedByHost) window.removeEventListener("keydown", this._bound.keydown, true);
     this.el.removeEventListener("input", this._bound.input);
+    this.el.removeEventListener("cut", this._bound.cut);
+    this.el.removeEventListener("paste", this._bound.paste);
     this.el.removeEventListener("contextmenu", this._bound.contextmenu);
     this.el.removeEventListener("blur", this._bound.blur);
     this.el.removeEventListener("focus", this._bound.focus);
@@ -258,6 +268,19 @@ export class ContenteditableAdapter {
     this.engine.mode = this._selectionReturn || Mode.NORMAL;
     this.engine.visual = null;
     return true;
+  }
+
+  /**
+   * A native Cut/Paste the host performed without telling us through `input`.
+   *
+   * The document has NOT changed yet when the event fires (the browser or the host applies
+   * it right after), so read it on the next tick — by then the text and the stale range are
+   * both in place and the ordinary host-edit path can end visual and collapse them.
+   */
+  _onHostClipboard(event) {
+    if (event && event.defaultPrevented) return;
+    const deleted = !event || event.type === "cut";
+    setTimeout(() => this.syncFromHost({ fromInput: true, deleted }), 0);
   }
 
   _onInput(event) {

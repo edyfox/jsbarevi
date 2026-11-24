@@ -247,17 +247,19 @@ const NOTE_HOST = `<!doctype html>
     sel.addRange(r);
     document.dispatchEvent(new Event("selectionchange"));
   };
+  // Google Keep's shape, measured in the live app: a native Cut fires the cut event and
+  // NOTHING else — no beforeinput, no input — and the host leaves a range behind whose
+  // nodes the edit moved, so it keeps painting over the text below.
   window.hostCut = () => {
-    document.execCommand("delete");
-    // …and the host leaves a range behind, which is the reported bug: the browser keeps
-    // painting it, and because the edit moved the nodes it now covers the text BELOW.
-    const r = document.createRange();
-    r.setStart(editor.lastChild, 0);
-    r.setEnd(editor.lastChild, 4);
     const sel = getSelection();
+    const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    editor.dispatchEvent(new Event("cut", { bubbles: true, cancelable: true }));
+    if (range) range.deleteContents();
+    const stale = document.createRange();
+    stale.setStart(editor.lastChild, 0);
+    stale.setEnd(editor.lastChild, 4);
     sel.removeAllRanges();
-    sel.addRange(r);
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteByCut" }));
+    sel.addRange(stale);
   };
   window.ready = true;
 </script>`;
