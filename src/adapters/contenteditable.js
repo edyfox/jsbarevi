@@ -770,7 +770,11 @@ export class ContenteditableAdapter {
               : deleteBackwardAt(this.el, Math.min(to, current.length));
           if (!ok) break;
           changed = true;
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          // A host edited through its own key pipeline applies the edit ASYNCHRONOUSLY: its
+          // model lands a few tens of milliseconds after the key. Measuring in the same tick
+          // made the drain stop one character early and the host repaint the survivor on the
+          // next keystroke (`abc` became `tbc`, measured 2026-11-24). Give it room to land.
+          await new Promise((resolve) => setTimeout(resolve, viaKeys ? 30 : 0));
           continue;
         }
         if (insert) {
