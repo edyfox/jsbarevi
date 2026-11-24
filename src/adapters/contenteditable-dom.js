@@ -316,21 +316,40 @@ export function hasAtomicContent(el) {
  */
 const DELETE_STEPS = 240;
 
+/** Line breaks and Lark's zero-width placeholders are the host's business, not ours. */
+const stripTail = (s) => s.replace(/[\s\u200b]+$/, "");
+
 export function deleteRange(el, from, to) {
   if (to <= from) return true;
-  const target = getFlatText(el).length - (to - from);
+  const original = getFlatText(el);
+  const expected = original.slice(0, from) + original.slice(to);
   let end = to;
-  for (let step = 0; step < DELETE_STEPS; step++) {
-    const before = getFlatText(el).length;
-    if (before <= target) return true;
-    setCursorAt(el, Math.min(end, before));
+  for (let step = 0; step <= to - from + 2; step++) {
+    const current = getFlatText(el);
+    // Exact equality only. A looser test looked done when only line breaks were left,
+    // which stopped `dd` before it deleted the line's own break (buffer kept a trailing
+    // newline). The step budget, not the text, decides when to stop.
+    if (current === expected) return true;
+    // Out of span, and what is left is only the host's empty-block placeholder (`<br>` +
+    // zero-width space): the deletion DID land. Trying one more delete here is a no-op
+    // that reported a finished edit as "refused" (Lark, 2026-11-24: `abcest`).
+    if (end <= from && stripTail(current) === stripTail(expected)) return true;
+    const beforeLen = current.length;
+    setCursorAt(el, Math.min(end, beforeLen));
     if (!execCmd("delete")) return false;
-    const after = getFlatText(el).length;
-    if (after >= before) return false;          // the host did nothing; do not spin
-    end -= before - after;                      // a mention goes as one unbreakable unit
+    const after = getFlatText(el);
+    if (after === current) return stripTail(after) === stripTail(expected);
+    end -= Math.max(1, beforeLen - after.length);        // a mention goes as one unit
+    if (end < from) break;
   }
-  setSelectionRange(el, from, Math.max(from, Math.min(to, getFlatText(el).length)));
-  return execCmd("delete");
+  // Out of span to delete. If what is left is only the host's own empty-block
+  // placeholder (`<br>` + zero-width space), the deletion DID land — saying "refused"
+  // here aborted edits that had worked (found in Lark, 2026-11-24: `abcest`).
+  if (to - from > DELETE_STEPS) {
+    setSelectionRange(el, from, Math.min(to, getFlatText(el).length));
+    return execCmd("delete");
+  }
+  return stripTail(getFlatText(el)) === stripTail(expected);
 }
 
 export function insertTextAt(el, offset, str) {

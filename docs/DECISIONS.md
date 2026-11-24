@@ -566,6 +566,15 @@ Two rules, and the second one generalises:
    check cannot see a host that repaints later; without the second read the engine keeps a
    caret the document does not back, which is what "wedged" feels like to a person.
 
+3. **"Is the deletion done?" is a content question, not a length question.** A host that
+   swaps the last character for its empty-block placeholder (`<br>` + a zero-width space)
+   changes the text without shortening it, so a length-based progress test calls a finished
+   edit *refused* (0.6.2 shipped that; Lark answered "this editor refused the edit" and left
+   `abcest`). And the check must not fire early either: accepting "only line breaks differ"
+   stops `dd` before it deletes the line's own break, leaving a trailing newline in the
+   buffer. The rule that satisfies both: compare for exact equality, let the span (not the
+   text) decide when to stop, and accept the placeholder shape only once the span is spent.
+
 Evidence: `_local` beacons 2026-11-24 15:37 (Lark, in-page trace), and the `model` /
 `reverting` fixtures in `test/contenteditable-e2e.mjs` — the model fixture fails against
 the old ranged delete (`tes` resurrects), which is the regression this guards.

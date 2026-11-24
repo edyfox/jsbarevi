@@ -134,12 +134,44 @@ const REVERTING_HOST = `<!doctype html>
   window.ready = true;
 </script>`;
 
+// A host that models one char per delete AND normalizes an emptied block the way Lark does
+// (a <br> plus a zero-width span, so the block keeps a caret). That normalization changes
+// the text without shortening it — which made a length-based progress test call a finished
+// deletion "refused" (2026-11-24, `abcest`).
+const NORMALIZING_HOST = `<!doctype html>
+<meta charset="utf-8">
+<style>#editor{width:520px;min-height:100px;padding:12px 14px;white-space:pre-wrap;outline:none}</style>
+<div id="editor" contenteditable="true">test</div>
+<script type="module">
+  const editor = document.getElementById("editor");
+  let model = "test";
+  window.hostLog = { model: () => model, paints: 0 };
+  window.reports = [];
+  globalThis.__jsbareviReport = (src, detail) => window.reports.push([src, detail]);
+  const paint = () => {
+    editor.innerHTML = model === ""
+      ? '<br><span data-zero-space="true">\\u200b</span>'
+      : model;
+    window.hostLog.paints++;
+  };
+  editor.addEventListener("input", (e) => {
+    const it = String(e.inputType || "");
+    if (it === "deleteContentBackward") model = model.slice(0, -1);
+    else if (it === "insertText" && e.data) model += e.data;
+    paint();                                  // repaint at once, the way editor-kit does
+  });
+  const { attach } = await import("/src/entry.js");
+  window.handle = attach(editor, { editorUrl: "" });
+  window.ready = true;
+</script>`;
+
 function serve() {
   const server = createServer((req, res) => {
     const url = decodeURIComponent((req.url || "/").split("?")[0]);
-    if (url === "/" || url === "/ce" || url === "/model" || url === "/reverting") {
+    if (["/", "/ce", "/model", "/reverting", "/normalizing"].includes(url)) {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST : PAGE);
+      res.end(url === "/model" ? MODEL_HOST : url === "/reverting" ? REVERTING_HOST
+        : url === "/normalizing" ? NORMALIZING_HOST : PAGE);
       return;
     }
     const file = path.join(ROOT, url);
@@ -475,6 +507,30 @@ async function main() {
       check("...so the host's own re-render resurrects nothing",
         await evaluate(modelPage, `document.getElementById("editor").innerText`), "");
       try { modelPage.close(); } catch { /* ignore */ }
+    }
+
+    // ---- a host that normalizes the emptied block (Lark's placeholder) ----
+    {
+      const normPage = await openPage(chromePort, `http://127.0.0.1:${port}/normalizing`);
+      await waitFor(normPage, "!!window.ready", 10000);
+      await evaluate(normPage, `document.getElementById("editor").focus()`);
+      await sleep(150);
+      await typeKeys(normPage, "<Escape>");
+      await sleep(80);
+      await typeKeys(normPage, "0");
+      await typeKeys(normPage, "C");
+      await sleep(250);
+      check("an emptied block that the host normalizes is not a false refusal",
+        await evaluate(normPage, `window.reports.some((r) => r[0] === "edit-refused")`), false);
+      // The engine's buffer legitimately keeps the host's zero-width placeholder here
+      // (Lark leaves one in every empty block), so compare the VISIBLE text.
+      check("...the edit still lands: host model and engine agree",
+        await evaluate(normPage, `[window.hostLog.model(), window.handle.engine.hostText.replace(/[\\s\\u200b]+/g, "")]`), ["", ""]);
+      await typeKeys(normPage, "abc");
+      await sleep(200);
+      check("...and the field still takes typing, in order",
+        await evaluate(normPage, `document.getElementById("editor").innerText`), "abc");
+      try { normPage.close(); } catch { /* ignore */ }
     }
 
     // ---- a host that rewrites over us afterwards --------------------------
