@@ -7,10 +7,11 @@ contract, and a real editor behind `:e` when the field is not enough.
 
 > Status: **engine verified end-to-end, packaged as a Chrome extension, and running in
 > rich composers (contenteditable) as well as plain fields.**
-> 294 differential cases match real `vim`, 160 engine cases, 109 unit, 180
-> end-to-end checks in real headless Chrome, and 24 more that drive the *packaged*
-> extension (content script, settings, service-worker transport) in Chrome for
-> Testing. **It is published on the Chrome Web Store** —
+> 500 differential cases match real `vim`, 386 engine cases, 266 unit, 408 register-matrix
+> cells, 251 end-to-end checks in real headless Chrome (plus 54 in a rich contenteditable
+> composer), and 57 more that drive the *packaged* extension (content script, settings,
+> service-worker transport) in Chrome for Testing. **0.6.1 is published on the Chrome Web
+> Store** —
 > [jsbarevi — vi keys in any text field](https://chromewebstore.google.com/detail/jsbarevi-%E2%80%94-vi-keys-in-any/kjkagomcgiagbieohmbapadgjojcpmea)
 > — and the unpacked package can still be loaded for development (`npm run build:ext`).
 
@@ -19,7 +20,7 @@ contract, and a real editor behind `:e` when the field is not enough.
 ```bash
 npm test                     # undo audit · unit · transport · engine · differential
 npm run test:e2e             # real headless Chrome, real key events
-npm run test:ext             # the PACKAGED extension in Chrome for Testing (29)
+npm run test:ext             # the PACKAGED extension in Chrome for Testing (57)
 npm run test:ce              # contenteditable composer: chips, host keymap, host model
 npm run test:matrix          # registers x every command form that writes one
 npm run coverage             # V8 block coverage: functions that never ran

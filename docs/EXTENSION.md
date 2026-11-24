@@ -6,7 +6,7 @@ bite you.
 
 ```bash
 npm run build:ext     # dist/ + dist/jbarevi-<version>.zip  (upload this)
-npm run test:ext      # build + 24 assertions in real Chrome for Testing
+npm run test:ext      # build + 57 assertions in real Chrome for Testing
 npm run store:shots   # regenerate the store screenshots from the real engine
 npm run icons         # regenerate the icon set
 ```

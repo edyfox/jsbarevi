@@ -3,11 +3,16 @@
 Everything below is the exact text for the store form. The build artifact is
 `dist/jbarevi-<version>.zip` (from `npm run build:ext`).
 
-> **Status: PUBLISHED.**
+> **Status: PUBLISHED — 0.6.1 is live (2026-11-24).**
 > <https://chromewebstore.google.com/detail/jsbarevi-%E2%80%94-vi-keys-in-any/kjkagomcgiagbieohmbapadgjojcpmea>
-> (item id `kjkagomcgiagbieohmbapadgjojcpmea`). The package in this repo is **0.5.0**,
-> the first build that declares **`clipboardRead`** — so its justification above is the
-> one a reviewer reads, and users see Chrome's *"Read data you copy and paste"* warning.
+> (item id `kjkagomcgiagbieohmbapadgjojcpmea`). The package in this repo is **0.6.1**: the 0.6.0
+> native-selection behaviour (charwise `v` borrows the browser's own selection, `V` simulates it,
+> an insert-mode selection becomes visual, the context menu is no longer suppressed) plus a build
+> label taken from `package.json` — `:version` printed `0.1.0+<commit>` on every build before it.
+>
+> **`clipboardRead` first shipped in 0.5.0** and is unchanged, so the justification above is still
+> exactly what a reviewer reads, and users still see Chrome's *"Read data you copy and paste"*
+> warning.
 >
 > A new upload needs `npm run build:ext` → `dist/jsbarevi-<version>.zip`, plus a bump of
 > the version. The privacy-policy URL was accepted for this listing; if `PRIVACY.md`

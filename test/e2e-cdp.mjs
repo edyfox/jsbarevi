@@ -1317,9 +1317,12 @@ async function main() {
     await evaluate(session, "window.jsbarevi.textarea.adapter.finishPrompt('ex', 'version')");
     await sleep(30);
     const versionLine = await evaluate(session, "document.querySelector('.jsbarevi-line')?.textContent || ''");
-    check(":version reports the build the page loaded",
-      /jsbarevi 0\.1\.0\+[0-9a-f]{7}/.test(versionLine), true);
-    check("...the same one entry.BUILD exposes", versionLine.includes((await evaluate(session, "window.jsbarevi.build")).replace(/^0\.1\.0\+/, "")), true);
+    // Compare against what the page itself is running, never a literal here: this check
+    // hard-coded `0.1.0+` and so blessed the stale label for five releases.
+    const loadedBuild = await evaluate(session, "window.jsbarevi.build");
+    check(":version reports the build the page loaded", versionLine, `jsbarevi ${loadedBuild}`);
+    check("...and that build names the commit, not just the semver",
+      /^\d+\.\d+\.\d+\+[0-9a-f]{7}(?:\+dirty)?$/.test(loadedBuild), true);
 
     console.log("\n\x1b[1mreplace mode: R\x1b[0m");
     const REPLACE_TEXT = "alpha beta\ngamma";
